@@ -1,0 +1,284 @@
+﻿app:
+  timezone: Asia/Karachi
+  min_duration_seconds: 30
+  max_duration_seconds: 60
+  image_count_per_video: 12
+  output_root: output
+  music_dir: assets/music
+  state_dir: data/state
+  topic_cache_dir: data/topics
+  script_writer:
+    # Legitimate no-cost routing: the configured Gemini key first, then an
+    # optional OpenAI-compatible gateway, then the local Ollama installation.
+    # No provider tokens are stored in this file.
+    provider: routed
+    provider_order:
+      - gemini
+      - openai_compatible
+      - ollama
+    provider_cooldown_seconds: 180
+    gemini_model: gemini-2.5-flash-lite
+    gemini_url: https://generativelanguage.googleapis.com/v1beta/models
+    ollama_model: llama3.2:3b
+    ollama_url: http://localhost:11434/api/generate
+    # Leave enough time for a cold local-model start, while keeping the final
+    # fallback bounded so an unavailable daemon cannot stall a build forever.
+    ollama_timeout_seconds: 90
+    # Legitimate free-tier fallback already available in this workspace. Set
+    # AI_GATEWAY_URL, AI_GATEWAY_MODEL, and AI_GATEWAY_API_KEY together to use
+    # a separate authorized profile without sending HF_API_KEY to another host.
+    openai_compatible_url: https://router.huggingface.co
+    openai_compatible_model: Qwen/Qwen3-8B
+    openai_compatible_api_key_env: HF_API_KEY
+    openai_compatible_allowed_hosts:
+      - router.huggingface.co
+    openai_compatible_timeout_seconds: 90
+    openai_compatible_disable_thinking: true
+    timeout_seconds: 90
+  subtitles:
+    enabled: true
+    max_words_per_caption: 4
+  thumbnail:
+    enabled: true
+    width: 1080
+    height: 1920
+  ab_test_enabled: true
+  ab_test_variants: 3
+  feedback_enabled: true
+  feedback_min_views: 100
+  feedback_lookback_days: 30
+  candidate_pool_size: 4
+  schedule_interval_hours: 2
+  schedule_uploads: true
+  # The upload-continuity monitor checks both channels this often. It only
+  # schedules a recovery Short when the successful-upload gap exceeds the
+  # per-channel threshold, and it still obeys upload blocks and daily caps.
+  upload_gap_check_minutes: 10
+
+channels:
+  - id: ancient_history
+    display_name: "Secrets of Time"
+    niche_description: "Ancient history, empires, mysteries, wars, rulers, archaeology"
+    seed_keywords:
+      - "ancient history"
+      - "roman empire"
+      - "egyptian civilization"
+      - "lost cities"
+      - "historical mysteries"
+    styles:
+      - listicle
+      - story
+      - motivational
+    schedule_times:
+      - "00:20"
+      - "03:50"
+      - "07:50"
+      - "11:20"
+      - "15:20"
+      - "19:20"
+    content_profiles:
+      shorts:
+        enabled: true
+        schedule_times:
+          - "00:20"
+          - "03:50"
+          - "07:50"
+          - "11:20"
+          - "15:20"
+          - "19:20"
+        min_duration_seconds: 32
+        max_duration_seconds: 36
+        target_width: 1080
+        target_height: 1920
+      videos:
+        enabled: true
+        schedule_times:
+          - "10:30"
+          - "22:30"
+        min_duration_seconds: 480
+        max_duration_seconds: 600
+        target_width: 1920
+        target_height: 1080
+    voice_mode: single
+    tts_backend: kokoro
+    voices:
+      - kokoro-bm_george@1.10
+    visual_style: documentary
+    viral_dna_channels:
+      - https://www.youtube.com/@HistoryMarche
+      - https://www.youtube.com/@KnowledgeHub
+    hashtags:
+      - "#history"
+      - "#ancienthistory"
+      - "#historicalfacts"
+      - "#historicalmysteries"
+      - "#secretssoftime"
+      - "#archeology"
+      - "#discovery"
+      - "#mythology"
+      - "#worldhistory"
+      - "#civilization"
+      - "#ancientcivilizations"
+    output_dir: output/ancient_history
+    daily_upload_cap: 8
+    max_upload_gap_hours: 4.0
+    upload_gap_retry_cooldown_minutes: 20
+    short_build_timeout_minutes: 45
+    video_build_timeout_minutes: 90
+    short_build_stall_minutes: 12
+    video_build_stall_minutes: 25
+    schedule_interval_hours: 2
+    backlog_schedule_interval_minutes: 90
+    youtube:
+      upload_enabled: true
+      client_secrets_file: client_secrets.json
+      token_file: secrets/tokens/ancient_history_token.json
+      privacy_status: public
+
+    facebook:
+      upload_enabled: false
+      page_id: "101382192681601"
+      access_token_env_var: "FB_PAGE_TOKEN_ANCIENT_HISTORY"
+
+  - id: brain_lens
+    display_name: "Brain Lens"
+    niche_description: "Spicy but respectful relationship psychology, attraction science, attachment styles, texting anxiety, body language, kissing chemistry, dating confidence, friendship and lover dynamics, and brain-based emotional behavior"
+    seed_keywords:
+      - "relationship psychology"
+      - "dating psychology"
+      - "attachment styles"
+      - "attraction psychology"
+      - "kissing psychology"
+      - "texting anxiety"
+      - "mixed signals"
+      - "red flags"
+      - "situationships"
+      - "how to be more attractive"
+      - "emotional connection"
+      - "body language psychology"
+    styles:
+      - explainer
+      - story
+      - listicle
+      - spicy_relationship
+    schedule_times:
+      - "01:20"
+      - "05:20"
+      - "09:20"
+      - "13:20"
+      - "16:00"
+      - "21:20"
+    content_profiles:
+      shorts:
+        enabled: true
+        schedule_times:
+          - "01:20"
+          - "05:20"
+          - "09:20"
+          - "13:20"
+          - "16:00"
+          - "21:20"
+        min_duration_seconds: 33
+        max_duration_seconds: 36
+        target_width: 1080
+        target_height: 1920
+      videos:
+        enabled: true
+        schedule_times:
+          - "11:30"
+          - "23:30"
+        min_duration_seconds: 480
+        max_duration_seconds: 600
+        target_width: 1920
+        target_height: 1080
+    voice_mode: single
+    tts_backend: kokoro
+    voices:
+      - kokoro-af_heart@1.10
+    visual_style: stock
+    viral_dna_channels:
+      - https://www.youtube.com/@psych2go
+      - https://www.youtube.com/@charismaoncommand
+    daily_upload_cap: 8
+    max_upload_gap_hours: 4.0
+    upload_gap_retry_cooldown_minutes: 20
+    short_build_timeout_minutes: 45
+    video_build_timeout_minutes: 90
+    short_build_stall_minutes: 12
+    video_build_stall_minutes: 25
+    max_backlog_age_days: 2
+    hashtags:
+      - "#psychology"
+      - "#relationshippsychology"
+      - "#datingpsychology"
+      - "#attachmentstyle"
+      - "#attraction"
+      - "#bodylanguage"
+      - "#texting"
+      - "#redflags"
+      - "#situationship"
+      - "#humanbehavior"
+      - "#brainscience"
+      - "#selfimprovement"
+    output_dir: output/brain_lens
+    schedule_interval_hours: 2
+    backlog_schedule_interval_minutes: 60
+    heygen:
+      enabled: false
+      use_for_shorts: true
+      use_for_videos: false
+      avatar_name: "BL Medium Studio"
+      avatar_page_url: "https://app.heygen.com/avatar/my-avatars/ef9839aa8aef4bd9ba888d26b3f776e4"
+      motion_engine: "Avatar III"
+      chrome_executable_path: "C:/Program Files/Google/Chrome/Application/chrome.exe"
+      chrome_user_data_dir: "E:/yt_automation/output/brain_lens/heygen_chrome_profile"
+      headless: false
+      wait_for_login: true
+      render_timeout_seconds: 420
+      allow_native_download_fallback: true
+      avatar_rotation_mode: sequential
+      avatar_names:
+        - "BL Medium Studio > Look 01"
+        - "BL Medium Studio > Look 02"
+        - "BL Medium Studio > Look 03"
+        - "BL Medium Studio > Look 04"
+        - "BL Medium Studio > Look 05"
+        - "BL Medium Studio > Look 06"
+        - "BL Medium Studio > Look 07"
+        - "BL Medium Studio > Look 08"
+        - "BL Medium Studio > Look 09"
+        - "BL Medium Studio > Look 10"
+        - "BL Medium Studio > Look 11"
+        - "BL Medium Studio > Look 12"
+        - "BL Medium Studio > Look 13"
+        - "BL Medium Studio > Look 14"
+        - "BL Medium Studio > Look 15"
+        - "BL Medium Studio > Look 16"
+    presenter:
+      enabled: false
+      engine: disabled_until_neural_verification
+      avatar_pool_dir: assets/brain_lens/premium_avatar_looks_10
+      layout_mode: lipsynced_hook_broll
+      rotation_mode: sequential
+      use_for_shorts: true
+      use_for_videos: false
+      sidecar_python: .runtime/sadtalker_env/Scripts/python.exe
+      sidecar_root: .runtime/SadTalker
+      checkpoint_dir: .runtime/SadTalker/checkpoints
+      rhubarb_path: .runtime/rhubarb-1.14.0/Rhubarb-Lip-Sync-1.14.0-Windows/rhubarb.exe
+      hook_seconds: 6.0
+      timeout_seconds: 1800
+      expression_scale: 0.9
+      pose_style: 0
+      render_size: 256
+    youtube:
+      upload_enabled: true
+      client_secrets_file: client_secrets.json
+      token_file: secrets/tokens/brain_lens_token.json
+      privacy_status: public
+
+    facebook:
+      upload_enabled: false
+      page_id: "1004784862724921"
+      access_token_env_var: "FB_PAGE_TOKEN_BRAIN_LENS"
+

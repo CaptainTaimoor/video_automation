@@ -1,0 +1,29 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+venv/
+.venv/
+.runtime/
+
+# Secrets
+.env
+secrets/tokens/
+client_secrets.json
+client_secrets*.json
+client_secret*.json
+temp_*secret*.json
+fb_tokens*.json
+secrets/**/*.json
+
+# Generated outputs
+output/
+data/state/runs.jsonl
+
+# Media cache
+*.mp4
+*.mp3
+*.wav
