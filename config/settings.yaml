@@ -8,15 +8,17 @@
   state_dir: data/state
   topic_cache_dir: data/topics
   script_writer:
-    # Legitimate no-cost routing: the configured Gemini key first, then an
-    # optional OpenAI-compatible gateway, then the local Ollama installation.
+    # Free-only route ladder. Missing credentials skip the provider cleanly;
+    # OpenRouter is deliberately last because its free model pool can change.
     # No provider tokens are stored in this file.
     provider: routed
     provider_order:
       - gemini
-      - openai_compatible
+      - groq
+      - cloudflare
+      - openrouter
       - ollama
-    provider_cooldown_seconds: 180
+    provider_cooldown_seconds: 60
     gemini_model: gemini-2.5-flash-lite
     gemini_url: https://generativelanguage.googleapis.com/v1beta/models
     ollama_model: llama3.2:3b
@@ -49,7 +51,9 @@
   feedback_lookback_days: 30
   candidate_pool_size: 4
   schedule_interval_hours: 2
-  schedule_uploads: true
+  # This branch is a safe v2 rollout checkout. Build and review here first;
+  # do not let it run a second scheduler beside the existing production copy.
+  schedule_uploads: false
   # The upload-continuity monitor checks both channels this often. It only
   # schedules a recovery Short when the successful-upload gap exceeds the
   # per-channel threshold, and it still obeys upload blocks and daily caps.
@@ -102,7 +106,7 @@ channels:
     voice_mode: single
     tts_backend: kokoro
     voices:
-      - kokoro-bm_george@1.10
+      - kokoro-bm_george@1.00
     visual_style: documentary
     viral_dna_channels:
       - https://www.youtube.com/@HistoryMarche
@@ -130,7 +134,7 @@ channels:
     schedule_interval_hours: 2
     backlog_schedule_interval_minutes: 90
     youtube:
-      upload_enabled: true
+      upload_enabled: false
       client_secrets_file: client_secrets.json
       token_file: secrets/tokens/ancient_history_token.json
       privacy_status: public
@@ -194,7 +198,7 @@ channels:
     voice_mode: single
     tts_backend: kokoro
     voices:
-      - kokoro-af_heart@1.10
+      - kokoro-af_heart@1.00
     visual_style: stock
     viral_dna_channels:
       - https://www.youtube.com/@psych2go
@@ -272,7 +276,7 @@ channels:
       pose_style: 0
       render_size: 256
     youtube:
-      upload_enabled: true
+      upload_enabled: false
       client_secrets_file: client_secrets.json
       token_file: secrets/tokens/brain_lens_token.json
       privacy_status: public

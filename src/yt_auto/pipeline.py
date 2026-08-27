@@ -22,6 +22,8 @@ from yt_auto.heygen_browser_service import HeyGenBrowserService
 from yt_auto.images import HybridMediaFetcher
 from yt_auto.local_presenter import LocalPresenterService
 from yt_auto.models import BuildArtifacts, ChannelConfig, ContentProfile, ScenePlanItem, TopicCandidate
+from yt_auto.quality_v2.service import QualityV2Service
+from yt_auto.quality_v2.state import content_hash
 from yt_auto.research import SourceSafeResearchExhaustedError
 from yt_auto.script_writer import ScriptWriter
 from yt_auto.seo import build_youtube_metadata
@@ -81,6 +83,19 @@ class ShortsFactory:
         self.title_lab = TitleLab()
         self.topic_planner = TopicPlanner(timezone=self.config.app.timezone)
         self.script_writer = ScriptWriter(self.config.app.script_writer)
+        self.quality_v2_enabled = str(os.getenv("YT_QUALITY_V2", "0")).lower() in {
+            "1", "true", "yes", "on"
+        }
+        self.quality_v2_enforce = str(os.getenv("YT_QUALITY_V2_ENFORCE", "0")).lower() in {
+            "1", "true", "yes", "on"
+        }
+        self.quality_v2 = (
+            QualityV2Service(self.config.app.state_dir)
+            if self.quality_v2_enabled
+            else None
+        )
+        if self.quality_v2 is not None:
+            self.script_writer.attach_quality_state(self.quality_v2.store)
         self.image_fetcher = HybridMediaFetcher(
             stable_horde_key=os.getenv("STABLE_HORDE_KEY", ""),
             pixabay_api_key=os.getenv("PIXABAY_API_KEY", ""),
@@ -396,6 +411,56 @@ class ShortsFactory:
         state_file = self.config.app.state_dir / "runs.jsonl"
         with state_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    def _quality_v2_candidate_report(
+        self,
+        channel: ChannelConfig,
+        candidate: TopicCandidate,
+    ) -> dict:
+        """Run the cheap deterministic v2 editorial gate before media work."""
+        service = getattr(self, "quality_v2", None)
+        if not service:
+            return {}
+        report = service.review_topic(
+            candidate,
+            history_required=(channel.id == "ancient_history"),
+        )
+        result = {
+            "approved": report.approved,
+            "issues": list(report.issues),
+            "warnings": list(report.warnings),
+            "repeated_sentences": list(report.repeated_sentences),
+            "max_sentence_similarity": report.max_sentence_similarity,
+            "fivegram_overlap": report.fivegram_overlap,
+        }
+        if not report.approved:
+            message = "quality-v2 editorial hold: " + "; ".join(report.issues)
+            if getattr(self, "quality_v2_enforce", False):
+                raise ValueError(message)
+            self.logger.warning(channel.id, message + " (shadow mode)")
+        return result
+
+    def _quality_v2_visual_report(
+        self,
+        channel: ChannelConfig,
+        candidate: TopicCandidate,
+        sources: list[dict],
+    ) -> dict:
+        """Record v2 visual provenance/reuse checks alongside legacy visual QA."""
+        service = getattr(self, "quality_v2", None)
+        if not service:
+            return {}
+        report = service.review_visual_sources(
+            candidate,
+            sources,
+            recent_urls=self._recent_visual_urls(channel.id),
+        )
+        if not report.get("approved", True):
+            message = "quality-v2 visual hold: " + "; ".join(report.get("issues", []))
+            if getattr(self, "quality_v2_enforce", False):
+                raise ValueError(message)
+            self.logger.warning(channel.id, message + " (shadow mode)")
+        return report
 
     def _upload_state_path(self) -> Path:
         return self.config.app.state_dir / "upload_state.json"
@@ -4779,7 +4844,20 @@ class ShortsFactory:
             return scene_durations, current_duration
 
         tempo = current_duration / target_seconds
-        if not 0.88 <= tempo <= 1.12:
+        if getattr(self, "quality_v2_enabled", False):
+            # V2 deliberately refuses to disguise an overlong/short script by
+            # making the voice sound rushed or rubbery.  The next candidate must
+            # be re-written or re-synthesized instead.
+            from yt_auto.quality_v2.audio import bounded_atempo
+
+            safe_tempo = bounded_atempo(current_duration, target_seconds)
+            if safe_tempo is None:
+                raise RuntimeError(
+                    "Short narration requires an unsafe voice-speed correction "
+                    f"(atempo={tempo:.3f}; Quality V2 safe range 0.95-1.05)."
+                )
+            tempo = safe_tempo
+        elif not 0.88 <= tempo <= 1.12:
             raise RuntimeError(
                 "Short narration requires an unsafe voice-speed correction "
                 f"(atempo={tempo:.3f}; safe range 0.88-1.12)."
@@ -5451,6 +5529,24 @@ class ShortsFactory:
         self.script_writer.reset_provider_audit()
         channel = self._channel(channel_id)
         profile = self._content_profile(channel, content_kind)
+        quality_v2 = getattr(self, "quality_v2", None)
+        quality_v2_job_id = ""
+        if quality_v2 is not None:
+            quality_v2_job_id = content_hash(
+                "quality-v2-build",
+                channel.id,
+                content_kind,
+                now_in_tz(self.config.app.timezone).isoformat(),
+                bool(upload_requested),
+                bool(_quality_retry),
+            )[:32]
+            quality_v2.store.start_job(
+                quality_v2_job_id,
+                channel.id,
+                content_kind,
+                {"upload_requested": upload_requested, "quality_retry": _quality_retry},
+            )
+            quality_v2.store.set_job_state(quality_v2_job_id, "planning")
 
         # Load Viral DNA if available
         from yt_auto.channel_analyzer import ChannelAnalyzer
@@ -5466,6 +5562,7 @@ class ShortsFactory:
         topic: Optional[TopicCandidate] = None
         ranked_variants = []
         topic_score_review: dict = {}
+        quality_v2_reports: dict[str, dict] = {}
         scored_candidates: list[tuple[float, dict, TopicCandidate, list[TitleVariant]]] = []
         candidate_pool_size = max(1, int(getattr(self.config.app, "candidate_pool_size", 4) or 4))
         if channel.id == "brain_lens" and content_kind == "short":
@@ -5572,6 +5669,10 @@ class ShortsFactory:
                         }
                     }
                 self._validate_topic_quality(channel, candidate, validation_avoids)
+                quality_v2_reports[candidate.title] = self._quality_v2_candidate_report(
+                    channel,
+                    candidate,
+                )
                 ai_score = (
                     {}
                     if channel.id == "ancient_history" and content_kind == "short"
@@ -5774,6 +5875,49 @@ class ShortsFactory:
                 + (f": {last_visual_issue}" if last_visual_issue else ".")
             )
 
+        selected_quality_v2_report = quality_v2_reports.get(topic.title)
+        if selected_quality_v2_report is None:
+            selected_quality_v2_report = self._quality_v2_candidate_report(channel, topic)
+        selected_quality_v2_visual_report = self._quality_v2_visual_report(
+            channel,
+            topic,
+            sources,
+        )
+        if quality_v2 is not None:
+            editorial_key = content_hash(
+                topic.title,
+                topic.narration,
+                list(topic.source_urls or []),
+            )
+            quality_v2.store.checkpoint(
+                quality_v2_job_id,
+                "editorial",
+                editorial_key,
+                "approved" if selected_quality_v2_report.get("approved", True) else "shadow_hold",
+                run_dir,
+                selected_quality_v2_report,
+            )
+            visual_key = content_hash(
+                topic.title,
+                [
+                    {
+                        "url": str(source.get("url") or ""),
+                        "license": str(source.get("license") or ""),
+                        "source": str(source.get("source") or ""),
+                    }
+                    for source in sources
+                ],
+            )
+            quality_v2.store.checkpoint(
+                quality_v2_job_id,
+                "visuals",
+                visual_key,
+                "passed" if selected_quality_v2_visual_report.get("approved", True) else "shadow_hold",
+                run_dir / "sources.json",
+                selected_quality_v2_visual_report or {"asset_count": len(images), "source_count": len(sources)},
+            )
+            quality_v2.store.set_job_state(quality_v2_job_id, "rendering")
+
         
         thumbnail_path = None
         thumbnail_quality_issues: list[str] = []
@@ -5813,6 +5957,7 @@ class ShortsFactory:
             recovery_short = (
                 channel.id == "ancient_history"
                 and content_kind == "short"
+                and not getattr(self, "quality_v2_enabled", False)
                 and str(os.getenv("YT_CONTINUITY_RECOVERY", "")).lower()
                 in {"1", "true", "yes", "on"}
             )
@@ -6134,9 +6279,29 @@ class ShortsFactory:
         metadata["quality_score"] = quality_review["score"]
         metadata["quality_decision"] = quality_review["decision"]
         metadata["quality_subscores"] = quality_review.get("subscores", {})
+        if quality_v2:
+            metadata["quality_v2_editorial"] = selected_quality_v2_report
+            metadata["quality_v2_visuals"] = selected_quality_v2_visual_report
+            metadata["quality_v2_mode"] = "enforce" if getattr(self, "quality_v2_enforce", False) else "shadow"
         write_json(run_dir / "metadata.json", metadata)
         write_json(run_dir / "topic.json", asdict(topic))
         write_json(run_dir / "quality_review.json", quality_review)
+        if quality_v2 is not None:
+            final_key = content_hash(
+                topic.title,
+                topic.narration,
+                quality_review.get("decision"),
+                quality_review.get("issues", []),
+                round(float(duration), 3),
+            )
+            quality_v2.store.checkpoint(
+                quality_v2_job_id,
+                "final_quality",
+                final_key,
+                "passed" if quality_review.get("decision") == "pass" else "held",
+                run_dir / "quality_review.json",
+                {"score": quality_review.get("score"), "issues": quality_review.get("issues", [])},
+            )
 
         # Upload
         up_results = {}
@@ -6158,6 +6323,23 @@ class ShortsFactory:
                 self.logger.warning(channel.id, f"Skipping upload: quality gate score {quality_review['score']} ({', '.join(quality_review['issues'])})")
                 up_results["upload_skipped"] = "quality_gate"
                 quality_gate_retry_needed = not _quality_retry
+                if quality_v2 is not None:
+                    fingerprint = content_hash(
+                        "final-quality-hold",
+                        channel.id,
+                        content_kind,
+                        topic.title,
+                        topic.narration,
+                        sorted(str(issue) for issue in quality_review.get("issues", [])),
+                    )
+                    already_held = quality_v2.store.is_quarantined(fingerprint)
+                    now_held = quality_v2.store.quarantine(
+                        fingerprint,
+                        "; ".join(str(issue) for issue in quality_review.get("issues", [])[:4]),
+                    )
+                    if already_held or now_held:
+                        up_results["upload_skipped"] = "quality_v2_quarantined"
+                        quality_gate_retry_needed = False
                 upload = False
 
         if upload:
@@ -6241,6 +6423,17 @@ class ShortsFactory:
 
         if not upload and not any(key in up_results for key in ("youtube_id", "facebook_id", "upload_skipped", "upload_blocked", "youtube_error", "facebook_error")):
             up_results["upload_skipped"] = "build_only"
+
+        if quality_v2 and (up_results.get("youtube_id") or up_results.get("facebook_id")):
+            quality_v2.record_approved(topic)
+        if quality_v2 is not None:
+            if up_results.get("youtube_id") or up_results.get("facebook_id"):
+                job_state = "uploaded"
+            elif quality_review.get("decision") != "pass":
+                job_state = "held"
+            else:
+                job_state = "ready"
+            quality_v2.store.set_job_state(quality_v2_job_id, job_state)
 
         # Log & Return
         self._log_state({

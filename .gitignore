@@ -21,7 +21,7 @@ secrets/**/*.json
 
 # Generated outputs
 output/
-data/state/runs.jsonl
+data/state/
 
 # Media cache
 *.mp4

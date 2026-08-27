@@ -32,6 +32,7 @@ from moviepy.editor import (
 
 from yt_auto.subtitles import SubtitleComposer
 from yt_auto.media_validation import MediaValidationReport, validate_final_mp4
+from yt_auto.quality_v2.audio import MixPolicy
 
 
 class LongCaptionPreflightError(RuntimeError):
@@ -98,6 +99,10 @@ class VideoBuilder:
         self.subtitle_enabled = subtitle_enabled
         self.subtitle_composer = SubtitleComposer(max_words_per_caption=subtitle_max_words)
         self.last_music_path: Path | None = None
+
+    @staticmethod
+    def _quality_v2_enabled() -> bool:
+        return str(os.getenv("YT_QUALITY_V2", "0")).lower() in {"1", "true", "yes", "on"}
 
     def _fit_vertical(self, clip: ImageClip | VideoFileClip) -> ImageClip | VideoFileClip:
         target_w, target_h = self.target_size
@@ -1051,25 +1056,47 @@ class VideoBuilder:
             voice_tempo=voice_tempo,
             beat_timing=beat_timing,
         )
+        quality_v2 = self._quality_v2_enabled()
+        policy = MixPolicy()
         if music_path and music_path.exists():
             inputs.extend(["-stream_loop", "-1", "-i", str(music_path)])
             filters.append(
                 "[1:a]aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB,"
                 f"atrim=0:{duration_text},apad=pad_dur={duration_text},"
-                f"atrim=0:{duration_text},volume={music_volume:.3f}[bg]"
+                f"atrim=0:{duration_text},volume="
+                f"{min(float(music_volume), policy.music_gain) if quality_v2 else float(music_volume):.3f}[bg]"
             )
-            filters.append(
-                "[voice][bg]amix=inputs=2:duration=longest:dropout_transition=0[mix];"
-                "[mix]loudnorm=I=-16:TP=-1.5:LRA=9,"
-                f"aresample=48000:async=1:first_pts=0,apad=pad_dur={duration_text},"
-                f"atrim=0:{duration_text},asetpts=N/SR/TB[aout]"
-            )
+            if quality_v2:
+                filters.append(
+                    f"[voice]loudnorm=I={policy.dialogue_lufs}:TP={policy.true_peak}:LRA=7[voice_norm];"
+                    f"[bg][voice_norm]sidechaincompress=threshold={policy.sidechain_threshold}:"
+                    f"ratio={policy.sidechain_ratio}:attack={policy.attack_ms}:"
+                    f"release={policy.release_ms}[ducked];"
+                    "[voice_norm][ducked]amix=inputs=2:duration=longest:dropout_transition=0[mix];"
+                    f"[mix]loudnorm=I={policy.final_lufs}:TP={policy.true_peak}:LRA=7,"
+                    f"aresample=48000:async=1:first_pts=0,apad=pad_dur={duration_text},"
+                    f"atrim=0:{duration_text},asetpts=N/SR/TB[aout]"
+                )
+            else:
+                filters.append(
+                    "[voice][bg]amix=inputs=2:duration=longest:dropout_transition=0[mix];"
+                    "[mix]loudnorm=I=-16:TP=-1.5:LRA=9,"
+                    f"aresample=48000:async=1:first_pts=0,apad=pad_dur={duration_text},"
+                    f"atrim=0:{duration_text},asetpts=N/SR/TB[aout]"
+                )
         else:
-            filters.append(
-                "[voice]loudnorm=I=-16:TP=-1.5:LRA=9,"
-                f"aresample=48000:async=1:first_pts=0,apad=pad_dur={duration_text},"
-                f"atrim=0:{duration_text},asetpts=N/SR/TB[aout]"
-            )
+            if quality_v2:
+                filters.append(
+                    f"[voice]loudnorm=I={policy.final_lufs}:TP={policy.true_peak}:LRA=7,"
+                    f"aresample=48000:async=1:first_pts=0,apad=pad_dur={duration_text},"
+                    f"atrim=0:{duration_text},asetpts=N/SR/TB[aout]"
+                )
+            else:
+                filters.append(
+                    "[voice]loudnorm=I=-16:TP=-1.5:LRA=9,"
+                    f"aresample=48000:async=1:first_pts=0,apad=pad_dur={duration_text},"
+                    f"atrim=0:{duration_text},asetpts=N/SR/TB[aout]"
+                )
 
         command = [
             ffmpeg_path,
@@ -1118,8 +1145,9 @@ class VideoBuilder:
         if duration <= 0:
             raise RuntimeError("audio render duration must be positive")
         duration_text = f"{duration:.3f}"
+        tempo_min, tempo_max = (0.95, 1.05) if self._quality_v2_enabled() else (0.5, 2.0)
         if not beat_timing:
-            if not 0.5 <= float(voice_tempo) <= 2.0:
+            if not tempo_min <= float(voice_tempo) <= tempo_max:
                 raise RuntimeError(f"unsafe narration tempo requested: {voice_tempo:.4f}")
             return [
                 "[0:a]aresample=48000:async=1:first_pts=0,"
@@ -1132,7 +1160,7 @@ class VideoBuilder:
         for index, timing in enumerate(timings):
             if timing.input_duration <= 0 or timing.output_duration <= 0:
                 raise RuntimeError(f"narration beat {index + 1} has a non-positive duration")
-            if not 0.5 <= float(timing.tempo) <= 2.0:
+            if not tempo_min <= float(timing.tempo) <= tempo_max:
                 raise RuntimeError(
                     f"unsafe narration tempo requested for beat {index + 1}: {timing.tempo:.4f}"
                 )
@@ -1438,6 +1466,12 @@ class VideoBuilder:
         # a script-length failure. Production long scripts already require at
         # least 850 words in the editorial gate.
         pacing_enabled = bool(narration_word_count and narration_word_count >= 850)
+        quality_v2 = self._quality_v2_enabled()
+        max_acceleration = 1.05 if quality_v2 else self.MAX_LONG_NARRATION_ACCELERATION
+        max_stretch = 1.05 if quality_v2 else self.MAX_LONG_NARRATION_STRETCH
+        max_beat_stretch = 1.05 if quality_v2 else self.MAX_LONG_BEAT_STRETCH
+        min_wpm = 115.0 if quality_v2 else self.MIN_LONG_NARRATION_WPM
+        max_wpm = 155.0 if quality_v2 else self.MAX_LONG_NARRATION_WPM
         if raw_duration > max_duration + 0.001 and not pacing_enabled:
             raise LongCaptionPreflightError(
                 "long caption preflight failed before visual encoding: "
@@ -1486,7 +1520,7 @@ class VideoBuilder:
         # millisecond rounding without weakening the configured readability gate.
         target_cps = max(10.0, composer.max_cps - self.LONG_CAPTION_TARGET_CPS_OFFSET)
         minimum_scale = (
-            1.0 / self.MAX_LONG_NARRATION_ACCELERATION
+            1.0 / max_acceleration
             if pacing_enabled
             else 1.0
         )
@@ -1507,10 +1541,10 @@ class VideoBuilder:
         if pacing_enabled:
             assert narration_word_count is not None
             pacing_floor_duration = (
-                float(narration_word_count) * 60.0 / self.MAX_LONG_NARRATION_WPM
+                float(narration_word_count) * 60.0 / max_wpm
             )
             pacing_ceiling_duration = (
-                float(narration_word_count) * 60.0 / self.MIN_LONG_NARRATION_WPM
+                float(narration_word_count) * 60.0 / min_wpm
             )
             minimum_duration = max(
                 min_duration,
@@ -1519,17 +1553,17 @@ class VideoBuilder:
             )
             maximum_duration = min(max_duration, pacing_ceiling_duration)
             pacing_acceleration = raw_duration / max(0.001, maximum_duration)
-            if pacing_acceleration > self.MAX_LONG_NARRATION_ACCELERATION + 0.0001:
+            if pacing_acceleration > max_acceleration + 0.0001:
                 raise LongCaptionPreflightError(
                     "long caption preflight failed before visual encoding: "
                     f"required narration acceleration is {(pacing_acceleration - 1.0) * 100:.1f}%, "
-                    f"above the safe {(self.MAX_LONG_NARRATION_ACCELERATION - 1.0) * 100:.1f}% limit"
+                    f"above the safe {(max_acceleration - 1.0) * 100:.1f}% limit"
                 )
             if minimum_duration > maximum_duration + 0.001:
                 raise LongCaptionPreflightError(
                     "long caption preflight failed before visual encoding: "
-                    f"caption readability and {self.MIN_LONG_NARRATION_WPM:.0f}-"
-                    f"{self.MAX_LONG_NARRATION_WPM:.0f} WPM pacing need at least "
+                f"caption readability and {min_wpm:.0f}-"
+                f"{max_wpm:.0f} WPM pacing need at least "
                     f"{minimum_duration:.1f}s but allow at most {maximum_duration:.1f}s"
                 )
             requested_duration = min(
@@ -1546,26 +1580,26 @@ class VideoBuilder:
             )
 
         total_stretch = requested_duration / raw_duration
-        if total_stretch > self.MAX_LONG_NARRATION_STRETCH + 0.0001:
+        if total_stretch > max_stretch + 0.0001:
             raise LongCaptionPreflightError(
                 "long caption preflight failed before visual encoding: "
                 f"required total narration stretch is {(total_stretch - 1.0) * 100:.1f}%, "
-                f"above the safe {((self.MAX_LONG_NARRATION_STRETCH - 1.0) * 100):.1f}% limit"
+                f"above the safe {((max_stretch - 1.0) * 100):.1f}% limit"
             )
         max_required_scale = max(required_scales)
-        if max_required_scale > self.MAX_LONG_BEAT_STRETCH + 0.0001:
+        if max_required_scale > max_beat_stretch + 0.0001:
             beat_number = required_scales.index(max_required_scale) + 1
             raise LongCaptionPreflightError(
                 "long caption preflight failed before visual encoding: "
                 f"beat {beat_number} requires {(max_required_scale - 1.0) * 100:.1f}% stretch, "
-                f"above the safe {((self.MAX_LONG_BEAT_STRETCH - 1.0) * 100):.1f}% per-beat limit"
+                f"above the safe {((max_beat_stretch - 1.0) * 100):.1f}% per-beat limit"
             )
         total_acceleration = raw_duration / requested_duration
-        if total_acceleration > self.MAX_LONG_NARRATION_ACCELERATION + 0.0001:
+        if total_acceleration > max_acceleration + 0.0001:
             raise LongCaptionPreflightError(
                 "long caption preflight failed before visual encoding: "
                 f"required narration acceleration is {(total_acceleration - 1.0) * 100:.1f}%, "
-                f"above the safe {(self.MAX_LONG_NARRATION_ACCELERATION - 1.0) * 100:.1f}% limit"
+                f"above the safe {(max_acceleration - 1.0) * 100:.1f}% limit"
             )
 
         # If the profile minimum needs more time than the captions themselves,
@@ -1574,7 +1608,7 @@ class VideoBuilder:
         # same per-beat safety ceiling.
         if caption_duration < requested_duration - 0.000001:
             low = minimum_scale
-            high = self.MAX_LONG_NARRATION_STRETCH
+            high = max_stretch
             for _ in range(64):
                 level = (low + high) / 2.0
                 trial_duration = sum(

@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import requests
 
 from yt_auto.models import ChannelConfig, ScenePlanItem, ScriptWriterConfig, TopicCandidate
+from yt_auto.quality_v2.state import QualityStateStore, RetryClass, classify_failure
 from yt_auto.network_policy import validate_ollama_generate_url
 
 
@@ -45,6 +46,14 @@ class ScriptWriter:
         self.provider_attempt_history: list[dict] = []
         self._provider_call_index = 0
         self._provider_backoff_until: dict[str, float] = {}
+        # The optional v2 store makes provider failover survive a process
+        # restart.  The legacy in-memory cooldown is retained for callers that
+        # do not opt into Quality V2.
+        self.quality_state_store: QualityStateStore | None = None
+
+    def attach_quality_state(self, store: QualityStateStore | None) -> None:
+        """Attach durable provider health state for the current process."""
+        self.quality_state_store = store
 
     def reset_provider_audit(self) -> None:
         """Start a clean, cumulative provider audit for one build."""
@@ -124,6 +133,9 @@ class ScriptWriter:
             "routed",
             "local_first",
             "openai_compatible",
+            "groq",
+            "cloudflare",
+            "openrouter",
         }
 
     def _clean(self, text: str) -> str:
@@ -3664,6 +3676,15 @@ class ScriptWriter:
         elif provider == "ollama":
             url = self.cfg.ollama_url
             model = self.cfg.ollama_model
+        elif provider == "groq":
+            url = "https://api.groq.com/openai/v1"
+            model = os.getenv("GROQ_MODEL", "")
+        elif provider == "openrouter":
+            url = "https://openrouter.ai/api/v1"
+            model = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+        elif provider == "cloudflare":
+            url = "https://api.cloudflare.com/client/v4"
+            model = os.getenv("CLOUDFLARE_AI_MODEL", "")
         else:
             return {"endpoint_host": "", "model": ""}
         return {
@@ -3765,6 +3786,136 @@ class ScriptWriter:
         if str(output_text or "").strip():
             return str(output_text).strip()
         raise RuntimeError("empty OpenAI-compatible response")
+
+    def _generate_openai_style_provider(
+        self,
+        *,
+        provider: str,
+        base_url: str,
+        model: str,
+        api_key: str,
+        allowed_host: str,
+        prompt: str,
+        max_output_tokens: int,
+        response_mime_type: str | None,
+    ) -> str:
+        """Call one allowlisted OpenAI-style free provider safely.
+
+        Providers are separate routes rather than aliases for the existing
+        generic gateway so a bad quota or schema response can be isolated by
+        provider/model/stage in the v2 state store.
+        """
+        if not api_key:
+            raise RuntimeError(f"{provider.upper()}_API_KEY is not configured")
+        if not model or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,199}", model):
+            raise RuntimeError(f"{provider} model is not configured or invalid")
+        parsed = urlparse(base_url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or host != allowed_host:
+            raise RuntimeError(f"{provider} endpoint is not allowlisted")
+        endpoint = base_url.rstrip("/")
+        if not endpoint.endswith("/chat/completions"):
+            endpoint += "/chat/completions"
+        payload: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.72,
+            "top_p": 0.92,
+            "max_tokens": max(96, int(max_output_tokens)),
+        }
+        if response_mime_type == "application/json":
+            payload["response_format"] = {"type": "json_object"}
+        response = requests.post(
+            endpoint,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            json=payload,
+            timeout=min(120, max(10, int(self.cfg.timeout_seconds or 90))),
+            allow_redirects=False,
+        )
+        if response.status_code >= 400:
+            detail = self._redact_keys(response.text[:240], [api_key])
+            raise RuntimeError(f"{provider} HTTP {response.status_code}: {detail}")
+        data = response.json()
+        choices = data.get("choices") or []
+        if choices:
+            message = choices[0].get("message") or {}
+            content = message.get("content")
+            if isinstance(content, list):
+                content = "\n".join(
+                    str(part.get("text") or "") for part in content if isinstance(part, dict)
+                )
+            if str(content or "").strip():
+                return str(content).strip()
+        raise RuntimeError(f"empty {provider} response")
+
+    def _generate_groq(
+        self, prompt: str, max_output_tokens: int = 700, response_mime_type: str | None = None
+    ) -> str:
+        return self._generate_openai_style_provider(
+            provider="groq",
+            base_url="https://api.groq.com/openai/v1",
+            model=(os.getenv("GROQ_MODEL") or "").strip(),
+            api_key=(os.getenv("GROQ_API_KEY") or "").strip(),
+            allowed_host="api.groq.com",
+            prompt=prompt,
+            max_output_tokens=max_output_tokens,
+            response_mime_type=response_mime_type,
+        )
+
+    def _generate_openrouter(
+        self, prompt: str, max_output_tokens: int = 700, response_mime_type: str | None = None
+    ) -> str:
+        return self._generate_openai_style_provider(
+            provider="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+            model=(os.getenv("OPENROUTER_MODEL") or "openrouter/free").strip(),
+            api_key=(os.getenv("OPENROUTER_API_KEY") or "").strip(),
+            allowed_host="openrouter.ai",
+            prompt=prompt,
+            max_output_tokens=max_output_tokens,
+            response_mime_type=response_mime_type,
+        )
+
+    def _generate_cloudflare(
+        self, prompt: str, max_output_tokens: int = 700, response_mime_type: str | None = None
+    ) -> str:
+        account = (os.getenv("CLOUDFLARE_ACCOUNT_ID") or "").strip()
+        key = (os.getenv("CLOUDFLARE_API_TOKEN") or "").strip()
+        model = (os.getenv("CLOUDFLARE_AI_MODEL") or "").strip()
+        if not account or not re.fullmatch(r"[A-Za-z0-9]{16,64}", account):
+            raise RuntimeError("CLOUDFLARE_ACCOUNT_ID is not configured or invalid")
+        if not key:
+            raise RuntimeError("CLOUDFLARE_API_TOKEN is not configured")
+        if not re.fullmatch(r"@[A-Za-z0-9._:/+\-]{1,199}", model):
+            raise RuntimeError("CLOUDFLARE_AI_MODEL is not configured or invalid")
+        payload: dict = {
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max(96, int(max_output_tokens)),
+            "temperature": 0.72,
+        }
+        if response_mime_type == "application/json":
+            payload["response_format"] = {"type": "json_object"}
+        endpoint = f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
+        response = requests.post(
+            endpoint,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=min(120, max(10, int(self.cfg.timeout_seconds or 90))),
+            allow_redirects=False,
+        )
+        if response.status_code >= 400:
+            detail = self._redact_keys(response.text[:240], [key])
+            raise RuntimeError(f"cloudflare HTTP {response.status_code}: {detail}")
+        body = response.json()
+        result = body.get("result") or {}
+        content = result.get("response") or result.get("output_text")
+        if not content:
+            choices = result.get("choices") or []
+            if choices:
+                content = ((choices[0].get("message") or {}).get("content"))
+        if str(content or "").strip():
+            return str(content).strip()
+        raise RuntimeError("empty cloudflare response")
 
     @staticmethod
     def _gemini_key() -> str:
@@ -3877,12 +4028,12 @@ class ScriptWriter:
             if str(item).strip()
         ]
         if provider in {"routed", "auto"}:
-            order = configured_order or ["gemini", "openai_compatible", "ollama"]
+            order = configured_order or ["gemini", "groq", "cloudflare", "openrouter", "ollama"]
         elif provider == "local_first":
             order = configured_order or ["ollama", "gemini", "openai_compatible"]
         elif provider == "gemini_ollama":
             order = ["gemini", "ollama"]
-        elif provider in {"gemini", "ollama", "openai_compatible"}:
+        elif provider in {"gemini", "ollama", "openai_compatible", "groq", "cloudflare", "openrouter"}:
             order = [provider]
         else:
             raise RuntimeError(f"Unsupported script writer provider: {self.cfg.provider}")
@@ -3899,6 +4050,21 @@ class ScriptWriter:
                 response_mime_type=response_mime_type,
             ),
             "ollama": lambda: self._generate_ollama(
+                prompt,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+            ),
+            "groq": lambda: self._generate_groq(
+                prompt,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+            ),
+            "cloudflare": lambda: self._generate_cloudflare(
+                prompt,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+            ),
+            "openrouter": lambda: self._generate_openrouter(
                 prompt,
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
@@ -3935,6 +4101,27 @@ class ScriptWriter:
                 })
                 continue
             safe_details = self._provider_safe_details(candidate)
+            model_name = str(safe_details.get("model") or "default")
+            if self.quality_state_store is not None:
+                try:
+                    persistent = self.quality_state_store.circuit_decision(
+                        candidate,
+                        model_name,
+                        call_purpose,
+                    )
+                except Exception:
+                    # State must never be a new dependency that prevents a
+                    # provider attempt; route normally if SQLite is busy.
+                    persistent = None
+                if persistent is not None and not persistent.allowed:
+                    attempted.append({
+                        "provider": candidate,
+                        "status": "persistent_circuit_open",
+                        "retry_at": persistent.retry_at.isoformat() if persistent.retry_at else "",
+                        **safe_details,
+                        **audit_fields(),
+                    })
+                    continue
             blocked_until = float(self._provider_backoff_until.get(candidate, 0.0) or 0.0)
             if blocked_until > now:
                 attempted.append({
@@ -3954,10 +4141,10 @@ class ScriptWriter:
                     except Exception:
                         semantically_valid = False
                     if not semantically_valid:
-                        if cooldown:
-                            self._provider_backoff_until[candidate] = (
-                                time.monotonic() + cooldown
-                            )
+                        # A valid HTTP response with the wrong schema/content
+                        # is a model-output issue, not a provider outage. Try
+                        # the next route without poisoning this provider's
+                        # circuit for unrelated title/review calls.
                         message = "response failed semantic validation"
                         attempted.append({
                             "provider": candidate,
@@ -3967,8 +4154,29 @@ class ScriptWriter:
                             **audit_fields(),
                         })
                         errors.append(f"{candidate}: {message}")
+                        if self.quality_state_store is not None:
+                            try:
+                                self.quality_state_store.record_provider_result(
+                                    candidate,
+                                    model_name,
+                                    call_purpose,
+                                    success=False,
+                                    failure_class=RetryClass.CONTENT,
+                                )
+                            except Exception:
+                                pass
                         continue
                 self._provider_backoff_until.pop(candidate, None)
+                if self.quality_state_store is not None:
+                    try:
+                        self.quality_state_store.record_provider_result(
+                            candidate,
+                            model_name,
+                            call_purpose,
+                            success=True,
+                        )
+                    except Exception:
+                        pass
                 self.last_provider = candidate
                 self.last_provider_endpoint_host = safe_details["endpoint_host"]
                 self.last_provider_model = safe_details["model"]
@@ -3981,13 +4189,31 @@ class ScriptWriter:
                 self._record_provider_attempts(attempted)
                 return generated
             except Exception as exc:
-                if cooldown:
+                failure_class = classify_failure(message=str(exc))
+                if self.quality_state_store is not None:
+                    try:
+                        self.quality_state_store.record_provider_result(
+                            candidate,
+                            model_name,
+                            call_purpose,
+                            success=False,
+                            failure_class=failure_class,
+                        )
+                    except Exception:
+                        pass
+                if cooldown and failure_class in {RetryClass.TRANSIENT, RetryClass.QUOTA}:
                     self._provider_backoff_until[candidate] = time.monotonic() + cooldown
                 _, _, gateway_key = self._openai_compatible_settings()
+                provider_keys = {
+                    "groq": (os.getenv("GROQ_API_KEY") or "").strip(),
+                    "cloudflare": (os.getenv("CLOUDFLARE_API_TOKEN") or "").strip(),
+                    "openrouter": (os.getenv("OPENROUTER_API_KEY") or "").strip(),
+                }
                 message = self._redact_keys(
                     str(exc),
                     ([self._gemini_key()] if self._gemini_key() else [])
-                    + ([gateway_key] if gateway_key else []),
+                    + ([gateway_key] if gateway_key else [])
+                    + ([provider_keys.get(candidate)] if provider_keys.get(candidate) else []),
                 )
                 attempted.append({
                     "provider": candidate,
@@ -4434,14 +4660,17 @@ class ScriptWriter:
                 dna: dict | None = None) -> TopicCandidate:
         provider = (self.cfg.provider or "template").lower().strip()
         improved = topic
+        v2_drafts_enabled = str(os.getenv("YT_QUALITY_V2_DRAFTS", "0")).lower() in {
+            "1", "true", "yes", "on"
+        }
         if content_kind == "video" and str(os.getenv("YT_LONG_SCRIPT_AI", "0")).lower() not in {
             "1", "true", "yes", "on"
-        }:
+        } and not v2_drafts_enabled:
             return self._polish_scene_plan(channel, topic, content_kind=content_kind)
         # Deterministic behavior-first planning is fast and has hard editorial
         # guarantees. Free models remain valuable as scorers/reviewers after a
         # candidate passes those gates, but must not stall every rejected idea.
-        if content_kind == "short" and channel.id in {"brain_lens", "ancient_history"}:
+        if content_kind == "short" and channel.id in {"brain_lens", "ancient_history"} and not v2_drafts_enabled:
             return self._polish_scene_plan(channel, topic, content_kind=content_kind)
         if topic.scene_plan and self._ai_enabled():
             if content_kind == "video":

@@ -739,7 +739,7 @@ class RoutedScriptWriterTests(unittest.TestCase):
         writer_cfg = load_config(root / "config" / "settings.yaml").app.script_writer
         self.assertEqual(
             writer_cfg.provider_order,
-            ["gemini", "openai_compatible", "ollama"],
+            ["gemini", "groq", "cloudflare", "openrouter", "ollama"],
         )
         self.assertEqual(writer_cfg.ollama_timeout_seconds, 90)
         self.assertEqual(

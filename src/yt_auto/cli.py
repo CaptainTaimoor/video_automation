@@ -603,6 +603,30 @@ def cmd_analyze(factory: ShortsFactory, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_quality_v2_status(factory: ShortsFactory, args: argparse.Namespace) -> int:
+    if not factory.quality_v2:
+        print("Quality v2 is disabled. Set YT_QUALITY_V2=1 in the v2 .env file.")
+        return 1
+    status = factory.quality_v2.status()
+    mode = "enforce" if factory.quality_v2_enforce else "shadow"
+    print(f"Quality v2: {mode}")
+    print(f"Corpus titles: {status['titles']}")
+    print(f"Corpus narrations: {status['narrations']}")
+    return 0
+
+
+def cmd_quality_v2_import_history(factory: ShortsFactory, args: argparse.Namespace) -> int:
+    if not factory.quality_v2:
+        print("Quality v2 is disabled. Set YT_QUALITY_V2=1 in the v2 .env file.")
+        return 1
+    result = factory.quality_v2.import_history(Path(args.runs_file))
+    print(f"Imported: {result['imported']}; skipped: {result['skipped']}")
+    if result.get("missing"):
+        print("Run log not found.")
+        return 1
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Unified YouTube and Facebook automation")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -658,6 +682,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_analyze.add_argument("--max-videos", type=int, default=15,
                            help="Max videos to analyze per reference channel (default: 15)")
 
+    sub.add_parser("quality-v2-status", help="Show v2 corpus and rollout status")
+    p_quality_import = sub.add_parser(
+        "quality-v2-import-history",
+        help="Import successfully uploaded legacy scripts into the v2 originality corpus",
+    )
+    p_quality_import.add_argument("--runs-file", required=True, help="Path to legacy runs.jsonl")
+
     return parser
 
 
@@ -694,6 +725,10 @@ def main() -> int:
         return cmd_performance_report(factory, args)
     if args.command == "analyze":
         return cmd_analyze(factory, args)
+    if args.command == "quality-v2-status":
+        return cmd_quality_v2_status(factory, args)
+    if args.command == "quality-v2-import-history":
+        return cmd_quality_v2_import_history(factory, args)
 
     parser.print_help()
     return 1

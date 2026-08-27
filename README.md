@@ -1,13 +1,13 @@
 ﻿# YouTube Shorts Automation (Free-First, Local)
 
-This project builds and uploads automated YouTube Shorts and 8–10 minute videos for two niches/channels using free/local tools and authorized API tiers where possible.
+This project builds automated YouTube Shorts and 8–10 minute videos for two niches/channels using free/local tools and authorized free API tiers where possible. This checkout is the isolated `quality-v2-free` rollout: scheduling and uploads are disabled by default so it cannot interfere with the existing live bot.
 
 ## What It Does
 
 - Picks trend-aware topics per niche (Google Trends + Google News RSS + seed keywords).
 - Generates script drafts from trend context.
-- Routes script work across Gemini, a Hugging Face Qwen fallback, an optional
-  authorized OpenAI-compatible gateway, and local Ollama with health cooldowns.
+- Routes script work across Gemini, Groq, Cloudflare Workers AI, OpenRouter's
+  free router, and local Ollama with durable provider health cooldowns.
 - Generates A/B title variants and auto-selects one using learned performance scores.
 - Uses licensed real stock for Brain Lens and provenance-checked Wikimedia/archive material plus cited documentary diagrams for Ancient History.
 - Rejects generated/fallback Brain Lens visuals and Ancient fact cards before rendering.
@@ -50,7 +50,8 @@ copy .env.example .env
 5. Put your YouTube OAuth client file at `client_secrets.json`.
 6. Optional keys in `.env`:
    - `GEMINI_API_KEY` for the primary Gemini writer.
-   - `HF_API_KEY` for the Hugging Face Qwen free-tier fallback.
+   - `GROQ_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`, or
+     `OPENROUTER_API_KEY` for independent free-tier text fallbacks.
    - `YOUTUBE_API_KEY` for the optional YouTube comment-read API-key fallback.
    - `STABLE_HORDE_KEY` for AI image fallback.
    - `PIXABAY_API_KEY` for additional stock images.
@@ -60,18 +61,16 @@ copy .env.example .env
 `config/settings.yaml` uses a bounded provider order:
 
 1. Gemini API
-2. Hugging Face's OpenAI-compatible router with `Qwen/Qwen3-8B`
-3. Local Ollama
+2. Groq
+3. Cloudflare Workers AI
+4. OpenRouter free models
+5. Local Ollama
 
-You may point `AI_GATEWAY_URL`, `AI_GATEWAY_MODEL`, and `AI_GATEWAY_API_KEY`
-at another OpenAI-compatible service you are authorized to use, after adding its
-exact hostname to `openai_compatible_allowed_hosts`. Set the URL and model
-together; an environment override always uses `AI_GATEWAY_API_KEY` and never the
-fixed Hugging Face profile's `HF_API_KEY`. Every gateway must use HTTPS. Generic
-loopback gateways are deliberately rejected; local inference uses an Ollama
-`/api/generate` URL restricted to `localhost` or a loopback IP. 9Router is not
-integrated, and this project does not automate account farming, free-trial
-cycling, browser-cookie clearing, or unofficial OAuth token relays.
+Leave a provider key blank to skip it. The router never rotates accounts or
+uses a paid fallback; after three transient/quota failures the provider/model is
+persistently opened and the next route is tried. Free quotas and model lists can
+change, so OpenRouter intentionally stays last and Ollama is the local final
+fallback.
 
 Each build records sanitized provider attempts with a call purpose and whether
 the response was actually consumed. `last_ai_provider` identifies the most
@@ -80,6 +79,29 @@ fields are populated only when model-generated narration for the selected topic
 passes the editorial gates; an AI title, score, or review never claims script
 authorship. Invalid JSON or schema output is rejected and routed to the next
 configured provider.
+
+## Quality V2 free rollout
+
+Use this folder separately from the live checkout. It stores its own history and
+SQLite state under `data/state/`, both ignored by Git.
+
+```bash
+copy .env.example .env
+set PYTHONPATH=src
+python run.py quality-v2-import-history --runs-file E:\yt_automation\data\state\runs.jsonl
+python run.py quality-v2-status
+python run.py build --channel ancient_history --kind short --dry-run
+```
+
+`YT_QUALITY_V2=1` enables the new free-only gates in shadow mode. It adds:
+
+- source-backed/repetition checks for scripts and visual manifests;
+- persistent provider circuit breakers and deterministic failure quarantine;
+- dialogue-first music ducking; and
+- a tight 0.95–1.05 narration-tempo limit (failed timing must be rewritten, not rushed).
+
+Review a small golden batch before changing `YT_QUALITY_V2_ENFORCE=1`. Keep
+uploads disabled until that review is complete.
 
 ## Optional Local Model (Better Script Writer)
 
