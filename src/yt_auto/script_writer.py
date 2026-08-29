@@ -7,6 +7,7 @@ import random
 import re
 import time
 from dataclasses import replace
+from itertools import combinations
 from typing import Callable
 from urllib.parse import urlparse
 
@@ -18,9 +19,25 @@ from yt_auto.network_policy import validate_ollama_generate_url
 
 
 class ScriptWriter:
-    _ANCIENT_SHORT_MIN_WORDS = 82
-    _ANCIENT_SHORT_MAX_WORDS = 105
-    _ANCIENT_SHORT_TARGET_WORDS = 88
+    # Measured at Kokoro 1.00x on this project's configured voices.  These
+    # budgets fit a 32-36 second Short with at most a subtle 5% tempo correction
+    # instead of reviving the old rushed 1.4x delivery.
+    _ANCIENT_SHORT_MIN_WORDS = 65
+    _ANCIENT_SHORT_MAX_WORDS = 70
+    _ANCIENT_SHORT_TARGET_WORDS = 68
+    _BRAIN_SHORT_MIN_WORDS = 68
+    _BRAIN_SHORT_MAX_WORDS = 74
+    _BRAIN_SHORT_TARGET_WORDS = 72
+    # These bounds are calibrated against the installed free Kokoro voices and
+    # the configured 8-10 minute render window.  They deliberately leave the
+    # renderer only a small, safe amount of timing correction to make captions
+    # readable instead of forcing the voice into an unnaturally fast delivery.
+    _ANCIENT_LONG_MIN_WORDS = 1050
+    _ANCIENT_LONG_MAX_WORDS = 1145
+    _ANCIENT_LONG_TARGET_WORDS = 1125
+    _BRAIN_LONG_MIN_WORDS = 1080
+    _BRAIN_LONG_MAX_WORDS = 1200
+    _BRAIN_LONG_TARGET_WORDS = 1140
 
     _EDITORIAL_STOP_WORDS = {
         "about", "after", "again", "because", "before", "behind", "from", "have",
@@ -390,6 +407,12 @@ class ScriptWriter:
             lowered,
         ):
             return "line ends on a transitive verb without its object"
+        if re.search(
+            r"\b(?:demonstrates?|indicates?|reveals?|shows?|suggests?)\s+"
+            r"(?:clear|complex|distinctive|important|notable|remarkable|significant|strong)\.?$",
+            lowered,
+        ):
+            return "line ends on an incomplete descriptive claim"
         if (
             "the real stakes" in lowered
             and re.search(r"\bsafety,? work,? wealth,? status,? and survival\b", lowered)
@@ -574,20 +597,214 @@ class ScriptWriter:
 
     def _target_words(self, channel: ChannelConfig, content_kind: str) -> int:
         if content_kind == "video":
+            if channel.id == "ancient_history":
+                return self._ANCIENT_LONG_TARGET_WORDS
+            if channel.id == "brain_lens":
+                return self._BRAIN_LONG_TARGET_WORDS
             min_s = int(getattr(channel.videos, "min_duration_seconds", 480) or 480)
-            return max(1250, self._target_words_for_duration(min_s, wpm=165))
+            return max(1050, self._target_words_for_duration(min_s, wpm=135))
         # shorts
         min_s = int(getattr(channel.shorts, "min_duration_seconds", 30) or 30)
         if channel.id == "ancient_history":
-            # Shorts are normalized to roughly 35.9 seconds after synthesis. An
-            # 88-word target yields about 147 WPM and leaves room for a factual
-            # closer without approaching the absolute 105-word ceiling.
-            return max(
-                self._ANCIENT_SHORT_TARGET_WORDS,
-                self._target_words_for_duration(min_s, wpm=160),
+            return self._ANCIENT_SHORT_TARGET_WORDS
+        if channel.id == "brain_lens":
+            return self._BRAIN_SHORT_TARGET_WORDS
+        return self._target_words_for_duration(min_s, wpm=140)
+
+    def _long_word_budget(self, channel: ChannelConfig) -> tuple[int, int, int]:
+        if channel.id == "ancient_history":
+            return (
+                self._ANCIENT_LONG_MIN_WORDS,
+                self._ANCIENT_LONG_MAX_WORDS,
+                self._ANCIENT_LONG_TARGET_WORDS,
             )
-        wpm = 155
-        return self._target_words_for_duration(min_s, wpm=wpm)
+        if channel.id == "brain_lens":
+            return (
+                self._BRAIN_LONG_MIN_WORDS,
+                self._BRAIN_LONG_MAX_WORDS,
+                self._BRAIN_LONG_TARGET_WORDS,
+            )
+        return (1050, 1200, 1125)
+
+    def _fit_short_candidate_word_budget(
+        self,
+        candidate: TopicCandidate,
+        minimum_words: int,
+        maximum_words: int,
+        target_words: int,
+        max_beat_words: int = 12,
+    ) -> TopicCandidate:
+        """Select whole source sentences and repack them into compact beats."""
+        source_scenes = list(candidate.scene_plan or [])
+        if not source_scenes:
+            source_scenes = [
+                ScenePlanItem(
+                    narration=beat,
+                    visual_text=self._captionize(beat),
+                    search_terms=[candidate.subject or candidate.title],
+                )
+                for beat in (candidate.narration_beats or self._sentences(candidate.narration))
+                if str(beat or "").strip()
+            ]
+
+        units: list[tuple[str, ScenePlanItem, int]] = []
+        for scene in source_scenes:
+            sentences = self._sentences(scene.narration) or [self._sentence(scene.narration)]
+            for sentence in sentences:
+                clean = self._sentence(sentence)
+                word_count = self._word_count(clean)
+                if clean and word_count >= 3:
+                    units.append((clean, scene, word_count))
+        if len(units) < 2:
+            raise ValueError("Short fallback has too few complete source sentences")
+
+        subject_tokens = {
+            token
+            for token in re.findall(r"[a-z]{4,}", (candidate.subject or candidate.title).lower())
+            if token not in {"that", "this", "with", "from", "what", "when", "where"}
+        }
+        if candidate.niche_id == "ancient_history":
+            closing_index = next(
+                (
+                    index
+                    for index in range(len(units) - 1, 0, -1)
+                    if subject_tokens & set(re.findall(r"[a-z]{4,}", units[index][0].lower()))
+                ),
+                len(units) - 1,
+            )
+        else:
+            payoff_terms = {
+                "boundary", "choice", "clarity", "confidence", "consent", "consistency",
+                "effort", "mutual", "pattern", "reciprocity", "respect", "safe", "trust",
+            }
+            closing_index = next(
+                (
+                    index
+                    for index in range(len(units) - 1, 0, -1)
+                    if payoff_terms & set(re.findall(r"[a-z]{4,}", units[index][0].lower()))
+                ),
+                len(units) - 1,
+            )
+
+        cue_markers = (
+            " but ", " because ", " instead ", " so ", " yet ", " while ", " then ",
+            " which ", " prove", " trace", " confirm", " reveal", " not ", " limit",
+            " vary", "association",
+        )
+        cue_candidates = [
+            index
+            for index in range(1, closing_index)
+            if any(marker in f" {units[index][0].lower()} " for marker in cue_markers)
+        ]
+        cue_index = min(
+            cue_candidates,
+            key=lambda index: abs(index - (closing_index / 2.0)),
+        ) if cue_candidates else None
+
+        opening_indices = {0}
+        if candidate.niche_id == "brain_lens" and (
+            not self._brain_lens_hook_matches(candidate, units[0][0])
+            or not self._brain_lens_behavior_first(units[0][0])
+        ):
+            for index in range(1, closing_index):
+                if units[index][1] is not units[0][1]:
+                    break
+                opening_text = f"{units[0][0]} {units[index][0]}"
+                if (
+                    self._brain_lens_hook_matches(candidate, opening_text)
+                    and self._brain_lens_behavior_first(opening_text)
+                ):
+                    opening_indices.add(index)
+                    break
+
+        fixed_options = [{*opening_indices, closing_index}]
+        if cue_index is not None:
+            fixed_options.insert(0, {*opening_indices, cue_index, closing_index})
+        if closing_index != len(units) - 1:
+            fixed_options.append({*opening_indices, len(units) - 1})
+
+        selected_fixed: set[int] | None = None
+        valid: list[tuple[int, list[int]]] = []
+        for fixed_indices in fixed_options:
+            fixed_words = sum(units[index][2] for index in fixed_indices)
+            available = max(0, maximum_words - fixed_words)
+            choices: dict[int, list[int]] = {0: []}
+            last_allowed = max(fixed_indices)
+            for index in range(1, last_allowed):
+                if index in fixed_indices or (
+                    candidate.niche_id == "brain_lens"
+                    and len(opening_indices) > 1
+                    and units[index][1] is units[0][1]
+                ):
+                    continue
+                weight = units[index][2]
+                for subtotal, selected in list(choices.items())[::-1]:
+                    new_total = subtotal + weight
+                    if new_total <= available and new_total not in choices:
+                        choices[new_total] = [*selected, index]
+            valid = [
+                (fixed_words + subtotal, selected)
+                for subtotal, selected in choices.items()
+                if minimum_words <= fixed_words + subtotal <= maximum_words
+            ]
+            if valid:
+                selected_fixed = fixed_indices
+                break
+
+        if not valid or selected_fixed is None:
+            raise ValueError(
+                f"Short fallback cannot fit complete sentences into {minimum_words}-{maximum_words} words"
+            )
+        _, middle_indices = min(
+            valid,
+            key=lambda item: (abs(item[0] - target_words), -len(item[1])),
+        )
+        selected_indices = sorted([*selected_fixed, *middle_indices])
+        selected_units = [units[index] for index in selected_indices]
+
+        packed: list[list[tuple[str, ScenePlanItem, int]]] = []
+        current: list[tuple[str, ScenePlanItem, int]] = []
+        current_words = 0
+        for unit in selected_units:
+            if current and current_words + unit[2] > max_beat_words:
+                packed.append(current)
+                current = []
+                current_words = 0
+            current.append(unit)
+            current_words += unit[2]
+        if current:
+            packed.append(current)
+
+        scene_plan: list[ScenePlanItem] = []
+        for group in packed:
+            narration = " ".join(unit[0] for unit in group)
+            base_scene = group[0][1]
+            search_terms = list(
+                dict.fromkeys(
+                    term
+                    for _, scene, _ in group
+                    for term in [*(scene.search_terms or []), candidate.subject or candidate.title]
+                    if str(term or "").strip()
+                )
+            )
+            scene_plan.append(
+                replace(
+                    base_scene,
+                    narration=narration,
+                    visual_text=self._captionize(narration) or base_scene.visual_text,
+                    search_terms=search_terms[:6],
+                )
+            )
+
+        beats = [scene.narration for scene in scene_plan]
+        return replace(
+            candidate,
+            hook=beats[0],
+            narration=" ".join(beats),
+            narration_beats=beats,
+            visual_captions=[scene.visual_text for scene in scene_plan[1:-1]],
+            scene_plan=scene_plan,
+        )
 
 
     def _video_expansion_lines(self, topic: TopicCandidate, subject: str) -> list[str]:
@@ -1357,7 +1574,7 @@ class ScriptWriter:
                 for cue in (
                     " but ", " because ", " instead ", " so ", " yet ",
                     " while ", " then ", " which ", " prove", " trace",
-                    " confirm", " reveal",
+                    " confirm", " reveal", " not ", " limit", " vary", "association",
                 )
             ):
                 issues.append("short lacks a midpoint contrast, consequence, or reframe")
@@ -1642,6 +1859,47 @@ class ScriptWriter:
 
         topic_blob = f"{topic.subject} {topic.title}".lower()
         specs: list[tuple[str, str, list[str]]] = []
+        preferred_urls: list[str] = []
+        if (
+            channel.id == "ancient_history"
+            and (
+                "giant stelae" in topic_blob
+                or str(getattr(topic, "selected_title_pattern", "")).lower()
+                == "history_short_subject_axum"
+            )
+        ):
+            # A small, deterministic archive set keeps this high-risk topic
+            # usable during Wikimedia search throttling. Every URL is a
+            # Wikimedia Commons file with explicit metadata in the run's
+            # sources manifest; no generated or unlicensed image is used.
+            preferred_urls = [
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/The_North_Stelae_Park%2C_Axum%2C_Ethiopia_%282812686646%29.jpg/1920px-The_North_Stelae_Park%2C_Axum%2C_Ethiopia_%282812686646%29.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Unfinished_Obelisk%2C_Axum_%28Detail%29_%283160750074%29.jpg/1920px-Unfinished_Obelisk%2C_Axum_%28Detail%29_%283160750074%29.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/Unfinished_Obelisk%2C_Axum_%283160023565%29.jpg/1920px-Unfinished_Obelisk%2C_Axum_%283160023565%29.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Aksum_obelisk.jpg/1920px-Aksum_obelisk.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Obelisk_of_Aksum_Remains6.jpg/1920px-Obelisk_of_Aksum_Remains6.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Aksum_Quarry_for_Obelisks.jpg/1920px-Aksum_Quarry_for_Obelisks.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Obelisk_of_Aksum_Remains5.jpg/1920px-Obelisk_of_Aksum_Remains5.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Obelisk_of_Aksum_Remains4.jpg/1920px-Obelisk_of_Aksum_Remains4.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Obelisk_of_Aksum_Remains3.jpg/1920px-Obelisk_of_Aksum_Remains3.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Obelisk_of_Aksum_Remains.jpg/1920px-Obelisk_of_Aksum_Remains.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Obelisk_of_Aksum_Remains2.jpg/1920px-Obelisk_of_Aksum_Remains2.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Aksum%2C_stele_2_%28stele_di_roma%29_04.jpg/1920px-Aksum%2C_stele_2_%28stele_di_roma%29_04.jpg",
+            ]
+            specs = [
+                ("At Axum, granite towers rose.", "GRANITE TOWERS", ["Obelisk of Axum stelae field"]),
+                ("Royal tombs waited below each tower.", "ROYAL TOMBS BELOW", ["Axum underground tomb chambers"]),
+                ("Carved faces imitated palace doors.", "DOORS IN STONE", ["Axum stela carved false doors"]),
+                ("Windows completed each carved stone facade.", "WINDOWS ON STELAE", ["Axum stela windows palace facade"]),
+                ("Underground chambers held elite royal burials.", "ELITE BURIAL CHAMBERS", ["Axum northern stelae tombs"]),
+                ("Builders shaped granite with remarkable precision.", "PRECISION IN GRANITE", ["Aksum granite stela carving detail"]),
+                ("Quarries supplied the hard blocks locally.", "THE QUARRY", ["Aksum quarry for obelisks"]),
+                ("But the Great Stele later fell.", "THE GREAT STELE FELL", ["Great Stele Axum remains"]),
+                ("It shattered in ancient times.", "SHATTERED IN ANTIQUITY", ["Obelisk of Axum fragments"]),
+                ("Its fragments remain beside chambers today.", "FRAGMENTS STILL REMAIN", ["Axum obelisk remains underground chambers"]),
+                ("Stelae made royal memory visible publicly.", "ROYAL MEMORY IN STONE", ["Axum stelae monument field"]),
+                ("Axum stelae signaled power across Ethiopia.", "POWER ACROSS ETHIOPIA", ["Axum stelae Ethiopia heritage"]),
+            ]
         if channel.id == "ancient_history" and "great zimbabwe" in topic_blob:
             specs = [
                 (
@@ -1678,7 +1936,7 @@ class ScriptWriter:
         elif channel.id == "brain_lens" and "reply time anxiety" in topic_blob:
             specs = [
                 (
-                    "Their reply arrives late on-screen. But one timestamp proves nothing.",
+                    "Their reply appears after a long wait. But one timestamp proves nothing.",
                     "TIMESTAMP IS NOT REJECTION",
                     ["young adult checking delayed phone reply anxious realistic"],
                 ),
@@ -1729,14 +1987,14 @@ class ScriptWriter:
                 narration=narration,
                 visual_text=visual_text,
                 search_terms=search_terms,
-                preferred_image_url="",
                 visual_prompt=(
                     f"{subject}. {visual_text}. evidence-led documentary image, {frame_hint}"
                     if channel.id == "ancient_history"
                     else f"{subject}. {visual_text}. realistic adult relationship b-roll, {frame_hint}"
                 ),
+                preferred_image_url=(preferred_urls[index] if index < len(preferred_urls) else ""),
             )
-            for narration, visual_text, search_terms in specs
+            for index, (narration, visual_text, search_terms) in enumerate(specs)
         ]
 
     def _fallback_scene_plan(self, topic: TopicCandidate, content_kind: str = "short") -> list[ScenePlanItem]:
@@ -1854,7 +2112,7 @@ class ScriptWriter:
                     visual_prompt=f"{subject}. {caption}. cinematic documentary b-roll, detailed visual evidence, {frame_hint}",
                 )
             )
-        return out
+        return self._fit_long_scene_plan_word_budget(channel, out)
 
     def _long_cold_open_sections(
         self,
@@ -1954,6 +2212,137 @@ class ScriptWriter:
             preview = "; ".join(issues[:4])
             raise ValueError(f"{label} caption-safe script check failed: {preview}")
         return sections
+
+    def _fit_long_scene_plan_word_budget(
+        self,
+        channel: ChannelConfig,
+        plan: list[ScenePlanItem],
+    ) -> list[ScenePlanItem]:
+        """Keep long plans inside the natural free-TTS pacing envelope.
+
+        This only removes complete, lower-priority sentences from an overfull
+        plan.  It never cuts a clause, changes scene order, invents replacement
+        material, or drops a scene caption, so the spoken script and visual
+        timeline stay aligned even when a provider returns a verbose draft.
+        """
+        minimum_words, maximum_words, target_words = self._long_word_budget(channel)
+        total_words = sum(self._word_count(scene.narration) for scene in plan)
+        if total_words <= maximum_words:
+            return plan
+
+        # The first and final sentence of every scene carry its setup/payoff.
+        # Safety language and source-bearing historical sentences are retained
+        # even if that means the gate rejects a script rather than speeding it.
+        safety_markers = (
+            "not a validated test",
+            "keep work, sleep, movement, and friendships visible",
+            "do not act unavailable, provoke jealousy",
+            "seek support beyond a video",
+            "licensed mental-health professional",
+            "local safety resources",
+            "consent, physical safety",
+            "coercive pressure",
+            "stalking",
+            "threats",
+        )
+        common_capitals = {
+            "A", "An", "And", "As", "At", "Before", "But", "For", "From",
+            "Here", "How", "If", "In", "It", "Its", "Later", "Now", "One",
+            "That", "The", "Then", "This", "Today", "What", "When", "Where",
+            "While", "With", "Yet", "You", "Your",
+        }
+        generic_markers = (
+            "the goal is",
+            "this is not",
+            "it is not",
+            "that is not",
+            "you can remain",
+            "you can stay",
+            "never turn",
+            "do not turn",
+            "the difference is",
+            "the pause is",
+            "this pause",
+            "ordinary days",
+            "the storyline",
+            "emotional theater",
+        )
+
+        sentences_by_scene = [self._sentences(scene.narration) for scene in plan]
+        scene_word_counts = [
+            sum(self._word_count(sentence) for sentence in sentences)
+            for sentences in sentences_by_scene
+        ]
+        minimum_scene_words = 40
+        candidates: list[tuple[int, int, int, int]] = []
+        for scene_index, sentences in enumerate(sentences_by_scene):
+            if len(sentences) < 3:
+                continue
+            for sentence_index, sentence in enumerate(sentences):
+                if sentence_index in {0, len(sentences) - 1}:
+                    continue
+                lowered = sentence.lower()
+                if any(marker in lowered for marker in safety_markers):
+                    continue
+                if channel.id == "ancient_history":
+                    if re.search(r"\d", sentence):
+                        continue
+                    names = [
+                        token
+                        for token in re.findall(r"\b[A-Z][A-Za-z'-]{2,}\b", sentence)
+                        if token not in common_capitals
+                    ]
+                    if names:
+                        continue
+                words = self._word_count(sentence)
+                generic_score = sum(marker in lowered for marker in generic_markers)
+                # Prefer cuts from overfull scenes and familiar bridge language
+                # before removing a unique concrete point from a balanced scene.
+                scene_words = sum(self._word_count(item) for item in sentences)
+                overage = max(0, scene_words - max(48, target_words // max(1, len(plan))))
+                candidates.append((generic_score, overage, words, scene_index * 1000 + sentence_index))
+
+        removed: set[tuple[int, int]] = set()
+        while total_words > target_words:
+            viable: list[tuple[int, int, int, int, int, int]] = []
+            remaining = total_words - target_words
+            for generic_score, overage, words, encoded_index in candidates:
+                scene_index, sentence_index = divmod(encoded_index, 1000)
+                if (scene_index, sentence_index) in removed:
+                    continue
+                if total_words - words < minimum_words:
+                    continue
+                if scene_word_counts[scene_index] - words < minimum_scene_words:
+                    continue
+                overshoot = max(0, words - remaining)
+                viable.append((generic_score, overage, -overshoot, words, scene_index, sentence_index))
+            if not viable:
+                break
+            # A generic bridge in the longest scene is the safest compression
+            # candidate.  The small overshoot penalty avoids needless removal.
+            _, _, _, words, scene_index, sentence_index = max(viable)
+            removed.add((scene_index, sentence_index))
+            total_words -= words
+            scene_word_counts[scene_index] -= words
+
+        if total_words > maximum_words:
+            raise ValueError(
+                "Long script cannot fit the natural TTS pacing budget without "
+                f"cutting supported content: {total_words} words; maximum is {maximum_words}"
+            )
+        if not removed:
+            return plan
+        return [
+            replace(
+                scene,
+                narration=" ".join(
+                    sentence
+                    for sentence_index, sentence in enumerate(sentences_by_scene[scene_index])
+                    if (scene_index, sentence_index) not in removed
+                ),
+            )
+            for scene_index, scene in enumerate(plan)
+        ]
 
     def _history_fact_category(self, text: str) -> str:
         lowered = text.lower()
@@ -2134,6 +2523,7 @@ class ScriptWriter:
             "What Assyria changed": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/The_fall_of_Lachish%2C_King_Sennacherib_reviews_Judaean_prisoners..JPG/1920px-The_fall_of_Lachish%2C_King_Sennacherib_reviews_Judaean_prisoners..JPG",
             "The ground cross-examines power": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Lachish_Relief%2C_British_Museum_3.jpg/1920px-Lachish_Relief%2C_British_Museum_3.jpg",
         }
+        plan = self._fit_long_scene_plan_word_budget(channel, plan)
         for scene in plan:
             scene.preferred_image_url = preferred_archive_by_caption.get(scene.visual_text, "")
         return plan
@@ -2508,7 +2898,7 @@ class ScriptWriter:
                 ),
             ]
         )
-        return out
+        return self._fit_long_scene_plan_word_budget(channel, out)
 
     def _brain_relationship_profile(self, subject: str) -> dict[str, str]:
         lowered = subject.lower()
@@ -3015,10 +3405,11 @@ class ScriptWriter:
         spoken_subject = self._spoken_subject(topic)
         profile = self._brain_relationship_profile(spoken_subject)
         if "friends with benefits" in spoken_subject.lower():
-            return [
+            plan = [
                 self._long_scene(channel.id, subject, narration, caption)
                 for caption, narration in self._friends_with_benefits_caption_safe_sections()
             ]
+            return self._fit_long_scene_plan_word_budget(channel, plan)
         opener = self._tidy_scene_line(self._opener(topic), max_words=26)
         if self._is_generic_opener(opener) or opener.lower().startswith("you notice "):
             opener = self._tidy_scene_line(profile["hook"], max_words=30)
@@ -3146,10 +3537,11 @@ class ScriptWriter:
                 "Here is the reset. Catch the first cue. Separate facts from predictions. Regulate before reacting. Ask one clean question, compare the answer with ordinary behavior, and keep your boundary. The goal is not to erase chemistry or become impossible to hurt. Stay warm and steady enough for reality to answer. Growing clarity gives you something real to explore. If confusion remains the main source of intensity, you do not need another dramatic scene to believe that answer. Ordinary days provide the strongest contrast. Consistent answers reduce invented suspense. Repeated avoidance also supplies useful information. You never need perfect certainty. You do need enough clarity. Choices remain yours throughout the process. Evidence matters more than emotional theater. Your values still guide future access.",
             ),
         ]
-        return [
+        plan = [
             self._long_scene(channel.id, subject, narration, caption)
             for caption, narration in sections
         ]
+        return self._fit_long_scene_plan_word_budget(channel, plan)
 
     def _long_video_fallback_plan(
         self,
@@ -3161,22 +3553,251 @@ class ScriptWriter:
             return self._brain_long_video_plan(channel, topic, subject)
         return self._history_long_video_plan(channel, topic, subject)
 
+    def _split_complete_short_scene(
+        self,
+        scene: ScenePlanItem,
+        max_words: int,
+    ) -> list[ScenePlanItem]:
+        """Split only at grammatical boundaries; never cut a sentence by words."""
+        out: list[ScenePlanItem] = []
+        sentences = self._sentences(scene.narration) or [self._sentence(scene.narration)]
+        participle_to_past = {
+            "carrying": "carried",
+            "creating": "created",
+            "giving": "gave",
+            "holding": "held",
+            "keeping": "kept",
+            "leaving": "left",
+            "linking": "linked",
+            "making": "made",
+            "placing": "placed",
+            "revealing": "revealed",
+            "shaping": "shaped",
+            "showing": "showed",
+            "tying": "tied",
+            "turning": "turned",
+            "using": "used",
+        }
+
+        def add(text: str) -> None:
+            clean = self._sentence(text)
+            if not clean or self._word_count(clean) < 3 or self._bad_ai_line_issue(clean):
+                return
+            out.append(
+                replace(
+                    scene,
+                    narration=clean,
+                    visual_text=self._captionize(clean) or scene.visual_text,
+                )
+            )
+
+        for sentence in sentences:
+            clean = self._sentence(sentence)
+            if self._word_count(clean) <= max_words:
+                add(clean)
+                continue
+
+            while_match = re.match(r"^(.+?)(?:,)?\s+while\s+(.+?)[.!?]$", clean, flags=re.IGNORECASE)
+            if while_match:
+                first = self._sentence(while_match.group(1))
+                second = self._sentence(f"Meanwhile, {while_match.group(2)}")
+                if (
+                    self._word_count(first) <= max_words
+                    and self._word_count(second) <= max_words
+                    and not self._bad_ai_line_issue(first)
+                    and not self._bad_ai_line_issue(second)
+                ):
+                    add(first)
+                    add(second)
+                    continue
+
+            relative_match = re.match(
+                r"^(.+?)\s+(?:whose|which)\s+.+?[.!?]$",
+                clean,
+                flags=re.IGNORECASE,
+            )
+            if relative_match:
+                # Do not keep only the short lead clause: that silently drops
+                # the evidence carried by the relative clause.  A complete
+                # sentence over the preferred beat size is still safer than a
+                # clipped factual claim and can be selected as one unit.
+                add(clean)
+                continue
+
+            purpose_match = re.match(
+                r"^(.+?)\s+(?:as\s+(?:a|an|the)|into\s+(?:a|an|the))\s+.+?[.!?]$",
+                clean,
+                flags=re.IGNORECASE,
+            )
+            if purpose_match:
+                # ``into a`` / ``as a`` is a grammatical complement, not a
+                # safe cut point.  Retain the whole sentence so the selector
+                # never emits a misleading fragment such as "turned stone."
+                add(clean)
+                continue
+
+            coordinated_match = re.match(
+                r"^(.+?)\s+and\s+"
+                r"(connects?|confirms?|depicts?|describes?|names?|preserves?|records?|reveals?|shows?)\s+"
+                r"(.+?)[.!?]$",
+                clean,
+                flags=re.IGNORECASE,
+            )
+            if coordinated_match:
+                first = self._sentence(coordinated_match.group(1))
+                first_lower = first.lower()
+                plural = any(
+                    marker in first_lower
+                    for marker in (
+                        "artists", "builders", "communities", "letters", "merchants",
+                        "messages", "murals", "people", "records", "rulers", "soldiers",
+                    )
+                )
+                subject = "They" if plural else "It"
+                second = self._sentence(
+                    f"{subject} {coordinated_match.group(2)} {coordinated_match.group(3)}"
+                )
+                if (
+                    self._word_count(first) <= max_words
+                    and self._word_count(second) <= max_words
+                    and not self._bad_ai_line_issue(first)
+                    and not self._bad_ai_line_issue(second)
+                ):
+                    add(first)
+                    add(second)
+                    continue
+
+            by_match = re.match(
+                r"^(.+?)\s+by\s+(carrying|creating|giving|holding|keeping|linking|making|placing|revealing|shaping|showing|tying|turning|using)\s+(.+?)[.!?]$",
+                clean,
+                flags=re.IGNORECASE,
+            )
+            if by_match:
+                first = self._sentence(by_match.group(1))
+                first_lower = first.lower()
+                plural = any(
+                    marker in first_lower
+                    for marker in (
+                        "artists", "builders", "communities", "merchants", "people",
+                        "pilgrims", "rulers", "soldiers", "workers",
+                    )
+                )
+                subject = "They" if plural else "This"
+                gerund = by_match.group(2).lower()
+                second = self._sentence(
+                    f"{subject} {participle_to_past[gerund]} {by_match.group(3)}"
+                )
+                if (
+                    self._word_count(first) <= max_words
+                    and self._word_count(second) <= max_words
+                    and not self._bad_ai_line_issue(first)
+                    and not self._bad_ai_line_issue(second)
+                ):
+                    add(first)
+                    add(second)
+                    continue
+
+            participle_match = re.match(
+                r"^(.+?),\s+(" + "|".join(participle_to_past) + r")\s+(.+?)[.!?]$",
+                clean,
+                flags=re.IGNORECASE,
+            )
+            if participle_match:
+                first = self._sentence(participle_match.group(1))
+                participle = participle_match.group(2).lower()
+                first_lower = first.lower()
+                human_plural = any(
+                    marker in first_lower
+                    for marker in (
+                        "artists", "builders", "citizens", "engineers", "merchants",
+                        "people", "pilgrims", "rulers", "soldiers", "workers",
+                    )
+                )
+                subject = "They" if human_plural else "This"
+                second = self._sentence(
+                    f"{subject} {participle_to_past[participle]} {participle_match.group(3)}"
+                )
+                if (
+                    self._word_count(first) <= max_words
+                    and self._word_count(second) <= max_words
+                    and not self._bad_ai_line_issue(first)
+                    and not self._bad_ai_line_issue(second)
+                ):
+                    add(first)
+                    add(second)
+                    continue
+
+            # Keeping a complete longer sentence is safer than manufacturing a
+            # clipped fragment. The subset selector may omit it; otherwise the
+            # normal script gate rejects the candidate and tries another.
+            add(clean)
+        return out
+
+    def _select_complete_short_scenes(
+        self,
+        scenes: list[ScenePlanItem],
+        minimum_words: int,
+        maximum_words: int,
+        target_words: int,
+        max_scene_words: int,
+    ) -> list[ScenePlanItem]:
+        expanded: list[ScenePlanItem] = []
+        seen: set[str] = set()
+        for scene in scenes:
+            for item in self._split_complete_short_scene(scene, max_scene_words):
+                key = re.sub(r"[^a-z0-9]+", " ", item.narration.lower()).strip()
+                if key and key not in seen:
+                    seen.add(key)
+                    expanded.append(item)
+        if len(expanded) < 5:
+            raise ValueError("Short script has too few complete evidence-backed words and narration beats")
+
+        opening = expanded[0]
+        closing = expanded[-1]
+        middle = expanded[1:-1]
+        options: list[tuple[tuple[int, int, int, tuple[int, ...]], list[ScenePlanItem]]] = []
+        for count in range(3, min(6, len(middle)) + 1):
+            for indices in combinations(range(len(middle)), count):
+                selected = [opening, *(middle[index] for index in indices), closing]
+                if len(selected) > 8:
+                    continue
+                word_count = self._word_count(" ".join(scene.narration for scene in selected))
+                if not minimum_words <= word_count <= maximum_words:
+                    continue
+                middle_text = f" {' '.join(scene.narration for scene in selected[1:-1]).lower()} "
+                has_turn = any(
+                    cue in middle_text
+                    for cue in (
+                        " but ", " because ", " instead ", " meanwhile ", " so ",
+                        " yet ", " while ", " prove", " trace", " confirm", " reveal",
+                        " not ", " limit", " vary", "association",
+                    )
+                )
+                score = (
+                    0 if has_turn else 1,
+                    abs(word_count - target_words),
+                    abs(len(selected) - 6),
+                    indices,
+                )
+                options.append((score, selected))
+        if not options:
+            counts = [self._word_count(scene.narration) for scene in expanded]
+            raise ValueError(
+                f"Short script cannot fit complete sentences into {minimum_words}-{maximum_words} words "
+                f"(complete-beat counts: {counts})"
+            )
+        return min(options, key=lambda item: item[0])[1]
+
     def _polish_scene_plan(self, channel: ChannelConfig, topic: TopicCandidate, content_kind: str = "short") -> TopicCandidate:
         subject = self._display_subject(topic.subject or self._headline_subject(topic.title) or topic.title, channel.id)
         curated_short_plan = self._curated_short_scene_plan(channel, topic, content_kind)
         if curated_short_plan:
             narration = " ".join(scene.narration for scene in curated_short_plan)
-            narration_words = self._word_count(narration)
-            if not 65 <= narration_words <= 100:
-                raise ValueError(
-                    f"Curated Short has {narration_words} words; expected 65 to 100"
-                )
-            beats = self._sentences(narration)
-            return replace(
+            topic = replace(
                 topic,
-                hook=beats[0],
+                hook=curated_short_plan[0].narration,
                 narration=narration,
-                narration_beats=beats,
+                narration_beats=[scene.narration for scene in curated_short_plan],
                 visual_captions=[
                     scene.visual_text
                     for scene in curated_short_plan[1:-1]
@@ -3184,6 +3805,21 @@ class ScriptWriter:
                 ],
                 scene_plan=curated_short_plan,
                 content_kind=content_kind,
+            )
+            if channel.id == "ancient_history":
+                return self._fit_short_candidate_word_budget(
+                    topic,
+                    minimum_words=self._ANCIENT_SHORT_MIN_WORDS,
+                    maximum_words=self._ANCIENT_SHORT_MAX_WORDS,
+                    target_words=self._ANCIENT_SHORT_TARGET_WORDS,
+                    max_beat_words=10,
+                )
+            return self._fit_short_candidate_word_budget(
+                topic,
+                minimum_words=self._BRAIN_SHORT_MIN_WORDS,
+                maximum_words=self._BRAIN_SHORT_MAX_WORDS,
+                target_words=self._BRAIN_SHORT_TARGET_WORDS,
+                max_beat_words=12,
             )
         if content_kind == "video" and self._word_count(topic.narration) >= 700:
             section_plan = self._video_sections_from_narration(channel, topic, subject)
@@ -3215,7 +3851,7 @@ class ScriptWriter:
 
         frame_hint = "landscape documentary frame" if content_kind == "video" else "vertical short frame"
         base_plan = topic.scene_plan or self._fallback_scene_plan(topic, content_kind=content_kind)
-        if channel.id == "brain_lens" and content_kind == "short":
+        if channel.id == "brain_lens" and content_kind == "short" and not curated_short_plan:
             proposed_opener = base_plan[0].narration if base_plan else ""
             opener_line = (
                 proposed_opener
@@ -3337,57 +3973,22 @@ class ScriptWriter:
         if len(polished) > max_scenes:
             polished = polished[: max_scenes - 1] + [polished[-1]]
 
-        if channel.id == "brain_lens" and content_kind == "short" and len(polished) >= 2:
-            word_budget = 88
-            opener_scene = replace(
-                polished[0],
-                narration=self._tidy_scene_line(polished[0].narration, max_words=17),
-            )
-            closer_scene = replace(
-                polished[-1],
-                narration=self._tidy_scene_line(polished[-1].narration, max_words=15),
-            )
-            middle_scenes = [
-                replace(scene, narration=self._tidy_scene_line(scene.narration, max_words=18))
-                for scene in polished[1:-1]
-            ]
-            middle_scenes = [scene for scene in middle_scenes if scene.narration]
-            selected_middle: list[ScenePlanItem] = []
-            fixed_words = self._word_count(opener_scene.narration) + self._word_count(closer_scene.narration)
-            used_words = fixed_words
-            for scene in middle_scenes:
-                scene_words = self._word_count(scene.narration)
-                if len(selected_middle) < 3 or used_words + scene_words <= word_budget:
-                    selected_middle.append(scene)
-                    used_words += scene_words
-                if len(selected_middle) >= 6:
-                    break
-            polished = [opener_scene, *selected_middle, closer_scene]
-        elif channel.id == "ancient_history" and content_kind == "short" and len(polished) >= 2:
-            word_budget = self._target_words(channel, content_kind=content_kind)
-            opener_scene = replace(
-                polished[0],
-                narration=self._tidy_scene_line(polished[0].narration, max_words=22),
-            )
-            closer_scene = replace(
-                polished[-1],
-                narration=self._tidy_scene_line(polished[-1].narration, max_words=22),
-            )
-            middle_scenes = [
-                replace(scene, narration=self._tidy_scene_line(scene.narration, max_words=22))
-                for scene in polished[1:-1]
-            ]
-            middle_scenes = [scene for scene in middle_scenes if scene.narration]
-            selected_middle: list[ScenePlanItem] = []
-            used_words = self._word_count(opener_scene.narration) + self._word_count(closer_scene.narration)
-            for scene in middle_scenes:
-                scene_words = self._word_count(scene.narration)
-                if len(selected_middle) < 3 or used_words + scene_words <= word_budget:
-                    selected_middle.append(scene)
-                    used_words += scene_words
-                if len(selected_middle) >= 5:
-                    break
-            polished = [opener_scene, *selected_middle, closer_scene]
+        if content_kind == "short" and channel.id in {"brain_lens", "ancient_history"}:
+            if channel.id == "brain_lens":
+                budget = (
+                    self._BRAIN_SHORT_MIN_WORDS,
+                    self._BRAIN_SHORT_MAX_WORDS,
+                    self._BRAIN_SHORT_TARGET_WORDS,
+                    15,
+                )
+            else:
+                budget = (
+                    self._ANCIENT_SHORT_MIN_WORDS,
+                    self._ANCIENT_SHORT_MAX_WORDS,
+                    self._ANCIENT_SHORT_TARGET_WORDS,
+                    14,
+                )
+            polished = self._select_complete_short_scenes(polished, *budget)
 
         beats = [scene.narration for scene in polished if scene.narration]
         narration = self._reduce_subject_repetition(" ".join(beats), subject, channel.id)
@@ -3409,10 +4010,18 @@ class ScriptWriter:
         visual_captions = [scene.visual_text for scene in polished[1:-1] if scene.visual_text]
         return replace(topic, hook=beats[0] if beats else topic.hook, narration=narration, narration_beats=beats, visual_captions=visual_captions, scene_plan=polished, content_kind=content_kind)
 
-    def _word_count_ok(self, text: str, content_kind: str = "short") -> bool:
+    def _word_count_ok(
+        self,
+        text: str,
+        content_kind: str = "short",
+        channel: ChannelConfig | None = None,
+    ) -> bool:
         words = [w for w in text.split(" ") if w.strip()]
         if content_kind == "video":
-            return 850 <= len(words) <= 1700
+            if channel is not None:
+                minimum_words, maximum_words, _ = self._long_word_budget(channel)
+                return minimum_words <= len(words) <= maximum_words
+            return 1050 <= len(words) <= 1200
         return 65 <= len(words) <= 220
 
     # Extended style descriptions for richer script instructions
@@ -3479,13 +4088,30 @@ class ScriptWriter:
         research_str = f" RESEARCH DATA (do NOT copy verbatim, rephrase in the viral style): {research_context}." if research_context else ""
 
         duration_hint = "8 to 10 minutes" if content_kind == "video" else "30 to 60 seconds"
-        word_hint = "1,150 to 1,450 words in 12 to 18 clear sections" if content_kind == "video" else "around 95 to 135 words"
+        if content_kind == "video":
+            if channel.id == "ancient_history":
+                word_hint = "1,050 to 1,145 words in 18 to 20 clear sections"
+            else:
+                word_hint = "1,080 to 1,200 words in 18 to 20 clear sections"
+        elif channel.id == "ancient_history":
+            word_hint = "65 to 70 words in 5 to 7 complete beats"
+        elif channel.id == "brain_lens":
+            word_hint = "68 to 74 words in 5 to 7 complete beats"
+        else:
+            word_hint = "70 to 90 words in 5 to 7 complete beats"
         format_hint = "You are writing a premium long-form YouTube documentary script." if content_kind == "video" else "You are writing a spoken YouTube Shorts script."
         long_form_rules = (
             " For long-form: structure the story as cold open, promised question, stakes, context, 5-8 escalating evidence points, consequences, and a satisfying answer."
             " Add a soft re-hook every 35-50 seconds with a specific unanswered question, reversal, consequence, or new clue."
             " Do not pad. Every section must add new information, visual potential, or emotional stakes."
             if content_kind == "video"
+            else ""
+        )
+        short_form_rules = (
+            " For Shorts: make every beat a complete spoken thought. Every sentence must contain 3 to 12 spoken words."
+            " Never use a one-word or two-word sentence, dangling connector, or sentence fragment."
+            " Keep punctuation natural so captions never begin in the middle of a phrase."
+            if content_kind == "short"
             else ""
         )
         supplied_facts = " ".join(
@@ -3510,7 +4136,7 @@ class ScriptWriter:
             " Use short, natural spoken sentences. Open in 22 words or fewer with a visible moment, specific object, human consequence, or unresolved tension."
             " State or strongly imply the exact question the ending will answer. Make the final line echo and resolve the opening rather than changing subjects."
             " Make each factual moment visually specific so each sentence could match a separate video scene."
-            f"{long_form_rules}"
+            f"{long_form_rules}{short_form_rules}"
             f"{channel_rules}"
             f" SUPPLIED FACTS (the factual ceiling; omit a claim if it is not supported here): {supplied_facts}."
             " Avoid ellipses, markdown, scene labels, fake quotations, unsupported superlatives, or clickbait without payoff."
@@ -3531,7 +4157,7 @@ class ScriptWriter:
             return (
                 "Expand this into a premium 8 to 10 minute Brain Lens relationship psychology voiceover. "
                 "Return only the narration, no headings, no markdown, no labels. "
-                "Target 1,350 to 1,600 words. Keep it continuous and spoken, with 12 to 18 natural sections. "
+                "Target 1,080 to 1,200 words. Keep it continuous and spoken, with 18 to 20 natural sections. "
                 "Tone: magnetic, flirty, emotionally intelligent, modern, respectful, and monetization-safe. No explicit sexual detail, fabricated gossip, diagnosis, manipulation, humiliation, or pickup-artist language. "
                 "Structure: a visible dating micro-drama, one precise promised question, context-dependent psychology, a counterexample, pattern evidence, a practical reset, and a final payoff that answers the opening. "
                 "Add a re-hook every 35-45 seconds using a relevant consequence, contradiction, question, or new observation; never inject an unrelated trendy topic. "
@@ -3543,7 +4169,7 @@ class ScriptWriter:
         return (
             "Expand this into a premium 8 to 10 minute YouTube documentary voiceover. "
             "Return only the narration, no headings, no markdown, no labels. "
-            "Target 1,450 to 1,750 words. Use 16 to 22 natural sections, but keep it as continuous narration. "
+            "Target 1,050 to 1,145 words. Use 18 to 20 natural sections, but keep it as continuous narration. "
             "Structure: concrete surviving clue, promised historical question, stakes, chronology, escalating evidence, source limits, consequences, and a final answer that returns to the clue. "
             "Add a new visual moment or curiosity turn every 35-50 seconds. Do not repeat the same idea. "
             "Keep claims accurate and evidence-bounded. Do not invent a date, number, motive, quote, controversy, discovery, or consensus absent from the base draft. "
@@ -4284,8 +4910,15 @@ class ScriptWriter:
         avoid_str = ", ".join(list(avoid_titles or [])[:14])
         dna_context = self._dna_context(dna)
         creative_frame = self._creative_frame(channel, topic)
-        target_words = "82-86" if content_kind == "short" else "150-240"
-        beat_limit = "18 words for beat 1, 22 words for every other beat" if content_kind == "short" else "24 words per beat"
+        if content_kind == "short" and channel.id == "ancient_history":
+            target_words = "65-70"
+            beat_limit = "14 words per beat"
+        elif content_kind == "short":
+            target_words = "68-74"
+            beat_limit = "14 words per beat"
+        else:
+            target_words = "150-240"
+            beat_limit = "24 words per beat"
         channel_rule = (
             "Brain Lens: make the viewer feel seen with mature, flirty, emotionally intelligent relationship psychology. Use attraction, chemistry, texting, body language, mixed signals, crushes, kissing tension, attachment, confidence, and boundaries when relevant. Keep it spicy but non-explicit, non-manipulative, respectful, and not medical. Start with what the viewer does or feels, not the concept name."
             if channel.id == "brain_lens"
@@ -4313,6 +4946,7 @@ class ScriptWriter:
             "For Brain Lens, the payoff should make the viewer feel more attractive through calm, boundaries, confidence, or understanding, never through manipulation or humiliation. "
             "Do not reuse the same sentence rhythm across beats; mix short punches with one vivid longer line. "
             "Display text should be clean caption phrases, never broken fragments or vague labels. "
+            "For Shorts, every sentence must contain 3 to 12 spoken words; never create one-word or two-word sentences, dangling connectors, or fragments. "
             "Every 3-4 seconds add a new reveal, contrast, consequence, or question. Keep each beat necessary; remove repeated explanations. "
             "Avoid generic openings like 'to understand', 'there is a fascinating reason', 'modern psychology', "
             "'historians keep coming back', 'the archive is full', 'have you ever', and 'did you know'. "
@@ -4372,7 +5006,12 @@ class ScriptWriter:
             return topic
         total_words = self._word_count(" ".join(beats))
         if content_kind == "short":
-            if self._word_count(beats[0]) > 18 or not (81 <= total_words <= 86):
+            minimum_words, maximum_words = (
+                (self._ANCIENT_SHORT_MIN_WORDS, self._ANCIENT_SHORT_MAX_WORDS)
+                if channel.id == "ancient_history"
+                else (self._BRAIN_SHORT_MIN_WORDS, self._BRAIN_SHORT_MAX_WORDS)
+            )
+            if self._word_count(beats[0]) > 14 or not (minimum_words <= total_words <= maximum_words):
                 return topic
         elif not (100 <= total_words <= 320):
             return topic
@@ -4672,6 +5311,21 @@ class ScriptWriter:
         # candidate passes those gates, but must not stall every rejected idea.
         if content_kind == "short" and channel.id in {"brain_lens", "ancient_history"} and not v2_drafts_enabled:
             return self._polish_scene_plan(channel, topic, content_kind=content_kind)
+        # This archive-backed Axum angle is intentionally deterministic. A
+        # free-model rewrite can turn a six-word factual beat into a long
+        # clause, which then forces the subtitle composer to create a dangling
+        # fragment. Keep the curated, caption-safe beats intact; scoring and
+        # title selection still run normally after this point.
+        if (
+            content_kind == "short"
+            and channel.id == "ancient_history"
+            and (
+                "giant stelae" in f"{topic.subject} {topic.title}".lower()
+                or str(getattr(topic, "selected_title_pattern", "")).lower()
+                == "history_short_subject_axum"
+            )
+        ):
+            return self._polish_scene_plan(channel, topic, content_kind=content_kind)
         if topic.scene_plan and self._ai_enabled():
             if content_kind == "video":
                 pass
@@ -4699,7 +5353,7 @@ class ScriptWriter:
                     purpose="script_draft",
                 )
                 generated = self._clean(generated)
-                if content_kind == "video" and self._word_count(generated) < (1100 if channel.id == "ancient_history" else 850):
+                if content_kind == "video" and self._word_count(generated) < self._long_word_budget(channel)[0]:
                     expand_prompt = self._long_video_expand_prompt(channel, topic, generated or topic.narration)
                     generated = self._clean(
                         self._generate_ai(
@@ -4708,7 +5362,7 @@ class ScriptWriter:
                             purpose="script_expansion",
                         )
                     )
-                if self._word_count_ok(generated, content_kind=content_kind):
+                if self._word_count_ok(generated, content_kind=content_kind, channel=channel):
                     candidate = replace(
                         topic,
                         narration=generated,

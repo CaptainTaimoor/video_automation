@@ -18,7 +18,10 @@ from yt_auto.utils import ensure_dir
 
 
 def _config_path() -> Path:
-    load_dotenv()
+    # Allow isolated checkouts (for example a QA/worktree build) to reuse an
+    # explicitly selected environment file without copying secrets into it.
+    env_file = os.getenv("YT_ENV_FILE")
+    load_dotenv(dotenv_path=env_file if env_file else None)
     env_path = os.getenv("YT_AUTOMATION_CONFIG", "config/settings.yaml")
     return Path(env_path)
 

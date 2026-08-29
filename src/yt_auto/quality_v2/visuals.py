@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
+import re
 from typing import Iterable
 
 
@@ -51,14 +52,26 @@ _ALLOWED = (
     "pexels license",
     "pixabay license",
 )
-_REJECTED = ("nc", "noncommercial", "no derivatives", "nd", "all rights", "copyrighted", "unknown")
+_REJECTED_PHRASES = (
+    "noncommercial",
+    "no derivatives",
+    "all rights",
+    "copyrighted",
+    "unknown",
+)
+_REJECTED_CC_COMPONENT = re.compile(r"(?<![a-z0-9])(?:nc|nd)(?![a-z0-9])")
 
 
 def validate_rights(record: AssetRecord) -> RightsStatus:
     value = " ".join((record.rights, record.license_url)).lower()
     if not record.source_url.strip() or not record.rights.strip():
         return RightsStatus.REJECTED
-    if any(marker in value for marker in _REJECTED):
+    if any(marker in value for marker in _REJECTED_PHRASES):
+        return RightsStatus.REJECTED
+    # NC and ND are meaningful only as complete license components. Raw
+    # substring matching incorrectly rejected ordinary source URLs containing
+    # words such as "lunch", "window", or "man-and-woman".
+    if _REJECTED_CC_COMPONENT.search(value):
         return RightsStatus.REJECTED
     if "by-sa" in value or "cc by sa" in value:
         return RightsStatus.REVIEW

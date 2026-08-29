@@ -72,6 +72,8 @@ class ShortsFactory:
     ANCIENT_SHORT_MIN_VERIFIED_REAL_VISUALS = 8
     ANCIENT_SHORT_MAX_FACT_CARD_FALLBACKS = 1
     BRAIN_SHORT_MAX_FACT_CARD_FALLBACKS = 1
+    ANCIENT_LONG_WORD_RANGE = (1050, 1145)
+    BRAIN_LONG_WORD_RANGE = (1080, 1200)
 
     def __init__(self, config_path: Path) -> None:
         self.dotenv_load_warning = _load_optional_dotenv()
@@ -128,6 +130,13 @@ class ShortsFactory:
             if c.id == channel_id:
                 return c
         raise ValueError(f"Unknown channel id: {channel_id}")
+
+    def _long_word_range(self, channel: ChannelConfig) -> tuple[int, int]:
+        if channel.id == "ancient_history":
+            return self.ANCIENT_LONG_WORD_RANGE
+        if channel.id == "brain_lens":
+            return self.BRAIN_LONG_WORD_RANGE
+        return (1050, 1200)
 
     def _channel_logo_path(self, channel: ChannelConfig) -> Path:
         logo_dir = ensure_dir(Path("assets") / "branding")
@@ -1270,10 +1279,10 @@ class ShortsFactory:
             raise ValueError(f"Rejected source-less topic: {topic.title}")
         if getattr(topic, "content_kind", "short") == "short" and channel.id == "brain_lens":
             narration_words = re.findall(r"[A-Za-z0-9']+", topic.narration or "")
-            if not (81 <= len(narration_words) <= 86):
+            if not (68 <= len(narration_words) <= 74):
                 raise ValueError(
                     "Rejected Brain Lens Short narration length: "
-                    f"{len(narration_words)} words; target is 81-86"
+                    f"{len(narration_words)} words; target is 68-74"
                 )
             visible_characters = len(re.sub(r"\s+", " ", topic.narration or "").strip())
             if visible_characters > 650:
@@ -1288,14 +1297,14 @@ class ShortsFactory:
                 )
         if getattr(topic, "content_kind", "short") == "video":
             long_word_count = len(re.findall(r"[A-Za-z0-9']+", topic.narration or ""))
-            minimum_words = 1200 if channel.id == "ancient_history" else 1250
+            minimum_words, maximum_words = self._long_word_range(channel)
             if long_word_count < minimum_words:
                 raise ValueError(
                     f"Rejected thin long script: {long_word_count} words; needs at least {minimum_words}"
                 )
-            if long_word_count > 1520:
+            if long_word_count > maximum_words:
                 raise ValueError(
-                    f"Rejected overfilled long script: {long_word_count} words; maximum is 1520"
+                    f"Rejected overfilled long script: {long_word_count} words; maximum is {maximum_words}"
                 )
             repetition_issue = self._long_script_repetition_issue(topic)
             if repetition_issue:
@@ -1707,9 +1716,9 @@ class ShortsFactory:
             if any(bit in lowered for bit in ancient_formula_bits):
                 issues.append("overused/generic Ancient History formula")
             subject = re.sub(r"[^a-z0-9\s]+", " ", (topic.subject or "")).strip().lower()
-            words = re.findall(r"[a-z0-9']+", topic.narration or "")
-            if getattr(topic, "content_kind", "short") == "short" and not (75 <= len(words) <= 105):
-                issues.append(f"Ancient Short narration has {len(words)} words; target is 75-105")
+            words = re.findall(r"[A-Za-z0-9']+", topic.narration or "")
+            if getattr(topic, "content_kind", "short") == "short" and not (65 <= len(words) <= 70):
+                issues.append(f"Ancient Short narration has {len(words)} words; target is 65-70")
             if getattr(topic, "content_kind", "short") == "short" and lines:
                 subtitle_config = getattr(
                     getattr(getattr(self, "config", None), "app", None),
@@ -2140,6 +2149,194 @@ class ShortsFactory:
                 return "Brain Lens phone/message hook lacks a phone-relevant opening visual"
         return None
 
+    def _fit_short_candidate_word_budget(
+        self,
+        candidate: TopicCandidate,
+        minimum_words: int,
+        maximum_words: int,
+        target_words: int,
+        max_beat_words: int = 12,
+    ) -> TopicCandidate:
+        """Pack complete source beats into a natural, voice-calibrated Short.
+
+        Curated outage fallbacks contain more facts than a Short needs.  Select
+        whole sentences with a small subset-sum pass, then regroup them into
+        visual beats.  This preserves grammatical and factual boundaries while
+        avoiding rushed TTS or hard word truncation.
+        """
+        writer = getattr(self, "script_writer", None) or ScriptWriter.__new__(ScriptWriter)
+        source_scenes = list(candidate.scene_plan or [])
+        if not source_scenes:
+            source_scenes = [
+                ScenePlanItem(
+                    narration=beat,
+                    visual_text=writer._captionize(beat),
+                    search_terms=[candidate.subject or candidate.title],
+                )
+                for beat in (candidate.narration_beats or writer._sentences(candidate.narration))
+                if str(beat or "").strip()
+            ]
+
+        units: list[tuple[str, ScenePlanItem, int]] = []
+        for scene in source_scenes:
+            sentences = writer._sentences(scene.narration) or [writer._sentence(scene.narration)]
+            for sentence in sentences:
+                clean = writer._sentence(sentence)
+                word_count = len(re.findall(r"[A-Za-z0-9']+", clean))
+                if clean and word_count >= 3:
+                    units.append((clean, scene, word_count))
+        if len(units) < 2:
+            raise ValueError("Short fallback has too few complete source sentences")
+
+        subject_tokens = {
+            token
+            for token in re.findall(r"[a-z]{4,}", (candidate.subject or candidate.title).lower())
+            if token not in {"that", "this", "with", "from", "what", "when", "where"}
+        }
+        if candidate.niche_id == "ancient_history":
+            closing_index = next(
+                (
+                    index
+                    for index in range(len(units) - 1, 0, -1)
+                    if subject_tokens & set(re.findall(r"[a-z]{4,}", units[index][0].lower()))
+                ),
+                len(units) - 1,
+            )
+        else:
+            payoff_terms = {
+                "boundary", "choice", "clarity", "confidence", "consent", "consistency",
+                "effort", "mutual", "pattern", "reciprocity", "respect", "safe", "trust",
+            }
+            closing_index = next(
+                (
+                    index
+                    for index in range(len(units) - 1, 0, -1)
+                    if payoff_terms & set(re.findall(r"[a-z]{4,}", units[index][0].lower()))
+                ),
+                len(units) - 1,
+            )
+
+        cue_markers = (
+            " but ", " because ", " instead ", " so ", " yet ", " while ", " then ",
+            " which ", " prove", " trace", " confirm", " reveal", " not ", " limit",
+            " vary", "association",
+        )
+        cue_candidates = [
+            index
+            for index in range(1, closing_index)
+            if any(marker in f" {units[index][0].lower()} " for marker in cue_markers)
+        ]
+        cue_index = min(
+            cue_candidates,
+            key=lambda index: abs(index - (closing_index / 2.0)),
+        ) if cue_candidates else None
+
+        opening_indices = {0}
+        if candidate.niche_id == "brain_lens" and (
+            not writer._brain_lens_hook_matches(candidate, units[0][0])
+            or not writer._brain_lens_behavior_first(units[0][0])
+        ):
+            for index in range(1, closing_index):
+                if units[index][1] is not units[0][1]:
+                    break
+                opening_text = f"{units[0][0]} {units[index][0]}"
+                if (
+                    writer._brain_lens_hook_matches(candidate, opening_text)
+                    and writer._brain_lens_behavior_first(opening_text)
+                ):
+                    opening_indices.add(index)
+                    break
+
+        fixed_options = [{*opening_indices, closing_index}]
+        if cue_index is not None:
+            fixed_options.insert(0, {*opening_indices, cue_index, closing_index})
+        if closing_index != len(units) - 1:
+            fixed_options.append({*opening_indices, len(units) - 1})
+
+        selected_fixed: set[int] | None = None
+        valid: list[tuple[int, list[int]]] = []
+        for fixed_indices in fixed_options:
+            fixed_words = sum(units[index][2] for index in fixed_indices)
+            available = max(0, maximum_words - fixed_words)
+            choices: dict[int, list[int]] = {0: []}
+            last_allowed = max(fixed_indices)
+            for index in range(1, last_allowed):
+                if index in fixed_indices or (
+                    candidate.niche_id == "brain_lens"
+                    and len(opening_indices) > 1
+                    and units[index][1] is units[0][1]
+                ):
+                    continue
+                weight = units[index][2]
+                for subtotal, selected in list(choices.items())[::-1]:
+                    new_total = subtotal + weight
+                    if new_total <= available and new_total not in choices:
+                        choices[new_total] = [*selected, index]
+            valid = [
+                (fixed_words + subtotal, selected)
+                for subtotal, selected in choices.items()
+                if minimum_words <= fixed_words + subtotal <= maximum_words
+            ]
+            if valid:
+                selected_fixed = fixed_indices
+                break
+
+        if not valid or selected_fixed is None:
+            raise ValueError(
+                f"Short fallback cannot fit complete sentences into {minimum_words}-{maximum_words} words"
+            )
+        _, middle_indices = min(
+            valid,
+            key=lambda item: (abs(item[0] - target_words), -len(item[1])),
+        )
+        selected_indices = sorted([*selected_fixed, *middle_indices])
+        selected_units = [units[index] for index in selected_indices]
+
+        packed: list[list[tuple[str, ScenePlanItem, int]]] = []
+        current: list[tuple[str, ScenePlanItem, int]] = []
+        current_words = 0
+        for unit in selected_units:
+            if current and current_words + unit[2] > max_beat_words:
+                packed.append(current)
+                current = []
+                current_words = 0
+            current.append(unit)
+            current_words += unit[2]
+        if current:
+            packed.append(current)
+
+        scene_plan: list[ScenePlanItem] = []
+        for group in packed:
+            narration = " ".join(unit[0] for unit in group)
+            base_scene = group[0][1]
+            search_terms = list(
+                dict.fromkeys(
+                    term
+                    for _, scene, _ in group
+                    for term in [*(scene.search_terms or []), candidate.subject or candidate.title]
+                    if str(term or "").strip()
+                )
+            )
+            scene_plan.append(
+                replace(
+                    base_scene,
+                    narration=narration,
+                    visual_text=writer._captionize(narration) or base_scene.visual_text,
+                    search_terms=search_terms[:6],
+                )
+            )
+
+        beats = [scene.narration for scene in scene_plan]
+        narration = " ".join(beats)
+        return replace(
+            candidate,
+            hook=beats[0],
+            narration=narration,
+            narration_beats=beats,
+            visual_captions=[scene.visual_text for scene in scene_plan[1:-1]],
+            scene_plan=scene_plan,
+        )
+
     def _brain_short_deterministic_fallback(
         self,
         channel: ChannelConfig,
@@ -2161,7 +2358,7 @@ class ShortsFactory:
                     "Look for returned signals. Notice chosen closeness and engaged questions. Watch their next move closely.",
                     "But one charged second creates chemistry. Repeated behavior is stronger evidence. Consistency beats intensity.",
                     "Offer one respectful signal. Leave space for choice. Calm confidence protects both people.",
-                    "Reciprocity and consent make attraction clearer. Pressure creates noise. A real spark returns.",
+                    "Reciprocity and consent make attraction clearer. Pressure creates noise. Real reciprocity makes the spark return.",
                 ),
             ),
             (
@@ -2190,14 +2387,20 @@ class ShortsFactory:
             ),
             (
                 "Conflict Repair",
-                "Conflict Repair: The Pattern That Makes Attraction Safer",
+                "Conflict Repair: The Action That Makes Trust Safer",
                 (
-                    "You watch the next move after conflict. A repair pattern becomes visible there.",
-                    "Healthy repair names the specific hurt, without turning one mistake into a character verdict.",
-                    "Ownership follows. A real apology explains impact, not merely intention behind the behavior.",
-                    "Warm words soothe tonight, but changed action rebuilds trust over time.",
-                    "Both people need room to speak, pause, and return. Repair is cooperation, not instant forgiveness.",
-                    "Choose clarity over punishment. Chemistry survives conflict through honesty, boundaries, and consistent change over time, in daily life.",
+                    "They pause after conflict. Watch what happens next.",
+                    "Real repair names the specific hurt.",
+                    "It avoids judging your whole character.",
+                    "A useful apology explains the impact.",
+                    "Changed behavior rebuilds trust over time.",
+                    "Both people need room to speak.",
+                    "A pause can protect the conversation.",
+                    "Returning shows cooperation, not surrender.",
+                    "Forgiveness never has to be instant.",
+                    "Choose clarity instead of punishment.",
+                    "Consistent change makes closeness feel safer.",
+                    "That pattern tells you what lasts.",
                 ),
             ),
             (
@@ -2229,10 +2432,10 @@ class ShortsFactory:
                 "Boundary Response: What Their Next Move Actually Reveals",
                 (
                     "Their plan crosses your boundary. Their response reveals real character.",
-                    "A respectful response stays warm. They may ask once, then accept your answer.",
-                    "Pressure looks different. Guilt, sulking, repeated bargaining, or punishment turns preference into a test.",
-                    "One disappointed reaction needs context. A repeated pattern shows how they handle your separate needs.",
-                    "Name the boundary. Do not apologize. Then watch their behavior when the moment passes.",
+                    "A respectful response stays warm. They may ask once. They should accept your answer.",
+                    "Pressure looks different. Guilt and repeated bargaining create pressure. Punishment turns preference into a test.",
+                    "One disappointed reaction needs context. Repeated patterns reveal their choices. Separate needs expose their response.",
+                    "Name the boundary. Do not apologize. Watch what follows later.",
                     "Attraction feels safer when no remains safe. Respectful, consistent responses are the signal worth trusting next.",
                 ),
             ),
@@ -2240,24 +2443,24 @@ class ShortsFactory:
                 "Curiosity and Interest",
                 "Curiosity and Interest: The Difference Between Care and Charm",
                 (
-                    "Their question returns to one detail you mentioned. Curiosity makes real interest visible there.",
-                    "Real interest makes room for your answer instead of rushing toward another story.",
-                    "Charm can feel electric, but charm often keeps attention on the person delivering it.",
-                    "Notice whether questions deepen naturally. Watch whether they remember preferences, boundaries, and important context.",
-                    "You do not need an interview. Balanced conversation should move both ways and leave space.",
+                    "Their question recalls one detail. Curiosity makes real interest visible.",
+                    "Real interest makes room for answers. It lets your answer breathe.",
+                    "Charm can feel electric. Sometimes charm centers its performer.",
+                    "Notice whether questions deepen naturally. Do they remember your preferences? Do they respect important boundaries?",
+                    "You do not need an interview. Balanced conversation moves both ways. It leaves breathing room.",
                     "Chemistry catches attention. Curious follow-through builds clarity. Real interest stays curious about you.",
                 ),
             ),
             (
                 "Consistency After Intimacy",
-                "Consistency After Intimacy: The Pattern That Reveals Emotional Availability",
+                "Consistency After Intimacy: What the Next Day Reveals",
                 (
-                    "Their closeness changes after intimacy. Watch whether emotional consistency remains when the charged moment ends.",
-                    "Healthy interest usually keeps ordinary care intact: communication, respect, plans, and emotional presence.",
+                    "Their closeness changes after intimacy. Does consistent care survive tomorrow?",
+                    "Healthy interest keeps ordinary care intact. Communication and respect remain visible. Plans still move.",
                     "Distance after intimacy has many causes. One quieter day does not prove regret.",
-                    "Look for the wider pattern. Do warmth and honesty return when the excitement settles?",
-                    "Ask directly if the shift continues. Clear words protect you better than silent detective work.",
-                    "Intensity creates closeness for one night. Consistent care shows whether intimacy has somewhere safe to go.",
+                    "Look for the wider pattern. Do warmth and honesty return later? Excitement should not erase care.",
+                    "Ask directly if the shift continues. Clear words protect your judgment. Silent detective work creates stories.",
+                    "Intensity creates closeness for one night. Consistent care reveals emotional safety. Intimacy needs somewhere safe to land.",
                 ),
             ),
             (
@@ -2276,24 +2479,24 @@ class ShortsFactory:
                 "Direct Interest",
                 "Direct Interest: The Dating Signal That Removes Guesswork",
                 (
-                    "Their direct interest creates the next plan without forcing you to decode three days of vague messages.",
-                    "Clear interest is consistent intention that leaves room for both lives.",
-                    "Look for concrete choices: initiating, confirming, following through, and responding honestly when plans change.",
-                    "Shy people can show clarity. Their effort remains visible in a different style.",
-                    "Mixed moments happen. Chronic ambiguity keeps you working harder than the connection itself does.",
-                    "You deserve attraction with enough clarity to breathe. Interest becomes meaningful when action keeps returning.",
+                    "Their interest creates the next plan. No decoding vague messages.",
+                    "Clear interest respects both lives.",
+                    "Look for concrete choices. Do they initiate and confirm? Do they follow through honestly?",
+                    "Shy people can show clarity. Their effort still stays visible. Their style may differ.",
+                    "Mixed moments happen. Chronic ambiguity demands extra work. The connection should not demand that.",
+                    "You deserve attraction with real clarity. Consistency makes real interest meaningful.",
                 ),
             ),
             (
                 "Apology Follow-Through",
                 "Apology Follow-Through: What Changes After the Words",
                 (
-                    "Their apology sounds beautiful. The real test begins when the same situation appears again.",
-                    "A useful apology names the action, recognizes the impact, and avoids making you comfort them.",
-                    "Then behavior must change. Perfect improvement is unrealistic, but sincere effort should become visible.",
-                    "Watch for defensiveness, repeated excuses, or apologies that only arrive when you start leaving.",
+                    "Their apology sounds beautiful. The real test comes later. Does the same harm return?",
+                    "A useful apology names the action. It recognizes the impact. You should not comfort them.",
+                    "Behavior must change afterward. Perfect improvement remains unrealistic. Sincere effort should become visible.",
+                    "Watch for defensive replies. Notice repeated excuses. Late apologies can signal panic.",
                     "State what repair would look like. Keep the request specific and shared.",
-                    "Words can reopen the door. Changed behavior gives damaged trust new reasons. Then closeness can return.",
+                    "Words can reopen the door. Changed behavior can rebuild trust. Closeness may return safely.",
                 ),
             ),
             (
@@ -2305,7 +2508,7 @@ class ShortsFactory:
                     "Warmth matters after a good date. Suggested times matter even more.",
                     "One quiet day means little. But several vague days mean more.",
                     "Do not chase certainty tonight. Leave room for their choices.",
-                    "Notice the wider pattern without panic. Chemistry opens the door. Follow-through shows what lasts. Keep your standards steady. That is useful dating information.",
+                    "Notice the wider pattern without panic. Chemistry opens the door. Follow-through shows what lasts. Keep your standards steady. That clarity protects your dating confidence.",
                 ),
             ),
             (
@@ -2398,11 +2601,22 @@ class ShortsFactory:
             for item in avoid_titles
             if item
         }
+        forced_subject = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            os.getenv("YT_FORCE_BRAIN_SUBJECT", "").lower(),
+        ).strip()
         selected: tuple[str, str, tuple[str, ...]] | None = None
         for profile in profiles:
             subject, title, _ = profile
             subject_key = subject.lower()
             title_key = title.lower()
+            if forced_subject and not (
+                subject_key == forced_subject
+                or subject_key in forced_subject
+                or forced_subject in subject_key
+            ):
+                continue
             if any(
                 subject_key == avoid
                 or title_key == avoid
@@ -2441,7 +2655,7 @@ class ShortsFactory:
         )
         subject_tag = "#" + re.sub(r"[^A-Za-z0-9]+", "", subject.title())
         hashtags = list(dict.fromkeys([*channel.hashtags, subject_tag]))[:12]
-        return TopicCandidate(
+        candidate = TopicCandidate(
             niche_id=channel.id,
             style="explainer",
             trend_terms=[subject.lower(), "dating psychology", "relationship behavior"],
@@ -2460,6 +2674,13 @@ class ShortsFactory:
             selected_title_pattern="deterministic_brain_fallback",
             scene_plan=scene_plan,
         )
+        return self._fit_short_candidate_word_budget(
+            candidate,
+            minimum_words=68,
+            maximum_words=74,
+            target_words=72,
+            max_beat_words=12,
+        )
 
     def _visual_asset_candidates(
         self,
@@ -2471,6 +2692,11 @@ class ShortsFactory:
             return scored_candidates[:3]
         if channel_id != "ancient_history":
             return scored_candidates[:1]
+        forced_subject = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            os.getenv("YT_FORCE_HISTORY_SUBJECT", "").lower(),
+        ).strip()
         if content_kind == "short":
             recovery_mode = (
                 str(os.getenv("YT_CONTINUITY_RECOVERY", "")).strip().lower()
@@ -2525,13 +2751,47 @@ class ShortsFactory:
                 )
                 return (rank, candidates.index(item))
 
-            return sorted(candidates, key=priority)[:candidate_limit]
-        forced_subject = re.sub(
-            r"[^a-z0-9]+",
-            " ",
-            os.getenv("YT_FORCE_HISTORY_SUBJECT", "").lower(),
-        ).strip()
-        if content_kind == "video" and forced_subject:
+            if forced_subject:
+                forced_candidates = []
+                for item in candidates:
+                    if len(item) < 3:
+                        continue
+                    candidate = item[2]
+                    candidate_subject = re.sub(
+                        r"[^a-z0-9]+",
+                        " ",
+                        str(getattr(candidate, "subject", "") or getattr(candidate, "title", "")).lower(),
+                    ).strip()
+                    if (
+                        candidate_subject == forced_subject
+                        or candidate_subject in forced_subject
+                        or forced_subject in candidate_subject
+                    ):
+                        forced_candidates.append(item)
+                if forced_candidates:
+                    return forced_candidates
+            selected_candidates = sorted(candidates, key=priority)[:candidate_limit]
+            if forced_subject:
+                forced_candidates = []
+                for item in selected_candidates:
+                    if len(item) < 3:
+                        continue
+                    candidate = item[2]
+                    candidate_subject = re.sub(
+                        r"[^a-z0-9]+",
+                        " ",
+                        str(getattr(candidate, "subject", "") or getattr(candidate, "title", "")).lower(),
+                    ).strip()
+                    if (
+                        candidate_subject == forced_subject
+                        or candidate_subject in forced_subject
+                        or forced_subject in candidate_subject
+                    ):
+                        forced_candidates.append(item)
+                if forced_candidates:
+                    return forced_candidates
+            return selected_candidates
+        if forced_subject:
             matches = []
             for item in scored_candidates:
                 if len(item) < 3:
@@ -2595,7 +2855,7 @@ class ShortsFactory:
             ),
             (
                 "axum obelisks",
-                "Aksum's Granite Stelae: Engineering Status Into Stone",
+                "Axum's Giant Stelae: How Granite Made Royal Power Visible",
             ),
             (
                 "nubian pyramids",
@@ -2942,6 +3202,14 @@ class ShortsFactory:
                 [source] if source else [],
                 limit=6,
             )
+            # Continuity runs are deliberately used when live research is
+            # degraded. Keep the authoritative registry URL even if its
+            # liveness probe timed out; the visual fetcher will retry it under
+            # its own bounded deadline, and the topic remains auditable rather
+            # than being rejected as source-less solely because of a transient
+            # network check.
+            if not source_urls and source:
+                source_urls = [source]
             subject_tag = "#" + re.sub(r"[^A-Za-z0-9]+", "", subject.title())
             out.append(
                 TopicCandidate(
@@ -2974,16 +3242,20 @@ class ShortsFactory:
         candidate: TopicCandidate,
         recent_titles: set[str],
     ) -> TopicCandidate:
-        polished = (
-            replace(candidate)
-            if candidate.selected_title_pattern == "continuity_evergreen_fallback"
-            else self.script_writer.improve(
-                channel=channel,
-                topic=candidate,
+        if "giant stelae" in str(candidate.title).lower():
+            polished = self.script_writer._polish_scene_plan(
+                channel,
+                candidate,
                 content_kind="short",
-                avoid_titles=recent_titles,
             )
-        )
+        else:
+            polished = self._fit_short_candidate_word_budget(
+                candidate,
+                minimum_words=65,
+                maximum_words=70,
+                target_words=68,
+                max_beat_words=10,
+            )
         self._validate_topic_quality(channel, polished, recent_titles)
         return polished
 
@@ -3084,15 +3356,14 @@ class ShortsFactory:
 
         content_kind = str(metadata.get("content_kind") or "short")
         word_count = len(re.findall(r"[A-Za-z0-9']+", topic.narration or ""))
-        if content_kind == "video" and word_count < 850:
-            issues.append("long video narration too thin")
-            score -= 22
-        if content_kind == "video" and channel.id == "ancient_history" and word_count < 1150:
-            issues.append("Ancient long video needs more documentary depth")
-            score -= 16
-        if content_kind == "video" and word_count > 1600:
-            issues.append("long video narration is too dense for the 10-minute limit")
-            score -= 18
+        if content_kind == "video":
+            long_minimum_words, long_maximum_words = self._long_word_range(channel)
+            if word_count < long_minimum_words:
+                issues.append("long video narration is too thin for natural free-TTS pacing")
+                score -= 22
+            if word_count > long_maximum_words:
+                issues.append("long video narration is too dense for natural free-TTS pacing")
+                score -= 18
         if content_kind == "video":
             repetition_issue = self._long_script_repetition_issue(topic)
             if repetition_issue:
@@ -3101,7 +3372,7 @@ class ShortsFactory:
                 score -= 35
             else:
                 strengths.append("long-form sections are distinct and structured")
-        elif word_count < 75:
+        elif word_count < 65:
             issues.append("narration too thin")
             score -= 18
         elif word_count > 145 and content_kind == "short":
@@ -3878,19 +4149,27 @@ class ShortsFactory:
         if duration_seconds > 0:
             narration_wpm = round(word_count / (duration_seconds / 60.0), 1)
             pacing_scope = "long-video " if content_kind == "video" else ""
-            if channel.id == "brain_lens" and not (135 <= narration_wpm <= 170):
-                pacing_issue = f"Brain Lens {pacing_scope}narration pacing is {narration_wpm} WPM; target is 135-170"
+            brain_limits = (115, 135) if content_kind == "video" else (115, 155)
+            ancient_limits = (110, 130) if content_kind == "video" else (110, 150)
+            if channel.id == "brain_lens" and not (brain_limits[0] <= narration_wpm <= brain_limits[1]):
+                pacing_issue = (
+                    f"Brain Lens {pacing_scope}narration pacing is {narration_wpm} WPM; "
+                    f"target is {brain_limits[0]}-{brain_limits[1]}"
+                )
                 if pacing_issue not in issues:
                     issues.append(pacing_issue)
                 blocking_issues.append(pacing_issue)
                 score -= 18
-            elif channel.id == "ancient_history" and not (135 <= narration_wpm <= 170):
-                pacing_issue = f"Ancient History {pacing_scope}narration pacing is {narration_wpm} WPM; target is 135-170"
+            elif channel.id == "ancient_history" and not (ancient_limits[0] <= narration_wpm <= ancient_limits[1]):
+                pacing_issue = (
+                    f"Ancient History {pacing_scope}narration pacing is {narration_wpm} WPM; "
+                    f"target is {ancient_limits[0]}-{ancient_limits[1]}"
+                )
                 if pacing_issue not in issues:
                     issues.append(pacing_issue)
                 blocking_issues.append(pacing_issue)
                 score -= 18
-            elif 135 <= narration_wpm <= 175:
+            elif 110 <= narration_wpm <= 155:
                 strengths.append(f"natural narration pace ({narration_wpm} WPM)")
         else:
             narration_wpm = 0.0
@@ -3899,7 +4178,7 @@ class ShortsFactory:
         if title_issue:
             script_subscore -= 28
         script_subscore -= min(36, len(script_issues) * 12)
-        if content_kind == "short" and channel.id == "brain_lens" and not (72 <= word_count <= 100):
+        if content_kind == "short" and channel.id == "brain_lens" and not (68 <= word_count <= 74):
             script_subscore -= 22
         if any("opener" in issue or "hook" in issue for issue in issues):
             script_subscore -= 22
@@ -4818,9 +5097,11 @@ class ShortsFactory:
     ) -> tuple[list[float], float]:
         maximum_seconds = float(target_seconds)
         if narration_word_count > 0:
+            target_wpm = self._short_channel_target_wpm(channel_id)
             target_seconds = self._short_narration_target_seconds(
                 narration_word_count,
                 maximum_seconds=maximum_seconds,
+                target_wpm=target_wpm,
             )
         caption_safe_target = self._caption_safe_short_target_seconds(
             scene_durations=scene_durations,
@@ -4969,11 +5250,19 @@ class ShortsFactory:
         return round(min(maximum, high + 0.01), 3)
 
     @staticmethod
+    def _short_channel_target_wpm(channel_id: str) -> float:
+        if channel_id == "ancient_history":
+            return 115.0
+        if channel_id == "brain_lens":
+            return 120.0
+        return 125.0
+
+    @staticmethod
     def _short_narration_target_seconds(
         narration_word_count: int,
         maximum_seconds: float = 35.9,
         minimum_seconds: float = 32.0,
-        target_wpm: float = 142.0,
+        target_wpm: float = 125.0,
     ) -> float:
         if narration_word_count <= 0 or target_wpm <= 0:
             return float(maximum_seconds)
@@ -5582,6 +5871,11 @@ class ShortsFactory:
             else []
         )
         continuity_fallbacks = list(all_continuity_fallbacks)
+        forced_brain_subject = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            os.getenv("YT_FORCE_BRAIN_SUBJECT", "").lower(),
+        ).strip()
 
         for attempt_index in range(max_topic_attempts):
             self.logger.info(channel.id, f"Planning candidate {attempt_index + 1}/{max_topic_attempts}")
@@ -5614,6 +5908,24 @@ class ShortsFactory:
                 if context_source:
                     candidate = replace(candidate, source_urls=[context_source])
             try:
+                if (
+                    channel.id == "brain_lens"
+                    and content_kind == "short"
+                    and forced_brain_subject
+                ):
+                    candidate_subject = re.sub(
+                        r"[^a-z0-9]+",
+                        " ",
+                        str(candidate.subject or candidate.title).lower(),
+                    ).strip()
+                    if not (
+                        candidate_subject == forced_brain_subject
+                        or candidate_subject in forced_brain_subject
+                        or forced_brain_subject in candidate_subject
+                    ):
+                        raise ValueError(
+                            f"Forced Brain QA subject was not produced by planning: {forced_brain_subject}"
+                        )
                 continuity_fallback_title = (
                     candidate.title
                     if candidate.selected_title_pattern == "continuity_evergreen_fallback"
@@ -5653,6 +5965,20 @@ class ShortsFactory:
                         title=continuity_fallback_title,
                         title_variants=[continuity_fallback_title],
                         selected_title_pattern="continuity_evergreen_fallback",
+                    )
+                # TitleLab may promote an Axum subject to the archive-backed
+                # "Giant Stelae" title after the normal improve pass. Reapply
+                # the deterministic caption-safe plan once the final title is
+                # known so the validator and renderer see the same beats.
+                if (
+                    channel.id == "ancient_history"
+                    and content_kind == "short"
+                    and "giant stelae" in str(candidate.title).lower()
+                ):
+                    candidate = self.script_writer._polish_scene_plan(
+                        channel,
+                        candidate,
+                        content_kind=content_kind,
                     )
                 validation_avoids = avoid_titles
                 if continuity_fallback_title:
@@ -5979,13 +6305,15 @@ class ShortsFactory:
 
             beats = topic.narration_beats or [topic.narration]
             narration_word_count = len(re.findall(r"[A-Za-z0-9']+", topic.narration or ""))
+            target_wpm = self._short_channel_target_wpm(channel.id)
             normalization_maximum = max(
                 float(profile.min_duration_seconds),
-                float(profile.max_duration_seconds) - 0.1,
+                float(profile.max_duration_seconds) - 0.02,
             )
             normalization_target = self._short_narration_target_seconds(
                 narration_word_count,
                 maximum_seconds=normalization_maximum,
+                target_wpm=target_wpm,
             )
 
             def synthesize_and_normalize(
@@ -6019,15 +6347,36 @@ class ShortsFactory:
                     run_dir / "narration_segments",
                 )
             except RuntimeError as exc:
-                if not recovery_short or "unsafe voice-speed correction" not in str(exc):
+                # A fixed post-render atempo is intentionally capped at +/-5%.
+                # Kokoro can still vary a little by phoneme mix, so retry one
+                # short render with a measured voice-speed adjustment before
+                # rejecting the candidate.  This keeps the voice natural and
+                # avoids spending a whole research cycle on an otherwise good
+                # script whose raw synthesis lands just outside the cap.
+                if (
+                    content_kind != "short"
+                    or channel.id not in {"brain_lens", "ancient_history"}
+                    or "unsafe voice-speed correction" not in str(exc)
+                ):
                     raise
                 measured_duration = self._probe_audio_duration(narration_path)
+                base_speed = 1.0
+                for configured_voice in tts_channel.voices:
+                    voice_text = str(configured_voice)
+                    if not voice_text.lower().startswith("kokoro-"):
+                        continue
+                    _, _, configured_rate = voice_text.partition("@")
+                    try:
+                        base_speed = float(configured_rate or 1.0)
+                    except ValueError:
+                        base_speed = 1.0
+                    break
                 adaptive_speed = self._adaptive_recovery_voice_speed(
                     measured_duration,
-                    base_speed=recovery_speed,
+                    base_speed=base_speed,
                     target_seconds=normalization_target,
                 )
-                if abs(adaptive_speed - recovery_speed) < 0.01:
+                if abs(adaptive_speed - base_speed) < 0.01:
                     raise
                 adaptive_voices = [
                     (
@@ -6039,7 +6388,7 @@ class ShortsFactory:
                 ]
                 self.logger.warning(
                     channel.id,
-                    f"Recovery voice timing measured {measured_duration:.2f}s; "
+                    f"Voice timing measured {measured_duration:.2f}s; "
                     f"retrying Kokoro at {adaptive_speed:.2f}x.",
                 )
                 local_voice, local_durations = synthesize_and_normalize(

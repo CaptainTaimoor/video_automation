@@ -39,7 +39,10 @@
     timeout_seconds: 90
   subtitles:
     enabled: true
-    max_words_per_caption: 4
+    # Six words keeps short captions readable while giving the composer enough
+    # room to keep a subject and its verb together. Four-word cues frequently
+    # stranded prepositions and created artificial "mid-phrase" flashes.
+    max_words_per_caption: 6
   thumbnail:
     enabled: true
     width: 1080

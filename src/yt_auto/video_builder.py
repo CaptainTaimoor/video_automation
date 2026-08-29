@@ -1145,7 +1145,15 @@ class VideoBuilder:
         if duration <= 0:
             raise RuntimeError("audio render duration must be positive")
         duration_text = f"{duration:.3f}"
-        tempo_min, tempo_max = (0.95, 1.05) if self._quality_v2_enabled() else (0.5, 2.0)
+        # Short narration stays within a tight +/-5% correction band.  Long
+        # form quality-v2 pacing may need the same bounded 10% slowdown used by
+        # ``_plan_long_caption_timeline`` to bring a valid 1,080+ word script
+        # into the readable 115-135 WPM range.  Keep the wider floor scoped to
+        # beat-aligned long timing; unplanned/short audio remains strict.
+        if self._quality_v2_enabled() and beat_timing and duration >= 120.0:
+            tempo_min, tempo_max = (0.90, 1.05)
+        else:
+            tempo_min, tempo_max = (0.95, 1.05) if self._quality_v2_enabled() else (0.5, 2.0)
         if not beat_timing:
             if not tempo_min <= float(voice_tempo) <= tempo_max:
                 raise RuntimeError(f"unsafe narration tempo requested: {voice_tempo:.4f}")
@@ -1467,11 +1475,16 @@ class VideoBuilder:
         # least 850 words in the editorial gate.
         pacing_enabled = bool(narration_word_count and narration_word_count >= 850)
         quality_v2 = self._quality_v2_enabled()
+        # Long-form quality v2 targets the same 115-135 WPM band enforced by
+        # the pipeline.  A 10% slow-down ceiling is still natural for Kokoro
+        # and is necessary when the mandated 1,080+ word script starts below
+        # the 480-second profile minimum; a 5% ceiling left valid scripts at
+        # 140+ WPM and caused an avoidable quality hold.
         max_acceleration = 1.05 if quality_v2 else self.MAX_LONG_NARRATION_ACCELERATION
-        max_stretch = 1.05 if quality_v2 else self.MAX_LONG_NARRATION_STRETCH
-        max_beat_stretch = 1.05 if quality_v2 else self.MAX_LONG_BEAT_STRETCH
+        max_stretch = 1.10 if quality_v2 else self.MAX_LONG_NARRATION_STRETCH
+        max_beat_stretch = 1.10 if quality_v2 else self.MAX_LONG_BEAT_STRETCH
         min_wpm = 115.0 if quality_v2 else self.MIN_LONG_NARRATION_WPM
-        max_wpm = 155.0 if quality_v2 else self.MAX_LONG_NARRATION_WPM
+        max_wpm = 135.0 if quality_v2 else self.MAX_LONG_NARRATION_WPM
         if raw_duration > max_duration + 0.001 and not pacing_enabled:
             raise LongCaptionPreflightError(
                 "long caption preflight failed before visual encoding: "

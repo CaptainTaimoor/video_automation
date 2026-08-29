@@ -44,20 +44,21 @@ class CuratedShortPlanTests(unittest.TestCase):
         cls.channels = {channel.id: channel for channel in cls.config.channels}
         cls.writer = ScriptWriter(cls.config.app.script_writer)
 
-    def test_great_zimbabwe_uses_six_scene_evidence_plan(self) -> None:
+    def test_great_zimbabwe_uses_voice_calibrated_evidence_plan(self) -> None:
         polished = self.writer.improve(
             self.channels["ancient_history"],
             candidate("ancient_history", "Great Zimbabwe"),
             content_kind="short",
         )
 
-        self.assertEqual(6, len(polished.scene_plan))
-        self.assertEqual(14, len(polished.narration_beats))
+        self.assertGreaterEqual(len(polished.scene_plan), 6)
+        self.assertLessEqual(len(polished.scene_plan), 12)
+        self.assertEqual(len(polished.scene_plan), len(polished.narration_beats))
         self.assertGreaterEqual(self.writer._word_count(polished.narration), 65)
-        self.assertLessEqual(self.writer._word_count(polished.narration), 100)
+        self.assertLessEqual(self.writer._word_count(polished.narration), 70)
         self.assertLessEqual(
             max(self.writer._word_count(line) for line in polished.narration_beats),
-            6,
+            10,
         )
         narration = polished.narration.lower()
         for fact in (
@@ -71,8 +72,6 @@ class CuratedShortPlanTests(unittest.TestCase):
             "rich gold lands",
             "imported beads and ceramics",
             "broad indian ocean trade",
-            "birds may have marked royal authority",
-            "exact meaning remains unknown",
             "evidence confirms african origins",
         ):
             self.assertIn(fact, narration)
@@ -97,27 +96,29 @@ class CuratedShortPlanTests(unittest.TestCase):
         self.assertEqual(expected, chosen.title)
         self.assertEqual([expected], [variant.title for variant in ranked])
 
-    def test_reply_time_anxiety_uses_eight_bounded_scenes(self) -> None:
+    def test_reply_time_anxiety_uses_voice_calibrated_scenes(self) -> None:
         polished = self.writer.improve(
             self.channels["brain_lens"],
             candidate("brain_lens", "Reply Time Anxiety"),
             content_kind="short",
         )
 
-        self.assertEqual(8, len(polished.scene_plan))
-        self.assertEqual(14, len(polished.narration_beats))
-        self.assertGreaterEqual(self.writer._word_count(polished.narration), 65)
-        self.assertLessEqual(self.writer._word_count(polished.narration), 100)
+        self.assertGreaterEqual(len(polished.scene_plan), 5)
+        self.assertLessEqual(len(polished.scene_plan), 8)
+        self.assertEqual(len(polished.scene_plan), len(polished.narration_beats))
+        self.assertGreaterEqual(self.writer._word_count(polished.narration), 68)
+        self.assertLessEqual(self.writer._word_count(polished.narration), 74)
         self.assertLessEqual(
             max(self.writer._word_count(line) for line in polished.narration_beats),
-            6,
+            13,
         )
+        self.assertIn("appears after a long wait", polished.narration.lower())
+        self.assertNotIn("late on-screen", polished.narration.lower())
         narration = polished.narration.lower()
         for bounded_claim in (
             "one study surveyed 302 partnered undergraduates",
             "reported attachment and messaging patterns",
             "wanted more messages",
-            "wanted more than came",
             "replied faster than partners",
             "associations, not causes",
             "sample limits broad claims",
@@ -166,8 +167,11 @@ class CuratedShortPlanTests(unittest.TestCase):
             "Late Replies and Attachment Anxiety: What One Study Found",
             fallback.title,
         )
-        self.assertEqual(6, len(fallback.scene_plan))
-        self.assertEqual(6, len(fallback.narration_beats))
+        self.assertGreaterEqual(len(fallback.scene_plan), 5)
+        self.assertLessEqual(len(fallback.scene_plan), 8)
+        self.assertEqual(len(fallback.scene_plan), len(fallback.narration_beats))
+        self.assertGreaterEqual(self.writer._word_count(fallback.narration), 68)
+        self.assertLessEqual(self.writer._word_count(fallback.narration), 74)
         self.assertIn("https://pubmed.ncbi.nlm.nih.gov/35085449/", fallback.source_urls)
         self.assertIn(
             "https://www.apa.org/news/press/releases/2018/08/relationship-texting",
@@ -192,8 +196,8 @@ class CuratedShortPlanTests(unittest.TestCase):
         ]
 
         self.assertEqual(20, len(scenes))
-        self.assertGreaterEqual(self.writer._word_count(narration), 850)
-        self.assertLessEqual(self.writer._word_count(narration), 1600)
+        self.assertGreaterEqual(self.writer._word_count(narration), 1080)
+        self.assertLessEqual(self.writer._word_count(narration), 1200)
         self.assertLessEqual(
             max(composer.visible_word_count(caption.text) for caption in captions),
             8,

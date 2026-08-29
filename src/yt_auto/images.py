@@ -50,6 +50,18 @@ class HybridMediaFetcher:
         "lachish_relief,_british_museum_5.jpg": ("CC BY-SA 4.0", "Mike Peel"),
         "the_fall_of_lachish,_king_sennacherib_reviews_judaean_prisoners..jpg": ("CC BY-SA 4.0", "Osama Shukir Muhammed Amin"),
         "lachish_relief,_british_museum_3.jpg": ("CC BY-SA 4.0", "Mike Peel"),
+        "the_north_stelae_park,_axum,_ethiopia_(2812686646).jpg": ("CC BY 2.0", "A. Davey"),
+        "unfinished_obelisk,_axum_(detail)_(3160750074).jpg": ("CC BY 2.0", "A. Davey"),
+        "unfinished_obelisk,_axum_(3160023565).jpg": ("CC BY 2.0", "A. Davey"),
+        "aksum_obelisk.jpg": ("CC BY-SA 4.0", "Tesfawel"),
+        "obelisk_of_aksum_remains6.jpg": ("CC BY-SA 4.0", "Allamiro"),
+        "aksum_quarry_for_obelisks.jpg": ("CC BY 2.0", "Unknown"),
+        "obelisk_of_aksum_remains5.jpg": ("CC BY-SA 4.0", "Allamiro"),
+        "obelisk_of_aksum_remains4.jpg": ("CC BY-SA 4.0", "Allamiro"),
+        "obelisk_of_aksum_remains3.jpg": ("CC BY-SA 4.0", "Allamiro"),
+        "obelisk_of_aksum_remains.jpg": ("CC BY-SA 4.0", "Allamiro"),
+        "obelisk_of_aksum_remains2.jpg": ("CC BY-SA 4.0", "Allamiro"),
+        "aksum,_stele_2_(stele_di_roma)_04.jpg": ("CC BY 3.0", "Sailko"),
     }
 
     def __init__(self, stable_horde_key: str | None = None, pixabay_api_key: str | None = None, pexels_api_key: str | None = None) -> None:
@@ -2663,6 +2675,38 @@ class HybridMediaFetcher:
         return f"asset:{source}:{title}"
 
     @staticmethod
+    def _intrinsic_media_rejection(reason: str) -> bool:
+        """Return true when retrying the same asset cannot change the result.
+
+        A confirmed source-resolution failure belongs to the asset itself.
+        Decode and dimension probes can also fail after a transient download or
+        an exhausted scene deadline, so those remain retryable.
+        """
+        normalized = str(reason or "").strip().lower()
+        return normalized.startswith("source short edge ")
+
+    def _remember_intrinsic_rejection(
+        self,
+        seen_urls: set[str],
+        url: str,
+        meta: Dict[str, str],
+        reason: str,
+    ) -> None:
+        if not self._intrinsic_media_rejection(reason):
+            return
+        if url:
+            seen_urls.add(url)
+            canonical = self._canonical_media_url(url)
+            if canonical:
+                seen_urls.add(canonical)
+        asset_id = self._stable_asset_id(url, meta)
+        if asset_id:
+            seen_urls.add(asset_id)
+        identity = self._asset_content_identity(meta)
+        if identity:
+            seen_urls.add(identity)
+
+    @staticmethod
     def _canonical_media_url(url: str) -> str:
         """Strip volatile query strings so signed CDN URLs dedupe consistently."""
         try:
@@ -3707,6 +3751,12 @@ class HybridMediaFetcher:
                 if relevance is not None and int(relevance.get("score", 0)) < self.local_visual_relevance_min_score:
                     valid, reason = False, f"local relevance score {relevance.get('score')} below {self.local_visual_relevance_min_score}"
                 if not valid:
+                    self._remember_intrinsic_rejection(
+                        seen_urls,
+                        query,
+                        metadata,
+                        reason,
+                    )
                     try:
                         out_path.unlink(missing_ok=True)
                     except OSError:
@@ -4009,6 +4059,12 @@ class HybridMediaFetcher:
                 if relevance is not None and int(relevance.get("score", 0)) < self.local_visual_relevance_min_score:
                     valid, reason = False, f"local relevance score {relevance.get('score')} below {self.local_visual_relevance_min_score}"
                 if not valid:
+                    self._remember_intrinsic_rejection(
+                        seen_urls,
+                        url,
+                        meta,
+                        reason,
+                    )
                     try:
                         out_path.unlink(missing_ok=True)
                     except OSError:

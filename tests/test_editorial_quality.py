@@ -684,8 +684,8 @@ class SourceValidationTests(unittest.TestCase):
         )
         polished = ScriptWriter(config.app.script_writer).improve(channel, candidate, content_kind="short")
         word_count = len(re.findall(r"[A-Za-z0-9']+", polished.narration))
-        self.assertGreaterEqual(word_count, 82)
-        self.assertLessEqual(word_count, 105)
+        self.assertGreaterEqual(word_count, 65)
+        self.assertLessEqual(word_count, 70)
 
     def test_ancient_short_outage_fallback_never_reselects_avoided_subject(self) -> None:
         researcher = ContentResearcher()
@@ -723,6 +723,7 @@ class SourceValidationTests(unittest.TestCase):
         factory._recent_story_fingerprints = Mock(return_value={})
 
         prepared = []
+        errors = []
         for candidate in factory._ancient_short_continuity_fallbacks(channel):
             try:
                 prepared.append(
@@ -732,10 +733,11 @@ class SourceValidationTests(unittest.TestCase):
                         set(),
                     )
                 )
-            except ValueError:
+            except ValueError as exc:
+                errors.append(str(exc))
                 continue
 
-        self.assertEqual(14, len(prepared))
+        self.assertEqual(14, len(prepared), errors)
         continuity_subjects = {
             "nubian pyramids",
             "roman concrete",
@@ -748,8 +750,8 @@ class SourceValidationTests(unittest.TestCase):
         }
         for candidate in prepared:
             words = len(re.findall(r"[A-Za-z0-9']+", candidate.narration))
-            self.assertGreaterEqual(words, 75)
-            self.assertLessEqual(words, 105)
+            self.assertGreaterEqual(words, 65)
+            self.assertLessEqual(words, 70)
             if len(candidate.narration_beats) >= 20 and candidate.subject not in continuity_subjects:
                 self.assertLessEqual(
                     max(len(beat) for beat in candidate.narration_beats),
@@ -757,8 +759,8 @@ class SourceValidationTests(unittest.TestCase):
                 )
             if candidate.subject in continuity_subjects:
                 self.assertLessEqual(
-                    max(len(beat) for beat in candidate.narration_beats),
-                    40,
+                    max(len(re.findall(r"[A-Za-z0-9']+", beat)) for beat in candidate.narration_beats),
+                    10,
                 )
 
     def test_ancient_long_pack_never_counts_generic_context_as_researched_facts(self) -> None:
@@ -972,8 +974,8 @@ class SourceValidationTests(unittest.TestCase):
             )
 
         word_count = len(re.findall(r"[A-Za-z0-9']+", polished.narration))
-        self.assertGreaterEqual(word_count, 82)
-        self.assertLessEqual(word_count, 105)
+        self.assertGreaterEqual(word_count, 65)
+        self.assertLessEqual(word_count, 70)
         lowered = polished.narration.lower()
         self.assertLessEqual(lowered.count("sogdian merchants"), 1)
         concrete_clues = ("ancient letters", "dunhuang", "lingua franca", "afrasia", "gold", "pepper", "murals")
@@ -1377,7 +1379,8 @@ class ScriptEditorialTests(unittest.TestCase):
         lowered = narration.lower()
 
         self.assertEqual(len(plan), 20)
-        self.assertGreaterEqual(len(re.findall(r"[A-Za-z0-9']+", narration)), 1200)
+        self.assertGreaterEqual(len(re.findall(r"[A-Za-z0-9']+", narration)), 1050)
+        self.assertLessEqual(len(re.findall(r"[A-Za-z0-9']+", narration)), 1145)
         self.assertIn("859 arrowheads", narration)
         self.assertIn("counter-ramp", narration)
         self.assertIn("archaeomagnetic", narration)
@@ -1431,7 +1434,8 @@ class ScriptEditorialTests(unittest.TestCase):
         self.assertIsNotNone(first)
         assert first is not None
         self.assertEqual(first.subject, "Micro Flirting")
-        self.assertEqual(len(first.narration_beats), 6)
+        self.assertGreaterEqual(len(first.narration_beats), 5)
+        self.assertLessEqual(len(first.narration_beats), 8)
         self.assertTrue(self.writer._brain_lens_behavior_first(first.hook))
         self.assertEqual(
             self.writer.editorial_quality_issues(
@@ -1440,6 +1444,7 @@ class ScriptEditorialTests(unittest.TestCase):
                 content_kind="short",
             ),
             [],
+            f"hook={first.hook} | narration={first.narration}",
         )
         self.assertTrue(first.source_urls)
 
@@ -1450,7 +1455,8 @@ class ScriptEditorialTests(unittest.TestCase):
         self.assertIsNotNone(second)
         assert second is not None
         self.assertEqual(second.subject, "Reply Time Anxiety")
-        self.assertEqual(len(second.narration_beats), 6)
+        self.assertGreaterEqual(len(second.narration_beats), 5)
+        self.assertLessEqual(len(second.narration_beats), 8)
 
         third = factory._brain_short_deterministic_fallback(
             channel,
@@ -1492,7 +1498,10 @@ class ScriptEditorialTests(unittest.TestCase):
         }
         later_candidates = []
         for _ in range(16):
-            candidate = factory._brain_short_deterministic_fallback(channel, avoided)
+            try:
+                candidate = factory._brain_short_deterministic_fallback(channel, avoided)
+            except ValueError as exc:
+                self.fail(f"fallback {len(later_candidates) + 5} failed after {sorted(avoided)}: {exc}")
             self.assertIsNotNone(candidate)
             assert candidate is not None
             later_candidates.append(candidate)
@@ -1503,22 +1512,27 @@ class ScriptEditorialTests(unittest.TestCase):
         composer = SubtitleComposer(max_words_per_caption=4, max_chars_per_second=100.0)
         title_lab = TitleLab()
         for candidate in (first, second, third, fourth, *later_candidates):
-            self.assertGreaterEqual(len(candidate.narration.split()), 81)
-            self.assertLessEqual(len(candidate.narration.split()), 86)
+            self.assertGreaterEqual(self.writer._word_count(candidate.narration), 68)
+            self.assertLessEqual(self.writer._word_count(candidate.narration), 74)
+            self.assertLessEqual(
+                max(self.writer._word_count(beat) for beat in candidate.narration_beats),
+                14,
+                f"{candidate.title} | beats={candidate.narration_beats}",
+            )
             self.assertTrue(candidate.source_urls, candidate.title)
             self.assertIn(
                 candidate.subject.lower(),
                 factory.topic_planner.research.brain_lens_priority_subjects,
-                candidate.title,
+                f"{candidate.title} | hook={candidate.hook} | narration={candidate.narration}",
             )
             self.assertEqual(
                 [],
                 factory._script_quality_issues(channel, candidate),
-                candidate.title,
+                f"{candidate.title} | hook={candidate.hook} | narration={candidate.narration}",
             )
             self.assertTrue(
                 title_lab.title_contains_search_core(candidate, candidate.title),
-                candidate.title,
+                f"{candidate.title} | hook={candidate.hook} | narration={candidate.narration}",
             )
             self.assertEqual(
                 [],
@@ -1527,7 +1541,7 @@ class ScriptEditorialTests(unittest.TestCase):
                     beats=candidate.narration_beats,
                     content_kind="short",
                 ),
-                candidate.title,
+                f"{candidate.title} | hook={candidate.hook} | narration={candidate.narration}",
             )
             scenes = [
                 SubtitleSegment(index * 20.0, (index + 1) * 20.0, beat)
@@ -1539,16 +1553,29 @@ class ScriptEditorialTests(unittest.TestCase):
     def test_short_narration_target_protects_retention_pacing(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
         self.assertAlmostEqual(
-            factory._short_narration_target_seconds(79),
-            33.38,
+            factory._short_narration_target_seconds(72),
+            34.56,
             places=2,
         )
         self.assertAlmostEqual(
-            79 / (factory._short_narration_target_seconds(79) / 60.0),
-            142.0,
+            72 / (factory._short_narration_target_seconds(72) / 60.0),
+            125.0,
             places=1,
         )
         self.assertEqual(factory._short_narration_target_seconds(90), 35.9)
+
+    def test_brain_short_uses_natural_120_wpm_target(self) -> None:
+        factory = ShortsFactory.__new__(ShortsFactory)
+        self.assertEqual(factory._short_channel_target_wpm("ancient_history"), 115.0)
+        self.assertEqual(factory._short_channel_target_wpm("brain_lens"), 120.0)
+        self.assertEqual(factory._short_channel_target_wpm("other"), 125.0)
+        target = factory._short_narration_target_seconds(
+            72,
+            maximum_seconds=35.98,
+            target_wpm=factory._short_channel_target_wpm("brain_lens"),
+        )
+        self.assertEqual(target, 35.98)
+        self.assertLessEqual(37.70 / target, 1.05)
 
     def test_short_narration_target_preserves_caption_readability(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
@@ -1739,8 +1766,8 @@ class ScriptEditorialTests(unittest.TestCase):
 
         self.assertEqual(len(plan), 20)
         self.assertEqual(len({scene.visual_text for scene in plan}), 20)
-        self.assertGreaterEqual(word_count, 1450)
-        self.assertLessEqual(word_count, 1520)
+        self.assertGreaterEqual(word_count, 1080)
+        self.assertLessEqual(word_count, 1200)
         self.assertIn("phone", plan[0].narration.lower())
         self.assertTrue(
             any(
@@ -1776,7 +1803,8 @@ class ScriptEditorialTests(unittest.TestCase):
                 len(re.findall(r"[A-Za-z0-9']+", scene.narration))
                 for scene in variant_plan
             )
-            self.assertLessEqual(variant_words, 1520, subject)
+            self.assertGreaterEqual(variant_words, 1080, subject)
+            self.assertLessEqual(variant_words, 1200, subject)
             variant_script = " ".join(scene.narration for scene in variant_plan).lower()
             self.assertNotIn(f"{subject.lower()} is leaving", variant_script)
             self.assertNotIn(f"if {subject.lower()} is linked", variant_script)
@@ -1954,12 +1982,38 @@ class ScriptEditorialTests(unittest.TestCase):
         middle = " ".join(polished.narration_beats[1:-1]).lower()
 
         self.assertIn(" while ", middle)
+        self.assertTrue(polished.narration_beats[0].endswith("stone palaces."))
+        self.assertNotIn("shows remarkable.", polished.narration.lower())
+        self.assertTrue(
+            all(self.writer._bad_ai_line_issue(beat) is None for beat in polished.narration_beats)
+        )
         self.assertFalse(
             any(
                 "lacks a midpoint" in issue
                 for issue in self.writer.editorial_quality_issues(polished, content_kind="short")
             )
         )
+
+    def test_incomplete_descriptive_claim_is_rejected(self) -> None:
+        self.assertEqual(
+            self.writer._bad_ai_line_issue("The monument field shows remarkable."),
+            "line ends on an incomplete descriptive claim",
+        )
+
+    def test_short_scene_split_keeps_purpose_complement(self) -> None:
+        scene = ScenePlanItem(
+            narration=(
+                "At Axum, carved doors and window-like tiers turned monumental stone "
+                "into a public claim of royal power."
+            ),
+            visual_text="Axum carved doors",
+        )
+        pieces = self.writer._split_complete_short_scene(scene, max_words=10)
+        self.assertEqual(
+            [scene.narration],
+            [piece.narration for piece in pieces],
+        )
+        self.assertIn("into a public claim of royal power", pieces[0].narration)
 
     def test_nubian_pyramids_get_specific_facts_queries_and_payoff(self) -> None:
         researcher = ContentResearcher()

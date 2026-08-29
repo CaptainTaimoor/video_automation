@@ -141,8 +141,8 @@ class EditorialGate:
         clean_title = normalize_text(title)
         clean_narration = normalize_text(narration)
         words = clean_narration.split()
-        minimum = 70 if content_kind == "short" else 900
-        maximum = 180 if content_kind == "short" else 1800
+        minimum = 65 if content_kind == "short" else 1050
+        maximum = 180 if content_kind == "short" else 1200
         if not title.strip():
             issues.append("missing title")
         if len(words) < minimum or len(words) > maximum:

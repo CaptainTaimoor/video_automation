@@ -365,6 +365,36 @@ class VisualPipelineTests(unittest.TestCase):
             self.assertFalse(valid)
             self.assertIn("below 720px", reason)
 
+    def test_low_resolution_rejection_is_remembered_without_caching_transient_failures(self) -> None:
+        fetcher = HybridMediaFetcher()
+        url = "https://upload.wikimedia.org/thumb/Small.jpg?token=one"
+        meta = {
+            "source": "wikimedia",
+            "asset_title": "Small archive image",
+            "source_page": "https://commons.wikimedia.org/wiki/File:Small.jpg",
+        }
+        seen: set[str] = set()
+
+        fetcher._remember_intrinsic_rejection(
+            seen,
+            url,
+            meta,
+            "source short edge 576px is below 720px",
+        )
+
+        self.assertIn(url, seen)
+        self.assertIn(fetcher._canonical_media_url(url), seen)
+        self.assertIn(fetcher._stable_asset_id(url, meta), seen)
+
+        retryable: set[str] = set()
+        fetcher._remember_intrinsic_rejection(
+            retryable,
+            url,
+            meta,
+            "unreadable media after download timeout",
+        )
+        self.assertEqual(set(), retryable)
+
     def test_resolution_and_provenance_are_recorded(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "good.jpg"
