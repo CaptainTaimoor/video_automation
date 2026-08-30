@@ -92,6 +92,7 @@ class ChannelConfig:
     presenter: PresenterConfig = field(default_factory=PresenterConfig)
     shorts: ContentProfile = field(default_factory=lambda: ContentProfile(True, [], 30, 60, (1080, 1920)))
     videos: ContentProfile = field(default_factory=lambda: ContentProfile(False, [], 180, 600, (1920, 1080)))
+    background_music_enabled: bool = True
     daily_upload_cap: int = 0
     # Additional FB-specific scheduling
     schedule_interval_hours: int | None = None

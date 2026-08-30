@@ -7,6 +7,7 @@ from enum import Enum
 import hashlib
 import re
 from typing import Iterable
+from urllib.parse import unquote, urlparse, urlunsplit
 
 
 class RightsStatus(str, Enum):
@@ -42,6 +43,76 @@ class SceneVisualPlan:
     visual_purpose: str = ""
 
 
+def visual_asset_signatures(
+    source_url: str = "",
+    asset_id: str = "",
+    source_page: str = "",
+) -> set[str]:
+    """Return stable identities for one visual across provider URL variants.
+
+    Stock providers commonly return a different CDN rendition URL for the same
+    underlying photo or video. Exact URL comparison therefore misses reuse.
+    """
+
+    signatures: set[str] = set()
+    explicit_id = str(asset_id or "").strip().lower()
+    if explicit_id:
+        signatures.add(explicit_id)
+        match = re.fullmatch(r"pexels_video:(\d+)", explicit_id)
+        if match:
+            signatures.add(f"pexels:{match.group(1)}")
+
+    for value in (source_url, source_page):
+        raw = str(value or "").strip()
+        if not raw:
+            continue
+        signatures.add(raw)
+        try:
+            parsed = urlparse(raw)
+            canonical = urlunsplit(
+                (parsed.scheme.lower(), parsed.netloc.lower(), parsed.path, "", "")
+            )
+            if canonical:
+                signatures.add(canonical)
+            searchable = unquote(parsed.path).lower()
+            host = parsed.netloc.lower()
+        except Exception:
+            searchable = unquote(raw).lower()
+            host = ""
+
+        if "pexels" in host or "pexels" in searchable:
+            video_match = re.search(r"/video-files/(\d+)(?:/|$)", searchable)
+            if video_match is None:
+                video_match = re.search(r"/video/(?:[^/?#]*-)?(\d+)(?:/|$)", searchable)
+            if video_match:
+                provider_id = video_match.group(1)
+                signatures.add(f"pexels_video:{provider_id}")
+                signatures.add(f"pexels:{provider_id}")
+
+            photo_match = re.search(r"/photos/(\d+)(?:/|$)", searchable)
+            if photo_match is None:
+                photo_match = re.search(r"pexels-photo-(\d+)", searchable)
+            if photo_match is None:
+                photo_match = re.search(r"/photo/(?:[^/?#]*-)?(\d+)(?:/|$)", searchable)
+            if photo_match:
+                signatures.add(f"pexels_photo:{photo_match.group(1)}")
+
+        if "pixabay" in host or "pixabay" in searchable:
+            pixabay_match = re.search(
+                r"/(?:photos|videos)/(?:[^/?#]*-)?(\d+)(?:/|$)",
+                searchable,
+            )
+            if pixabay_match:
+                signatures.add(f"pixabay:{pixabay_match.group(1)}")
+
+        if "wikimedia" in host:
+            filename_match = re.search(r"/([^/]+\.(?:jpg|jpeg|png|webp))(?:/|$)", searchable)
+            if filename_match:
+                signatures.add(f"wikimedia:{filename_match.group(1)}")
+
+    return signatures
+
+
 _ALLOWED = (
     "cc0",
     "public domain",
@@ -49,6 +120,9 @@ _ALLOWED = (
     "pdm",
     "cc by",
     "cc-by",
+    # Wikimedia Commons uses this exact label for public-domain/no-terms
+    # records supplied by institutional libraries.
+    "no restrictions",
     "pexels license",
     "pixabay license",
 )

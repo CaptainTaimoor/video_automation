@@ -24,6 +24,7 @@ from yt_auto.local_presenter import LocalPresenterService
 from yt_auto.models import BuildArtifacts, ChannelConfig, ContentProfile, ScenePlanItem, TopicCandidate
 from yt_auto.quality_v2.service import QualityV2Service
 from yt_auto.quality_v2.state import content_hash
+from yt_auto.quality_v2.visuals import visual_asset_signatures
 from yt_auto.research import SourceSafeResearchExhaustedError
 from yt_auto.script_writer import ScriptWriter
 from yt_auto.seo import build_youtube_metadata
@@ -75,6 +76,22 @@ class ShortsFactory:
     ANCIENT_LONG_WORD_RANGE = (1050, 1145)
     BRAIN_LONG_WORD_RANGE = (1080, 1200)
 
+    @staticmethod
+    def _quality_modes_from_environment() -> tuple[bool, bool, bool]:
+        truthy = {"1", "true", "yes", "on"}
+        quality_v3 = str(os.getenv("YT_QUALITY_V3", "0")).lower() in truthy
+        quality_v2 = quality_v3 or str(os.getenv("YT_QUALITY_V2", "0")).lower() in truthy
+        enforce_value = os.getenv("YT_QUALITY_V2_ENFORCE")
+        enforce = quality_v3 or (
+            quality_v2
+            and (
+                True
+                if enforce_value is None
+                else str(enforce_value).lower() in truthy
+            )
+        )
+        return quality_v3, quality_v2, enforce
+
     def __init__(self, config_path: Path) -> None:
         self.dotenv_load_warning = _load_optional_dotenv()
         if self.dotenv_load_warning:
@@ -85,12 +102,11 @@ class ShortsFactory:
         self.title_lab = TitleLab()
         self.topic_planner = TopicPlanner(timezone=self.config.app.timezone)
         self.script_writer = ScriptWriter(self.config.app.script_writer)
-        self.quality_v2_enabled = str(os.getenv("YT_QUALITY_V2", "0")).lower() in {
-            "1", "true", "yes", "on"
-        }
-        self.quality_v2_enforce = str(os.getenv("YT_QUALITY_V2_ENFORCE", "0")).lower() in {
-            "1", "true", "yes", "on"
-        }
+        (
+            self.quality_v3_enabled,
+            self.quality_v2_enabled,
+            self.quality_v2_enforce,
+        ) = self._quality_modes_from_environment()
         self.quality_v2 = (
             QualityV2Service(self.config.app.state_dir)
             if self.quality_v2_enabled
@@ -102,6 +118,7 @@ class ShortsFactory:
             stable_horde_key=os.getenv("STABLE_HORDE_KEY", ""),
             pixabay_api_key=os.getenv("PIXABAY_API_KEY", ""),
             pexels_api_key=os.getenv("PEXELS_API_KEY", ""),
+            state_path=self.config.app.state_dir / "runs.jsonl",
         )
         self.video_builder = VideoBuilder(
             min_duration=self.config.app.min_duration_seconds,
@@ -249,6 +266,31 @@ class ShortsFactory:
     def _channel_music_dir(self, channel: ChannelConfig) -> Path:
         channel_dir = self.config.app.music_dir / channel.id
         return channel_dir if channel_dir.exists() else self.config.app.music_dir
+
+    def _music_dir_for_build(self, channel: ChannelConfig, run_dir: Path) -> Path:
+        """Return an empty per-run path when the channel uses voice-first audio."""
+        if bool(getattr(channel, "background_music_enabled", True)):
+            return self._channel_music_dir(channel)
+        return run_dir / "_background_music_disabled"
+
+    def _synthesize_narration_beats(
+        self,
+        voice_engine: NarrationEngine,
+        beats: list[str],
+        segment_dir: Path,
+        narration_path: Path,
+    ) -> tuple[str, list[float]]:
+        if getattr(self, "quality_v3_enabled", False):
+            return voice_engine.synthesize_beats_continuous(
+                beats=beats,
+                out_dir=segment_dir,
+                out_path=narration_path,
+            )
+        return voice_engine.synthesize_beats(
+            beats=beats,
+            out_dir=segment_dir,
+            out_path=narration_path,
+        )
 
     def _run_dir(self, channel: ChannelConfig, content_kind: str = "short") -> Path:
         now = now_in_tz(self.config.app.timezone)
@@ -470,6 +512,93 @@ class ShortsFactory:
                 raise ValueError(message)
             self.logger.warning(channel.id, message + " (shadow mode)")
         return report
+
+    @staticmethod
+    def _apply_quality_v2_holds(
+        quality_review: dict,
+        editorial_report: dict | None,
+        visual_report: dict | None,
+    ) -> dict:
+        """Make deterministic holds authoritative in every rollout mode.
+
+        Shadow mode may control when a candidate is rejected early, but it must
+        never let the legacy scorer describe a known-bad final render as a pass.
+        """
+        review = quality_review
+        held = False
+        for label, report, subscore in (
+            ("Editorial originality", editorial_report or {}, "script"),
+            ("Visual reuse", visual_report or {}, "visuals"),
+        ):
+            if report.get("approved", True):
+                continue
+            held = True
+            report_issues = [
+                str(issue).strip()
+                for issue in report.get("issues", [])
+                if str(issue).strip()
+            ] or [f"{label} gate did not approve the candidate"]
+            prefixed = [f"Quality V2 {label}: {issue}" for issue in report_issues]
+            review["issues"] = list(dict.fromkeys([
+                *review.get("issues", []),
+                *prefixed,
+            ]))
+            review["blocking_issues"] = list(dict.fromkeys([
+                *review.get("blocking_issues", []),
+                *prefixed,
+            ]))
+            current = int(review.get("subscores", {}).get(subscore, 100))
+            review.setdefault("subscores", {})[subscore] = min(current, 35)
+        if held:
+            review["decision"] = "hold"
+            review["score"] = min(int(review.get("score", 0)), 69)
+        return review
+
+    @staticmethod
+    def _quality_v3_script_provider_issue(
+        channel_id: str,
+        content_kind: str,
+        candidate: TopicCandidate,
+    ) -> str | None:
+        if (
+            channel_id == "brain_lens"
+            and content_kind == "video"
+            and not str(candidate.script_provider or "").strip()
+        ):
+            return (
+                "Brain Lens long-form requires a model-authored script; "
+                "the repetitive deterministic outage template is disabled in Quality V3."
+            )
+        return None
+
+    @staticmethod
+    def _background_music_report(channel: ChannelConfig, music_value: str) -> dict:
+        enabled = bool(getattr(channel, "background_music_enabled", True))
+        music_path = Path(music_value) if str(music_value or "").strip() else None
+        present = bool(music_path and music_path.exists())
+        if not enabled:
+            return {
+                "approved": True,
+                "enabled": False,
+                "present": present,
+                "strength": "clean voice-first mix without looped background music",
+                "issue": "",
+            }
+        if present:
+            return {
+                "approved": True,
+                "enabled": True,
+                "present": True,
+                "strength": "channel-specific original music mixed",
+                "issue": "",
+            }
+        return {
+            "approved": False,
+            "enabled": True,
+            "present": False,
+            "strength": "",
+            "issue": "no verified background music mix",
+        }
 
     def _upload_state_path(self) -> Path:
         return self.config.app.state_dir / "upload_state.json"
@@ -737,11 +866,32 @@ class ShortsFactory:
         """
         if run.get("uploaded") is True:
             return True
-        return bool(
+        if bool(
             str(run.get("youtube_id") or "").strip()
             or str(run.get("youtube_video_id") or "").strip()
             or str(run.get("facebook_id") or "").strip()
-        )
+        ):
+            return True
+        run_dir_value = str(run.get("run_dir") or "").strip()
+        if not run_dir_value:
+            return False
+        run_dir = Path(run_dir_value).expanduser()
+        for evidence_name in ("youtube_upload_receipt.json", "metadata.json"):
+            try:
+                evidence = json.loads((run_dir / evidence_name).read_text(encoding="utf-8-sig"))
+            except Exception:
+                continue
+            if any(
+                str(evidence.get(key) or "").strip()
+                for key in (
+                    "youtube_id",
+                    "youtube_video_id",
+                    "facebook_id",
+                    "facebook_video_id",
+                )
+            ):
+                return True
+        return False
 
     def _recent_titles(self, channel_id: str, limit: int = 150) -> set[str]:
         runs = self._read_run_log()
@@ -1131,27 +1281,15 @@ class ShortsFactory:
         return None
 
     def _visual_signatures(self, url: str) -> set[str]:
-        raw = (url or "").strip()
-        if not raw:
-            return set()
-        signatures = {raw}
-        low = raw.lower()
-        pexels_match = re.search(r"/video-files/(\d+)/", low)
-        if pexels_match:
-            signatures.add(f"pexels:{pexels_match.group(1)}")
-        pixabay_match = re.search(r"/get/([^/?]+)", low)
-        if pixabay_match:
-            signatures.add(f"pixabay:{pixabay_match.group(1)}")
-        wikimedia_match = re.search(r"/([^/]+\.(?:jpg|jpeg|png|webp))(?:\?|$)", low)
-        if "wikimedia" in low and wikimedia_match:
-            signatures.add(f"wikimedia:{wikimedia_match.group(1)}")
-        return signatures
+        return visual_asset_signatures(source_url=url)
 
     def _recent_visual_urls(self, channel_id: str, run_limit: int = 24) -> set[str]:
         urls: set[str] = set()
         checked_runs = 0
         for run in reversed(self._read_run_log()):
             # Global: don't filter by channel_id
+            if not self._run_counts_as_published(run):
+                continue
             run_dir = Path(str(run.get("run_dir") or "")).expanduser()
             sources_path = run_dir / "sources.json"
             if not sources_path.exists():
@@ -1159,9 +1297,13 @@ class ShortsFactory:
             try:
                 sources = json.loads(sources_path.read_text(encoding="utf-8"))
                 for item in sources:
-                    url = str(item.get("url") or "").strip()
-                    if url:
-                        urls.update(self._visual_signatures(url))
+                    urls.update(
+                        visual_asset_signatures(
+                            source_url=str(item.get("url") or ""),
+                            asset_id=str(item.get("asset_id") or ""),
+                            source_page=str(item.get("source_page") or ""),
+                        )
+                    )
             except Exception:
                 continue
             checked_runs += 1
@@ -1843,6 +1985,11 @@ class ShortsFactory:
                 for item in sources
                 if str(item.get("source") or "").strip().lower() == "local_fact_card"
             )
+            if fact_card_count and getattr(self, "quality_v3_enabled", False):
+                return (
+                    f"Ancient Short contains {fact_card_count} local fact-card fallback(s); "
+                    "V3 requires real or licensed documentary visuals"
+                )
             if fact_card_count > self.ANCIENT_SHORT_MAX_FACT_CARD_FALLBACKS:
                 return (
                     f"Ancient Short contains {fact_card_count} local fact-card fallback(s); "
@@ -2491,7 +2638,7 @@ class ShortsFactory:
                 "Apology Follow-Through",
                 "Apology Follow-Through: What Changes After the Words",
                 (
-                    "Their apology sounds beautiful. The real test comes later. Does the same harm return?",
+                    "They give you a beautiful apology. The real test comes later. Does the same harm return?",
                     "A useful apology names the action. It recognizes the impact. You should not comfort them.",
                     "Behavior must change afterward. Perfect improvement remains unrealistic. Sincere effort should become visible.",
                     "Watch for defensive replies. Notice repeated excuses. Late apologies can signal panic.",
@@ -3249,12 +3396,16 @@ class ShortsFactory:
                 content_kind="short",
             )
         else:
+            short_beat_limit = 7 if (
+                channel.id == "ancient_history"
+                and "chichen itza" in str(candidate.subject or candidate.title).lower()
+            ) else 10
             polished = self._fit_short_candidate_word_budget(
                 candidate,
                 minimum_words=65,
                 maximum_words=70,
                 target_words=68,
-                max_beat_words=10,
+                max_beat_words=short_beat_limit,
             )
         self._validate_topic_quality(channel, polished, recent_titles)
         return polished
@@ -3295,6 +3446,62 @@ class ShortsFactory:
                 if overlap >= 0.48:
                     return "long video sections reuse too much identical wording"
         return None
+
+    @staticmethod
+    def _quality_v3_audio_report(
+        channel_id: str,
+        content_kind: str,
+        narration_path: Path,
+        word_count: int,
+    ) -> dict:
+        """Measure perceived pace from active speech, not padded video length."""
+        if not narration_path.exists():
+            return {
+                "approved": False,
+                "issues": ["continuous PCM narration file is missing"],
+                "metrics": {},
+            }
+        try:
+            from yt_auto.quality_v2.audio import analyze_pcm_wav
+
+            measured = analyze_pcm_wav(narration_path, word_count=word_count)
+            metrics = asdict(measured)
+        except Exception as exc:
+            return {
+                "approved": False,
+                "issues": [f"continuous narration analysis failed: {exc}"],
+                "metrics": {},
+            }
+
+        is_long = content_kind == "video"
+        active_limits = {
+            "ancient_history": (130.0, 160.0) if is_long else (135.0, 165.0),
+            "brain_lens": (140.0, 165.0),
+        }.get(channel_id, (130.0, 165.0))
+        # Edge's single continuous stream keeps natural sentence-boundary
+        # pauses.  A short can therefore sit just above the old 31% ceiling
+        # without sounding empty; retain a stricter cap for long-form edits.
+        silence_limits = (0.04, 0.34 if not is_long else 0.31)
+        active_wpm = float(metrics.get("active_speech_wpm") or 0.0)
+        silence_ratio = float(metrics.get("silence_ratio") or 0.0)
+        issues: list[str] = []
+        if not active_limits[0] <= active_wpm <= active_limits[1]:
+            issues.append(
+                f"active-speech pace is {active_wpm:.1f} WPM; "
+                f"target is {active_limits[0]:.0f}-{active_limits[1]:.0f}"
+            )
+        if not silence_limits[0] <= silence_ratio <= silence_limits[1]:
+            issues.append(
+                f"narration silence ratio is {silence_ratio:.1%}; "
+                f"target is {silence_limits[0]:.0%}-{silence_limits[1]:.0%}"
+            )
+        return {
+            "approved": not issues,
+            "issues": issues,
+            "metrics": metrics,
+            "active_wpm_limits": list(active_limits),
+            "silence_ratio_limits": list(silence_limits),
+        }
 
     def _quality_review(
         self,
@@ -3382,11 +3589,15 @@ class ShortsFactory:
             strengths.append("healthy narration length")
 
         if content_kind == "video":
-            if not (470 <= duration_seconds <= 620):
-                issues.append("duration outside 8-10 minute long-video target")
+            long_min = max(420, int(channel.videos.min_duration_seconds))
+            long_max = int(channel.videos.max_duration_seconds) + 20
+            if not (long_min <= duration_seconds <= long_max):
+                issues.append(
+                    f"duration outside natural {long_min}-{long_max} second long-video target"
+                )
                 score -= 14
             else:
-                strengths.append("8-10 minute long-video target")
+                strengths.append("natural 7-10 minute long-video target")
         elif channel.id == "brain_lens":
             topic_lines = list(topic.narration_beats or [])
             if not topic_lines and topic.narration:
@@ -3442,13 +3653,13 @@ class ShortsFactory:
             if opener and not (opener.startswith(concrete_starts) or any(cue in opener for cue in concrete_cues)):
                 issues.append("Brain Lens opener is abstract instead of behavior-first")
                 score -= 18
-            if not (33 <= duration_seconds <= 36.5):
+            if not (35 <= duration_seconds <= 40.5):
                 issues.append("duration outside Brain Lens winning range")
                 score -= 12
             else:
                 strengths.append("Brain Lens duration sweet spot")
         elif channel.id == "ancient_history":
-            if not (32 <= duration_seconds <= 36.5):
+            if not (34 <= duration_seconds <= 40.5):
                 issues.append("duration outside Ancient History winning range")
                 score -= 10
             else:
@@ -3785,16 +3996,17 @@ class ShortsFactory:
             strengths.append(f"verified {configured_backend} voice render")
 
         music_value = str(metadata.get("music_file") or "").strip()
-        music_path = Path(music_value) if music_value else None
-        music_ok = bool(music_path and music_path.exists())
-        if not music_ok:
-            music_issue = "no verified background music mix"
+        music_report = self._background_music_report(channel, music_value)
+        music_ok = bool(music_report.get("present", False))
+        music_enabled = bool(music_report.get("enabled", True))
+        if not music_report.get("approved", False):
+            music_issue = str(music_report.get("issue") or "no verified background music mix")
             if music_issue not in issues:
                 issues.append(music_issue)
             blocking_issues.append(music_issue)
             score -= 14
         else:
-            strengths.append("channel-specific original music mixed")
+            strengths.append(str(music_report.get("strength") or "verified audio mix"))
 
         visual_asset_count = max(len(sources), int(metadata.get("visual_asset_count") or 0))
         unique_visual_urls = {
@@ -4146,33 +4358,86 @@ class ShortsFactory:
                 blocking_issues.append(formatted)
             score -= min(30, 6 * len(caption_track_issues))
 
+        # V3 measures the speaking portion of the PCM track, not the natural
+        # pauses between short sentences.  Use that active-speech rate for the
+        # pacing gate; the old gross word/minute calculation incorrectly held
+        # healthy voice-first Shorts with deliberate pauses.
+        narration_audio_report: dict = {}
+        if getattr(self, "quality_v3_enabled", False):
+            narration_audio_report = self._quality_v3_audio_report(
+                channel.id,
+                content_kind,
+                video_path.parent / "narration.wav",
+                word_count,
+            )
+
         if duration_seconds > 0:
             narration_wpm = round(word_count / (duration_seconds / 60.0), 1)
+            pacing_wpm = narration_wpm
+            v3_metrics = narration_audio_report.get("metrics") or {}
+            v3_active_wpm = float(v3_metrics.get("active_speech_wpm") or 0.0)
+            if v3_active_wpm > 0.0:
+                # Always use the measured active-speech pace when PCM analysis
+                # completed, including a held result. Falling back to gross
+                # duration here reports a misleading second pace failure for
+                # otherwise natural narration with intentional pauses.
+                pacing_wpm = round(v3_active_wpm, 1)
+                narration_wpm = pacing_wpm
             pacing_scope = "long-video " if content_kind == "video" else ""
-            brain_limits = (115, 135) if content_kind == "video" else (115, 155)
-            ancient_limits = (110, 130) if content_kind == "video" else (110, 150)
-            if channel.id == "brain_lens" and not (brain_limits[0] <= narration_wpm <= brain_limits[1]):
+            # V3's active-speech metric is the authoritative pace check.  The
+            # legacy gross-duration ranges counted intentional sentence pauses
+            # as if they were slow delivery and could hold an otherwise clean
+            # voice-first render.  Keep the legacy ranges only when V3 is off.
+            if v3_active_wpm > 0.0:
+                v3_limits = narration_audio_report.get("active_wpm_limits") or []
+                try:
+                    v3_low, v3_high = float(v3_limits[0]), float(v3_limits[1])
+                except (TypeError, ValueError, IndexError):
+                    v3_low, v3_high = (130.0, 165.0)
+                brain_limits = (v3_low, v3_high)
+                ancient_limits = (v3_low, v3_high)
+            else:
+                brain_limits = (120, 150) if content_kind == "video" else (115, 155)
+                ancient_limits = (115, 145) if content_kind == "video" else (110, 150)
+            if channel.id == "brain_lens" and not (brain_limits[0] <= pacing_wpm <= brain_limits[1]):
                 pacing_issue = (
-                    f"Brain Lens {pacing_scope}narration pacing is {narration_wpm} WPM; "
+                    f"Brain Lens {pacing_scope}narration pacing is {pacing_wpm} WPM; "
                     f"target is {brain_limits[0]}-{brain_limits[1]}"
                 )
                 if pacing_issue not in issues:
                     issues.append(pacing_issue)
                 blocking_issues.append(pacing_issue)
                 score -= 18
-            elif channel.id == "ancient_history" and not (ancient_limits[0] <= narration_wpm <= ancient_limits[1]):
+            elif channel.id == "ancient_history" and not (ancient_limits[0] <= pacing_wpm <= ancient_limits[1]):
                 pacing_issue = (
-                    f"Ancient History {pacing_scope}narration pacing is {narration_wpm} WPM; "
+                    f"Ancient History {pacing_scope}narration pacing is {pacing_wpm} WPM; "
                     f"target is {ancient_limits[0]}-{ancient_limits[1]}"
                 )
                 if pacing_issue not in issues:
                     issues.append(pacing_issue)
                 blocking_issues.append(pacing_issue)
                 score -= 18
-            elif 110 <= narration_wpm <= 155:
-                strengths.append(f"natural narration pace ({narration_wpm} WPM)")
+            elif 110 <= pacing_wpm <= 155:
+                strengths.append(f"natural narration pace ({pacing_wpm} WPM)")
         else:
             narration_wpm = 0.0
+
+        if getattr(self, "quality_v3_enabled", False):
+            if narration_audio_report.get("approved", False):
+                metrics = narration_audio_report.get("metrics", {})
+                strengths.append(
+                    "continuous narration pace verified "
+                    f"({float(metrics.get('active_speech_wpm') or 0.0):.1f} active WPM)"
+                )
+            else:
+                audio_issues = [
+                    f"Narration delivery: {str(issue).strip()}"
+                    for issue in narration_audio_report.get("issues", [])
+                    if str(issue).strip()
+                ] or ["Narration delivery gate did not approve the audio"]
+                issues.extend(audio_issues)
+                blocking_issues.extend(audio_issues)
+                score -= 24
 
         script_subscore = 100
         if title_issue:
@@ -4185,6 +4450,8 @@ class ShortsFactory:
         if thumbnail_quality_issues:
             script_subscore -= min(24, 12 * len(thumbnail_quality_issues))
         voice_subscore = 100 if voice_matches else 25
+        if narration_audio_report and not narration_audio_report.get("approved", False):
+            voice_subscore = min(voice_subscore, 35)
         visual_subscore = 100
         if real_sources == 0:
             visual_subscore -= 55
@@ -4231,12 +4498,21 @@ class ShortsFactory:
         else:
             if caption_max_words > (8 if content_kind == "video" else 6):
                 captions_subscore -= 40
-            if caption_average_words > (6.4 if content_kind == "video" else 4.8):
+            caption_average_limit = (
+                6.4
+                if content_kind == "video"
+                else (5.8 if channel.id == "ancient_history" else 4.8)
+            )
+            if caption_average_words > caption_average_limit:
                 captions_subscore -= 18
             captions_subscore -= min(18, orphan_captions * 6)
             captions_subscore -= min(36, awkward_captions * 12)
             captions_subscore -= min(50, len(caption_track_issues) * 15)
-        audio_subscore = 100 if music_ok and voice_matches else (55 if voice_matches else 25)
+        audio_subscore = (
+            100
+            if voice_matches and (music_ok or not music_enabled)
+            else (55 if voice_matches else 25)
+        )
         subscores = {
             "script": max(0, script_subscore),
             "voice": max(0, voice_subscore),
@@ -4300,6 +4576,7 @@ class ShortsFactory:
             "visual_timeline_entries": len(visual_timeline),
             "duration_seconds": round(duration_seconds, 2),
             "narration_wpm": narration_wpm,
+            "narration_audio": narration_audio_report,
             "caption_max_words": caption_max_words,
             "caption_average_words": caption_average_words,
             "title": title,
@@ -5852,6 +6129,7 @@ class ShortsFactory:
         ranked_variants = []
         topic_score_review: dict = {}
         quality_v2_reports: dict[str, dict] = {}
+        quality_v2_visual_reports: dict[str, dict] = {}
         scored_candidates: list[tuple[float, dict, TopicCandidate, list[TitleVariant]]] = []
         candidate_pool_size = max(1, int(getattr(self.config.app, "candidate_pool_size", 4) or 4))
         if channel.id == "brain_lens" and content_kind == "short":
@@ -5947,6 +6225,17 @@ class ShortsFactory:
                         avoid_titles=avoid_titles,
                         dna=dna,
                     )
+                provider_issue = (
+                    self._quality_v3_script_provider_issue(
+                        channel.id,
+                        content_kind,
+                        candidate,
+                    )
+                    if getattr(self, "quality_v3_enabled", False)
+                    else None
+                )
+                if provider_issue:
+                    raise ValueError(provider_issue)
                 candidate = replace(
                     candidate,
                     source_urls=self.topic_planner.research.enrich_source_urls(
@@ -6144,7 +6433,7 @@ class ShortsFactory:
             image_count = (
                 min(24, max(16, len(candidate.scene_plan or [])))
                 if content_kind == "video"
-                else 12
+                else min(14, max(10, len(candidate.scene_plan or [])))
             )
             candidate_images, candidate_sources, fetch_issue = self._fetch_candidate_visuals(
                 topic=candidate,
@@ -6182,6 +6471,21 @@ class ShortsFactory:
                 shutil.rmtree(candidate_run_dir, ignore_errors=True)
                 continue
 
+            try:
+                quality_v2_visual_reports[candidate.title] = self._quality_v2_visual_report(
+                    channel,
+                    candidate,
+                    candidate_sources,
+                )
+            except ValueError as exc:
+                last_visual_issue = str(exc)
+                self.logger.warning(
+                    channel.id,
+                    f"Visual reuse gate rejected candidate {asset_index + 1}/{len(asset_candidates)}: {exc}",
+                )
+                shutil.rmtree(candidate_run_dir, ignore_errors=True)
+                continue
+
             topic = candidate
             topic_score_review = review
             ranked_variants = variants
@@ -6204,11 +6508,13 @@ class ShortsFactory:
         selected_quality_v2_report = quality_v2_reports.get(topic.title)
         if selected_quality_v2_report is None:
             selected_quality_v2_report = self._quality_v2_candidate_report(channel, topic)
-        selected_quality_v2_visual_report = self._quality_v2_visual_report(
-            channel,
-            topic,
-            sources,
-        )
+        selected_quality_v2_visual_report = quality_v2_visual_reports.get(topic.title)
+        if selected_quality_v2_visual_report is None:
+            selected_quality_v2_visual_report = self._quality_v2_visual_report(
+                channel,
+                topic,
+                sources,
+            )
         if quality_v2 is not None:
             editorial_key = content_hash(
                 topic.title,
@@ -6320,17 +6626,38 @@ class ShortsFactory:
                 selected_channel: ChannelConfig,
                 segment_dir: Path,
             ) -> tuple[str, list[float]]:
+                channel_rate_env = (
+                    "YT_BRAIN_EDGE_TTS_RATE"
+                    if selected_channel.id == "brain_lens"
+                    else "YT_ANCIENT_EDGE_TTS_RATE"
+                )
+                edge_rate = os.getenv(channel_rate_env) or os.getenv("YT_EDGE_TTS_RATE")
+                if not edge_rate:
+                    # Brain Lens benefits from a calmer delivery; Ancient
+                    # History keeps the slightly brisk documentary rate that
+                    # fits 68-word Shorts without cutting narration.
+                    edge_rate = "-7%" if selected_channel.id == "brain_lens" else "+2%"
                 voice_engine = NarrationEngine(
                     selected_channel.voices,
                     selected_channel.voice_mode,
                     getattr(selected_channel, "tts_backend", ""),
+                    edge_rate=edge_rate,
+                    compact_beat_pauses=(
+                        getattr(self, "quality_v3_enabled", False)
+                        and selected_channel.id == "brain_lens"
+                    ),
                 )
-                voice_id, durations = voice_engine.synthesize_beats(
-                    beats=beats,
-                    out_dir=segment_dir,
-                    out_path=narration_path,
+                voice_id, durations = self._synthesize_narration_beats(
+                    voice_engine,
+                    beats,
+                    segment_dir,
+                    narration_path,
                 )
-                if content_kind == "short" and channel.id in {"brain_lens", "ancient_history"}:
+                if (
+                    not getattr(self, "quality_v3_enabled", False)
+                    and content_kind == "short"
+                    and channel.id in {"brain_lens", "ancient_history"}
+                ):
                     durations, _ = self._normalize_short_narration_duration(
                         channel.id,
                         narration_path,
@@ -6398,7 +6725,7 @@ class ShortsFactory:
             local_duration = self.video_builder.build(
                 image_paths=images,
                 narration_path=narration_path,
-                music_dir=self._channel_music_dir(channel),
+                music_dir=self._music_dir_for_build(channel, run_dir),
                 out_path=video_path,
                 narration_text=topic.narration,
                 subtitles_path=run_dir / "subtitles.srt",
@@ -6461,7 +6788,7 @@ class ShortsFactory:
                     duration = self.video_builder.build(
                         image_paths=images,
                         narration_path=heygen_audio_path,
-                        music_dir=self._channel_music_dir(channel),
+                        music_dir=self._music_dir_for_build(channel, run_dir),
                         out_path=video_path,
                         narration_text=topic.narration,
                         subtitles_path=run_dir / "subtitles.srt",
@@ -6598,6 +6925,11 @@ class ShortsFactory:
             duration_seconds=float(duration),
             video_path=video_path,
         )
+        quality_review = self._apply_quality_v2_holds(
+            quality_review,
+            selected_quality_v2_report,
+            selected_quality_v2_visual_report,
+        )
         if final_visual_qa.get("status") != "pass":
             final_visual_issues = [
                 f"Final render QA: {str(issue).strip()}"
@@ -6628,6 +6960,8 @@ class ShortsFactory:
         metadata["quality_score"] = quality_review["score"]
         metadata["quality_decision"] = quality_review["decision"]
         metadata["quality_subscores"] = quality_review.get("subscores", {})
+        if getattr(self, "quality_v3_enabled", False):
+            metadata["quality_v3_audio"] = quality_review.get("narration_audio", {})
         if quality_v2:
             metadata["quality_v2_editorial"] = selected_quality_v2_report
             metadata["quality_v2_visuals"] = selected_quality_v2_visual_report

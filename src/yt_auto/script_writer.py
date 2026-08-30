@@ -687,7 +687,7 @@ class ScriptWriter:
             )
 
         cue_markers = (
-            " but ", " because ", " instead ", " so ", " yet ", " while ", " then ",
+            " but ", " because ", " instead ", " meanwhile", " so ", " yet ", " while ", " then ",
             " which ", " prove", " trace", " confirm", " reveal", " not ", " limit",
             " vary", "association",
         )
@@ -1572,7 +1572,7 @@ class ScriptWriter:
             if not any(
                 cue in middle
                 for cue in (
-                    " but ", " because ", " instead ", " so ", " yet ",
+                    " but ", " because ", " instead ", " meanwhile", " so ", " yet ",
                     " while ", " then ", " which ", " prove", " trace",
                     " confirm", " reveal", " not ", " limit", " vary", "association",
                 )
@@ -1899,6 +1899,87 @@ class ScriptWriter:
                 ("Its fragments remain beside chambers today.", "FRAGMENTS STILL REMAIN", ["Axum obelisk remains underground chambers"]),
                 ("Stelae made royal memory visible publicly.", "ROYAL MEMORY IN STONE", ["Axum stelae monument field"]),
                 ("Axum stelae signaled power across Ethiopia.", "POWER ACROSS ETHIOPIA", ["Axum stelae Ethiopia heritage"]),
+            ]
+        if channel.id == "ancient_history" and "chichen itza" in topic_blob:
+            # Chichen's cenote and ball-court evidence are easy to lose when
+            # Commons search is throttled. These are stable Wikimedia Commons
+            # files selected for the exact authored beats; search remains the
+            # fallback if a file is temporarily unavailable.
+            preferred_urls = [
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Chichen_Itza_3.jpg/1280px-Chichen_Itza_3.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/0/0f/Chichen_Itza_1998_on_El_Castillo.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/Chichen_Itza_2.jpg/1920px-Chichen_Itza_2.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/El_Castillo-Templo_de_Kukulkan%2C_Chichen_Itza%2C_1923.tif/lossy-page1-1920px-El_Castillo-Templo_de_Kukulkan%2C_Chichen_Itza%2C_1923.tif.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Great_Ball_Court_Chichen_Itza_03_2011_1427.jpg/1280px-Great_Ball_Court_Chichen_Itza_03_2011_1427.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Ballgame_sacrifice_relief%2C_Chichen_Itza.jpg/1280px-Ballgame_sacrifice_relief%2C_Chichen_Itza.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/Sacred_Cenote_Chichen_Itza.JPG/1280px-Sacred_Cenote_Chichen_Itza.JPG",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Chichen-Itza-32-Cenote-1980-gje.jpg/1280px-Chichen-Itza-32-Cenote-1980-gje.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b4/Ceremonial_Way_between_El_Castillo_and_El_Cenote%2C_Chichen_Itza%2C_1924.tif/lossy-page1-1280px-Ceremonial_Way_between_El_Castillo_and_El_Cenote%2C_1924.tif.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/Chichen_Itza_JuegoPelota_Relieve.jpg/1280px-Chichen_Itza_JuegoPelota_Relieve.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/5/53/Jade_Recovered_from_Sacred_Cenote%2C_Chichen_Itza.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/c/c9/Panorama-_Chichen_Itza%2C_Yucatan%2C_Mexico_%288338607460%29.jpg",
+            ]
+            specs = [
+                (
+                    "Chichen Itza made Maya power visible.",
+                    "CHICHEN ITZA MADE POWER VISIBLE",
+                    ["Chichen Itza archaeological site aerial Yucatan"],
+                ),
+                (
+                    "El Castillo dominated the plaza.",
+                    "EL CASTILLO DOMINATED THE PLAZA",
+                    ["El Castillo Chichen Itza"],
+                ),
+                (
+                    "But stairways reached its summit temple.",
+                    "STAIRWAYS TO THE SUMMIT TEMPLE",
+                    ["El Castillo Chichen Itza stairway summit temple"],
+                ),
+                (
+                    "The plaza staged sacred public ceremony.",
+                    "THE PLAZA STAGED CEREMONY",
+                    ["Chichen Itza central plaza ceremony architecture"],
+                ),
+                (
+                    "The Great Ball Court linked play.",
+                    "THE GREAT BALL COURT LINKED PLAY",
+                    ["Great Ball Court Chichen Itza"],
+                ),
+                (
+                    "Carved reliefs show ritual sacrifice.",
+                    "CARVED RELIEFS SHOW SACRIFICE",
+                    ["Great Ball Court Chichen Itza relief"],
+                ),
+                (
+                    "Pilgrims brought valuables to Sacred Cenote.",
+                    "PILGRIMS BROUGHT CENOTE OFFERINGS",
+                    ["Sacred Cenote Chichen Itza offerings"],
+                ),
+                (
+                    "Human remains were also recovered there.",
+                    "HUMAN REMAINS RECOVERED THERE",
+                    ["Sacred Cenote Chichen Itza human remains"],
+                ),
+                (
+                    "Stone geometry guided movement.",
+                    "STONE GEOMETRY GUIDED MOVEMENT",
+                    ["Chichen Itza plaza architecture stone geometry"],
+                ),
+                (
+                    "Ceremony turned spectacle into authority.",
+                    "CEREMONY TURNED SPECTACLE INTO AUTHORITY",
+                    ["Chichen Itza ceremonial architecture plaza"],
+                ),
+                (
+                    "Cenote offerings connected distant pilgrims to ritual.",
+                    "OFFERINGS CONNECTED PILGRIMS TO RITUAL",
+                    ["Sacred Cenote Chichen Itza offerings ritual"],
+                ),
+                (
+                    "Together, Chichen Itza made authority visible.",
+                    "MONUMENTS MADE AUTHORITY VISIBLE",
+                    ["Chichen Itza archaeological site panorama Yucatan"],
+                ),
             ]
         if channel.id == "ancient_history" and "great zimbabwe" in topic_blob:
             specs = [
@@ -3768,7 +3849,7 @@ class ScriptWriter:
                 has_turn = any(
                     cue in middle_text
                     for cue in (
-                        " but ", " because ", " instead ", " meanwhile ", " so ",
+                        " but ", " because ", " instead ", " meanwhile", " so ",
                         " yet ", " while ", " prove", " trace", " confirm", " reveal",
                         " not ", " limit", " vary", "association",
                     )
@@ -3807,12 +3888,13 @@ class ScriptWriter:
                 content_kind=content_kind,
             )
             if channel.id == "ancient_history":
+                curated_beat_limit = 7 if "chichen itza" in f"{topic.subject} {topic.title}".lower() else 10
                 return self._fit_short_candidate_word_budget(
                     topic,
                     minimum_words=self._ANCIENT_SHORT_MIN_WORDS,
                     maximum_words=self._ANCIENT_SHORT_MAX_WORDS,
                     target_words=self._ANCIENT_SHORT_TARGET_WORDS,
-                    max_beat_words=10,
+                    max_beat_words=curated_beat_limit,
                 )
             return self._fit_short_candidate_word_budget(
                 topic,

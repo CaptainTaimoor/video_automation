@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import difflib
 import json
+import math
 import os
 import random
 import re
@@ -11,6 +14,7 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+import wave
 from pathlib import Path
 from typing import List
 
@@ -23,10 +27,27 @@ except Exception:  # YAML pronunciations are optional.
 
 
 class NarrationEngine:
-    def __init__(self, voices: List[str], voice_mode: str = "mix", backend_preference: str = "") -> None:
+    # Keep the continuous voice close to its natural cadence.  A small positive
+    # rate correction leaves room for sentence-boundary pauses while keeping a
+    # 65-70 word Short below the 40-second hard ceiling.  We refuse to trim
+    # narration after synthesis, so this is safer than a post-render stretch.
+    EDGE_NARRATION_RATE = "+2%"
+
+    def __init__(
+        self,
+        voices: List[str],
+        voice_mode: str = "mix",
+        backend_preference: str = "",
+        edge_rate: str | None = None,
+        compact_beat_pauses: bool = False,
+    ) -> None:
         self.voices = voices or ["en-US-JennyNeural"]
         self.voice_mode = (voice_mode or "mix").lower()
         self.backend_preference = (backend_preference or os.getenv("YT_TTS_BACKEND") or "edge").strip().lower()
+        self.edge_rate = str(edge_rate or os.getenv("YT_EDGE_TTS_RATE") or self.EDGE_NARRATION_RATE).strip()
+        if not re.fullmatch(r"[+-]\d+(?:\.\d+)?%", self.edge_rate):
+            self.edge_rate = self.EDGE_NARRATION_RATE
+        self.compact_beat_pauses = bool(compact_beat_pauses)
         self.piper_executable = self._default_piper_executable()
         self.piper_model = self._default_piper_model()
         self.piper_config = self._default_piper_config()
@@ -196,11 +217,137 @@ class NarrationEngine:
         communicate = edge_tts.Communicate(
             text=text,
             voice=voice,
-            rate="-6%",
+            rate=self.edge_rate,
             pitch="+0Hz",
             volume="+0%",
         )
         await communicate.save(str(out_path))
+
+    @staticmethod
+    def _is_uncompressed_pcm_wav(path: Path) -> bool:
+        try:
+            with wave.open(str(path), "rb") as source:
+                return (
+                    source.getcomptype() == "NONE"
+                    and source.getnchannels() > 0
+                    and source.getframerate() > 0
+                    and source.getsampwidth() in {1, 2, 3, 4}
+                )
+        except (OSError, EOFError, wave.Error):
+            return False
+
+    def _transcode_to_pcm_wav(self, source_path: Path, out_path: Path) -> None:
+        """Atomically decode any supported audio input to a real PCM WAV."""
+
+        try:
+            import imageio_ffmpeg
+
+            ffmpeg_executable = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            ffmpeg_executable = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+        if not ffmpeg_executable:
+            raise RuntimeError("FFmpeg is required to convert Edge narration to PCM WAV.")
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{out_path.stem}.pcm-",
+            suffix=".wav",
+            dir=str(out_path.parent),
+        )
+        os.close(descriptor)
+        temporary_path = Path(temporary_name)
+        try:
+            result = subprocess.run(
+                [
+                    str(ffmpeg_executable),
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(source_path),
+                    "-vn",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(temporary_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode != 0 or not self._is_uncompressed_pcm_wav(temporary_path):
+                detail = (result.stderr or "FFmpeg produced no valid PCM WAV").strip()
+                raise RuntimeError(f"Could not convert narration to PCM WAV: {detail}")
+            temporary_path.replace(out_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    def _ensure_pcm_wav(self, path: Path) -> None:
+        if path.suffix.lower() != ".wav" or self._is_uncompressed_pcm_wav(path):
+            return
+        self._transcode_to_pcm_wav(path, path)
+
+    def _render_edge_continuous(self, text: str, out_path: Path, voice: str) -> list[dict]:
+        """Stream one Edge narration while retaining its word timestamps.
+
+        ``edge_tts`` may split very long input internally to satisfy the service
+        limit, but a caller still gets one ``Communicate`` stream and one audio
+        file.  Writing beside the destination and replacing it only after a
+        complete stream prevents a failed request from leaving publishable-
+        looking partial narration behind.
+        """
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{out_path.stem}.edge-",
+            suffix=f"{out_path.suffix or '.mp3'}.part",
+            dir=str(out_path.parent),
+        )
+        os.close(descriptor)
+        temporary_path = Path(temporary_name)
+        word_boundaries: list[dict] = []
+
+        try:
+            async def stream_to_file() -> None:
+                communicate = edge_tts.Communicate(
+                    text=text,
+                    voice=voice,
+                    rate=self.edge_rate,
+                    pitch="+0Hz",
+                    volume="+0%",
+                    boundary="WordBoundary",
+                )
+                with temporary_path.open("wb") as audio_file:
+                    async for message in communicate.stream():
+                        if message.get("type") == "audio":
+                            data = message.get("data")
+                            if data:
+                                audio_file.write(data)
+                        elif message.get("type") == "WordBoundary":
+                            word_boundaries.append(dict(message))
+
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                asyncio.run(stream_to_file())
+            else:
+                # This is a synchronous public API, but it is occasionally
+                # invoked from notebook/service code that already owns an event
+                # loop.  Run Edge in a worker rather than nesting asyncio.run.
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    executor.submit(asyncio.run, stream_to_file()).result()
+
+            if not temporary_path.exists() or temporary_path.stat().st_size <= 0:
+                raise RuntimeError("Edge TTS returned no narration audio.")
+            if out_path.suffix.lower() == ".wav":
+                self._transcode_to_pcm_wav(temporary_path, out_path)
+                temporary_path.unlink(missing_ok=True)
+            else:
+                temporary_path.replace(out_path)
+            return word_boundaries
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
 
     def _render_piper(self, text: str, out_path: Path) -> bool:
         if not self.piper_executable or not self.piper_executable.exists():
@@ -461,6 +608,287 @@ class NarrationEngine:
         if durations[-1] < 0.6:
             durations[-1] = 0.6
         return durations
+
+    @staticmethod
+    def _timing_tokens(text: str) -> list[str]:
+        return [
+            token.casefold().replace("\u2019", "'")
+            for token in re.findall(r"[^\W_]+(?:['\u2019][^\W_]+)*", text or "", flags=re.UNICODE)
+        ]
+
+    @staticmethod
+    def _audio_duration_seconds(path: Path) -> float:
+        clip = AudioFileClip(str(path))
+        try:
+            duration = float(clip.duration)
+        finally:
+            clip.close()
+        if not math.isfinite(duration) or duration <= 0:
+            raise RuntimeError(f"Narration audio has an invalid duration: {duration!r}")
+        return duration
+
+    def _continuous_estimated_durations(self, beats: List[str], total_duration: float) -> List[float]:
+        """Allocate an exact audio duration without imposing impossible minima."""
+
+        if not beats:
+            return []
+        if not math.isfinite(total_duration) or total_duration <= 0:
+            raise RuntimeError("Continuous narration duration must be positive.")
+
+        weights: list[float] = []
+        for beat in beats:
+            words = self._timing_tokens(beat)
+            punctuation_bonus = (
+                (beat.count(",") * 0.18)
+                + (beat.count(";") * 0.28)
+                + (beat.count(":") * 0.18)
+                + (0.55 if beat.rstrip().endswith((".", "!", "?")) else 0.0)
+            )
+            weights.append(max(1.0, len(words) + punctuation_bonus))
+
+        total_weight = sum(weights)
+        durations = [total_duration * (weight / total_weight) for weight in weights]
+        # Make the invariant exact even after floating-point division.  Consumers
+        # build a cumulative scene timeline from this list.
+        durations[-1] = total_duration - sum(durations[:-1])
+        return durations
+
+    def _durations_from_edge_boundaries(
+        self,
+        beats: List[str],
+        word_boundaries: list[dict],
+        total_duration: float,
+    ) -> List[float]:
+        """Map Edge word events back to beats, falling back on safe estimates.
+
+        Edge offsets are 100-nanosecond ticks.  Exact token alignment is used
+        when possible; a proportional event index handles harmless tokenizer
+        differences (for example, a service splitting a contraction).  Any
+        missing, non-monotonic, or out-of-range timing data fails closed to an
+        exact-total text estimate instead of returning a corrupt scene clock.
+        """
+
+        estimated = self._continuous_estimated_durations(beats, total_duration)
+        if len(beats) <= 1:
+            return [total_duration] if beats else []
+
+        events: list[tuple[float, list[str]]] = []
+        for boundary in word_boundaries:
+            try:
+                offset = float(boundary.get("offset")) / 10_000_000.0
+            except (TypeError, ValueError):
+                continue
+            tokens = self._timing_tokens(str(boundary.get("text") or ""))
+            if math.isfinite(offset) and offset >= 0 and tokens:
+                events.append((offset, tokens))
+        if not events:
+            return estimated
+
+        # Metadata is expected in order, but sorting protects the public method
+        # from a malformed/mock transport without changing valid Edge output.
+        events.sort(key=lambda item: item[0])
+        expected_tokens: list[str] = []
+        beat_starts: list[int] = []
+        for beat in beats:
+            beat_starts.append(len(expected_tokens))
+            expected_tokens.extend(self._timing_tokens(beat))
+        if not expected_tokens or any(start >= len(expected_tokens) for start in beat_starts):
+            return estimated
+
+        observed_tokens: list[str] = []
+        observed_event_indexes: list[int] = []
+        for event_index, (_, tokens) in enumerate(events):
+            observed_tokens.extend(tokens)
+            observed_event_indexes.extend([event_index] * len(tokens))
+        if not observed_tokens:
+            return estimated
+
+        expected_to_event: dict[int, int] = {}
+        matcher = difflib.SequenceMatcher(
+            a=expected_tokens,
+            b=observed_tokens,
+            autojunk=False,
+        )
+        matched_tokens = 0
+        for block in matcher.get_matching_blocks():
+            for token_offset in range(block.size):
+                expected_index = block.a + token_offset
+                observed_index = block.b + token_offset
+                expected_to_event[expected_index] = observed_event_indexes[observed_index]
+                matched_tokens += 1
+
+        direct_alignment_is_reliable = matched_tokens >= max(1, min(len(expected_tokens), len(observed_tokens)) // 2)
+        timing_starts = [0.0]
+        for expected_start in beat_starts[1:]:
+            event_index: int | None = None
+            if direct_alignment_is_reliable:
+                event_index = expected_to_event.get(expected_start)
+                if event_index is None:
+                    prior = [index for index in expected_to_event if index < expected_start]
+                    following = [index for index in expected_to_event if index > expected_start]
+                    if prior and following:
+                        prior_expected = max(prior)
+                        following_expected = min(following)
+                        prior_event = expected_to_event[prior_expected]
+                        following_event = expected_to_event[following_expected]
+                        fraction = (expected_start - prior_expected) / (following_expected - prior_expected)
+                        event_index = round(prior_event + ((following_event - prior_event) * fraction))
+
+            if event_index is None:
+                fraction = expected_start / float(len(expected_tokens))
+                event_index = min(len(events) - 1, round(fraction * len(events)))
+            event_index = max(0, min(len(events) - 1, event_index))
+            timing_starts.append(events[event_index][0])
+
+        if any(
+            not (0.0 < timing_starts[index] < total_duration)
+            or timing_starts[index] <= timing_starts[index - 1]
+            for index in range(1, len(timing_starts))
+        ):
+            return estimated
+
+        durations = [
+            timing_starts[index + 1] - timing_starts[index]
+            for index in range(len(timing_starts) - 1)
+        ]
+        durations.append(total_duration - timing_starts[-1])
+        if any(duration <= 0 or not math.isfinite(duration) for duration in durations):
+            return estimated
+        durations[-1] = total_duration - sum(durations[:-1])
+        return durations
+
+    def synthesize_beats_continuous(
+        self,
+        beats: List[str],
+        out_dir: Path,
+        out_path: Path,
+    ) -> tuple[str, List[float]]:
+        """Synthesize all beats as one performance and return their durations.
+
+        Edge is rendered through one ``Communicate`` stream so its real word
+        timestamps can anchor beat boundaries.  Explicit HTTP, Kokoro, Piper,
+        and offline preferences also receive the complete story in one call;
+        their timings are estimated from the exact final file duration because
+        those backends do not expose portable word alignment metadata.
+        """
+
+        clean_beats: list[str] = []
+        for beat in beats:
+            normalized = self._normalize_text(str(beat or ""))
+            if normalized:
+                clean_beats.append(normalized)
+        if not clean_beats:
+            raise RuntimeError("Narration beat list was empty.")
+
+        out_dir = Path(out_dir)
+        out_path = Path(out_path)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.compact_beat_pauses and len(clean_beats) > 1:
+            # A period between every authored beat makes Edge insert long,
+            # repeated pauses.  Keep sentence punctuation inside each beat,
+            # but use a light comma at beat boundaries so the read remains
+            # continuous while visual timing still comes from word events.
+            boundary_safe = [beat.rstrip(" .!?;,:…") for beat in clean_beats]
+            continuous_text = ", ".join(boundary_safe[:-1]) + ". " + boundary_safe[-1]
+        else:
+            continuous_text = " ".join(clean_beats)
+        edge_voices = [
+            str(voice)
+            for voice in self.voices
+            if not str(voice).lower().startswith("kokoro-")
+        ]
+        if edge_voices:
+            target_voice = random.choice(edge_voices) if self.voice_mode == "mix" else edge_voices[0]
+        else:
+            target_voice = self._pick_voice()
+        configured_kokoro = next(
+            (
+                f"kokoro-{self.kokoro_voice}"
+                for voice in self.voices
+                if str(voice).lower().startswith("kokoro-")
+            ),
+            "",
+        )
+        word_boundaries: list[dict] = []
+
+        edge_controlled_preferences = {
+            "http",
+            "api",
+            "local-api",
+            "kokoro",
+            "chatterbox",
+            "piper",
+            "local",
+            "offline",
+        }
+        if self.backend_preference not in edge_controlled_preferences and edge_voices:
+            try:
+                word_boundaries = self._render_edge_continuous(
+                    text=continuous_text,
+                    out_path=out_path,
+                    voice=target_voice,
+                )
+                backend_id = target_voice
+            except Exception as edge_error:
+                backend_id = ""
+                fallback_errors: list[Exception] = [edge_error]
+                fallback_ids = [
+                    fallback_id
+                    for fallback_id in (
+                        configured_kokoro,
+                        "piper-en_US-lessac-medium",
+                        "offline-pyttsx3",
+                    )
+                    if fallback_id
+                ]
+                for fallback_id in fallback_ids:
+                    try:
+                        backend_id = self._render_with_backend(
+                            text=continuous_text,
+                            out_path=out_path,
+                            target_voice=target_voice,
+                            backend_id=fallback_id,
+                        )
+                        break
+                    except Exception as fallback_error:
+                        fallback_errors.append(fallback_error)
+                if not backend_id:
+                    raise RuntimeError(
+                        "Continuous narration failed with Edge TTS and all local fallbacks."
+                    ) from fallback_errors[-1]
+        elif self.backend_preference not in edge_controlled_preferences and configured_kokoro:
+            # A voice list containing only a Kokoro marker has no valid Edge
+            # voice to send to the service.  Keep the story continuous and use
+            # that explicitly configured local voice directly.
+            backend_id = self._render_with_backend(
+                text=continuous_text,
+                out_path=out_path,
+                target_voice=target_voice,
+                backend_id=configured_kokoro,
+            )
+        else:
+            # Existing preference and fallback policy is preserved, but receives
+            # one complete story rather than one request per beat.
+            backend_id = self._render_with_backend(
+                text=continuous_text,
+                out_path=out_path,
+                target_voice=target_voice,
+            )
+
+        self._ensure_pcm_wav(out_path)
+        total_duration = self._audio_duration_seconds(out_path)
+        if word_boundaries:
+            durations = self._durations_from_edge_boundaries(
+                clean_beats,
+                word_boundaries,
+                total_duration,
+            )
+        else:
+            durations = self._continuous_estimated_durations(clean_beats, total_duration)
+
+        (out_dir / "beats.txt").write_text("\n".join(clean_beats), encoding="utf-8")
+        return backend_id, durations
 
     def synthesize_beats(
         self,

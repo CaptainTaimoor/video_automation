@@ -93,8 +93,8 @@ channels:
           - "11:20"
           - "15:20"
           - "19:20"
-        min_duration_seconds: 32
-        max_duration_seconds: 36
+        min_duration_seconds: 34
+        max_duration_seconds: 40
         target_width: 1080
         target_height: 1920
       videos:
@@ -102,14 +102,16 @@ channels:
         schedule_times:
           - "10:30"
           - "22:30"
-        min_duration_seconds: 480
+        min_duration_seconds: 420
         max_duration_seconds: 600
         target_width: 1920
         target_height: 1080
     voice_mode: single
-    tts_backend: kokoro
+    tts_backend: edge
     voices:
+      - en-GB-RyanNeural
       - kokoro-bm_george@1.00
+    background_music_enabled: false
     visual_style: documentary
     viral_dna_channels:
       - https://www.youtube.com/@HistoryMarche
@@ -185,8 +187,8 @@ channels:
           - "13:20"
           - "16:00"
           - "21:20"
-        min_duration_seconds: 33
-        max_duration_seconds: 36
+        min_duration_seconds: 35
+        max_duration_seconds: 40
         target_width: 1080
         target_height: 1920
       videos:
@@ -194,14 +196,16 @@ channels:
         schedule_times:
           - "11:30"
           - "23:30"
-        min_duration_seconds: 480
+        min_duration_seconds: 420
         max_duration_seconds: 600
         target_width: 1920
         target_height: 1080
     voice_mode: single
-    tts_backend: kokoro
+    tts_backend: edge
     voices:
+      - en-US-AriaNeural
       - kokoro-af_heart@1.00
+    background_music_enabled: false
     visual_style: stock
     viral_dna_channels:
       - https://www.youtube.com/@psych2go

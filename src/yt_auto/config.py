@@ -225,6 +225,7 @@ def load_config(path: Path) -> AppConfig:
             ),
             shorts=shorts,
             videos=videos,
+            background_music_enabled=bool(c.get("background_music_enabled", True)),
             daily_upload_cap=int(c.get("daily_upload_cap", 0)),
             schedule_interval_hours=c.get("schedule_interval_hours"),
             backlog_schedule_interval_minutes=c.get("backlog_schedule_interval_minutes"),

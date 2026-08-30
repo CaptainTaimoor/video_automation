@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import sys
 import unittest
@@ -1550,6 +1551,23 @@ class ScriptEditorialTests(unittest.TestCase):
             captions = composer.caption_segments_from_scene_segments(scenes)
             self.assertEqual([], composer.quality_issues(captions), candidate.title)
 
+    def test_apology_fallback_opens_with_visible_behavior(self) -> None:
+        config = load_config(ROOT / "config" / "settings.yaml")
+        channel = next(item for item in config.channels if item.id == "brain_lens")
+        factory = ShortsFactory.__new__(ShortsFactory)
+        factory.config = config
+        factory.image_fetcher = HybridMediaFetcher()
+        factory.topic_planner = TopicPlanner(timezone="UTC")
+
+        with patch.dict(os.environ, {"YT_FORCE_BRAIN_SUBJECT": "apology"}):
+            candidate = factory._brain_short_deterministic_fallback(channel, set())
+
+        self.assertIsNotNone(candidate)
+        assert candidate is not None
+        self.assertEqual("Apology Follow-Through", candidate.subject)
+        self.assertTrue(candidate.hook.lower().startswith("they "))
+        self.assertIsNone(factory._opening_hook_issue(candidate))
+
     def test_short_narration_target_protects_retention_pacing(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
         self.assertAlmostEqual(
@@ -1987,6 +2005,41 @@ class ScriptEditorialTests(unittest.TestCase):
         self.assertTrue(
             all(self.writer._bad_ai_line_issue(beat) is None for beat in polished.narration_beats)
         )
+        self.assertFalse(
+            any(
+                "lacks a midpoint" in issue
+                for issue in self.writer.editorial_quality_issues(polished, content_kind="short")
+            )
+        )
+
+    def test_chichen_short_covers_each_promised_clue_with_a_midpoint_turn(self) -> None:
+        config = load_config(ROOT / "config" / "settings.yaml")
+        channel = next(item for item in config.channels if item.id == "ancient_history")
+        researcher = ContentResearcher()
+        facts = researcher._curated_history_short_facts("Chichen Itza")
+        candidate = topic(
+            niche_id="ancient_history",
+            title="Inside Chichen Itza: El Castillo, the Great Ball Court, and Sacred Cenote",
+            subject="Chichen Itza",
+            content_kind="short",
+            scene_plan=[
+                ScenePlanItem(narration="Chichen Itza", visual_text="Chichen Itza"),
+                *[
+                    ScenePlanItem(narration=fact, visual_text=fact)
+                    for fact in facts
+                ],
+                ScenePlanItem(narration="Chichen Itza", visual_text="Chichen Itza"),
+            ],
+        )
+
+        polished = self.writer._polish_scene_plan(channel, candidate, content_kind="short")
+        middle = " ".join(polished.narration_beats[1:-1]).lower()
+
+        self.assertIn(" but ", f" {middle} ")
+        self.assertIn("sacred cenote", polished.narration.lower())
+        self.assertIn("human remains", polished.narration.lower())
+        self.assertGreaterEqual(self.writer._word_count(polished.narration), 65)
+        self.assertLessEqual(self.writer._word_count(polished.narration), 70)
         self.assertFalse(
             any(
                 "lacks a midpoint" in issue

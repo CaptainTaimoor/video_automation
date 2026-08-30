@@ -28,6 +28,14 @@ class VisualQualityTests(unittest.TestCase):
         )
         self.assertIs(RightsStatus.REJECTED, validate_rights(record))
 
+    def test_rights_policy_accepts_wikimedia_no_restrictions_label(self):
+        record = AssetRecord(
+            asset_id="wikimedia:institutional-panorama",
+            source_url="https://commons.wikimedia.org/wiki/File:Panorama.jpg",
+            rights="No restrictions",
+        )
+        self.assertIs(RightsStatus.ALLOWED, validate_rights(record))
+
     def test_history_rejects_exact_reuse(self):
         old = AssetRecord("old", "https://example.test/old", "CC0", checksum="abc")
         decision = VisualHistory([old]).evaluate(AssetRecord("new", "https://example.test/new", "CC0", checksum="abc"))

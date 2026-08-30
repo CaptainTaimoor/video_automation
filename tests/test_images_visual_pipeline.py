@@ -319,6 +319,106 @@ class VisualPipelineTests(unittest.TestCase):
 
         self.assertEqual("affection", action)
 
+    def test_context_does_not_trigger_phone_or_text_intent(self) -> None:
+        fetcher = HybridMediaFetcher()
+        scene = "The relationship context changes how you interpret one ambiguous cue."
+
+        self.assertFalse(fetcher._brain_scene_mentions_phone(scene))
+        self.assertEqual(
+            "adult couple face to face relationship conversation daytime realistic",
+            fetcher._brain_short_relationship_context_query(scene),
+        )
+        self.assertNotEqual(
+            "phone",
+            fetcher._brain_action_cluster("", {"asset_title": "relationship context"}),
+        )
+        self.assertTrue(
+            fetcher._asset_matches_scene_intent(
+                "brain_lens",
+                scene,
+                "",
+                {"asset_title": "adult couple discussing an ambiguous signal"},
+            )
+        )
+
+    def test_relationship_topic_classifier_covers_education_categories(self) -> None:
+        fetcher = HybridMediaFetcher()
+        cases = (
+            "How conflict repair works after a rupture",
+            "Emotional regulation before a difficult talk",
+            "Building emotional safety without mind reading",
+            "When to see a couples therapist",
+            "Why mutual conversation changes the pattern",
+        )
+
+        for title in cases:
+            with self.subTest(title=title):
+                self.assertTrue(fetcher._is_brain_relationship_topic(title))
+        self.assertFalse(fetcher._is_brain_relationship_topic("A software update adds context"))
+
+    def test_relationship_shot_plan_uses_a_supporting_intent_not_a_duplicate(self) -> None:
+        shots = HybridMediaFetcher._brain_relationship_shot_queries(
+            "They leave the message unanswered, so you keep checking your phone."
+        )
+
+        self.assertEqual([role for role, _ in shots], ["primary_action", "supporting_context"])
+        self.assertIn("phone message", shots[0][1])
+        self.assertIn("phone face down", shots[1][1])
+        self.assertNotEqual(shots[0][1], shots[1][1])
+
+    def test_brain_episode_allows_recurring_artist_after_source_quality_checks(self) -> None:
+        fetcher = HybridMediaFetcher()
+        candidate = (
+            "https://videos.example/repair-scene-3.mp4",
+            {
+                "source": "pexels_video",
+                "source_page": "https://www.pexels.com/video/repair-scene-3/",
+                "source_page_verified": "true",
+                "license": "Pexels license",
+                "artist": "recurring cast artist",
+                "asset_title": "adult couple in a calm conflict repair conversation",
+                "asset_id": "pexels_video:repair-scene-3",
+                "is_video": "true",
+                "media_width": "1920",
+                "media_height": "1080",
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            fetcher,
+            "_pexels_video_search",
+            return_value=[candidate],
+        ), patch.object(fetcher, "_pexels_photo_search", return_value=[]), patch.object(
+            fetcher,
+            "_pixabay_search",
+            return_value=[],
+        ), patch.object(fetcher, "_download", return_value=True), patch.object(
+            fetcher,
+            "_validate_downloaded_media",
+            return_value=(True, ""),
+        ), patch.object(fetcher, "_media_perceptual_hash", return_value="abc123"), patch.object(
+            fetcher,
+            "_local_visual_relevance",
+            return_value=None,
+        ):
+            result = fetcher._download_candidate(
+                query="adult couple conflict repair conversation",
+                raw_dir=Path(tmp),
+                sequence=3,
+                seen_urls=set(),
+                niche_id="brain_lens",
+                subject="Conflict Repair",
+                content_kind="video",
+                media_memory={},
+                seen_artists={"recurring cast artist": 4},
+                seen_hashes=set(),
+                scene_text="Repair after conflict requires a calm conversation and apology.",
+                brain_action_counts={},
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual("recurring cast artist", result[1]["artist"])
+
     def test_visual_memory_state_counts_only_published_run_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -626,21 +726,37 @@ class VisualPipelineTests(unittest.TestCase):
     def test_chichen_priority_queries_follow_each_scene(self) -> None:
         fetcher = HybridMediaFetcher()
         self.assertEqual(
-            ["Chichen Itza El Castillo pyramid Yucatan"],
+            ["El Castillo Chichen Itza"],
             fetcher._ancient_scene_priority_queries(
                 "Chichen Itza", "El Castillo dominated the central plaza"
             ),
         )
         self.assertEqual(
-            ["Chichen Itza Great Ball Court Yucatan"],
+            ["Great Ball Court Chichen Itza"],
             fetcher._ancient_scene_priority_queries(
                 "Chichen Itza", "The Great Ball Court linked ceremony and political display"
             ),
         )
         self.assertEqual(
-            ["Chichen Itza Sacred Cenote archaeology"],
+            ["Sacred Cenote Chichen Itza"],
             fetcher._ancient_scene_priority_queries(
                 "Chichen Itza", "Offerings were recovered from the Sacred Cenote"
+            ),
+        )
+        self.assertEqual(
+            ["Great Ball Court Chichen Itza relief"],
+            fetcher._ancient_scene_priority_queries(
+                "Chichen Itza",
+                "The Great Ball Court linked play with carved scenes of sacrifice",
+                occurrence=1,
+            ),
+        )
+        self.assertEqual(
+            ["Sacred Cenote Chichen Itza"],
+            fetcher._ancient_scene_priority_queries(
+                "Chichen Itza",
+                "Together, pyramid, ball court, and cenote made ritual power visible",
+                occurrence=0,
             ),
         )
 
@@ -715,7 +831,7 @@ class VisualPipelineTests(unittest.TestCase):
             (
                 "Chichen Itza",
                 "Offerings were recovered from the Sacred Cenote",
-                "Chichen Itza Sacred Cenote archaeology",
+                "Sacred Cenote Chichen Itza",
             ),
             (
                 "Great Zimbabwe",
@@ -1031,6 +1147,50 @@ class VisualPipelineTests(unittest.TestCase):
         self.assertFalse(
             fetcher._ancient_asset_conflicts_with_subject(
                 "Chichen Itza", "https://example.test/el-castillo.jpg", right
+            )
+        )
+
+    def test_chichen_scene_intent_requires_cenote_and_sacrifice_evidence(self) -> None:
+        fetcher = HybridMediaFetcher()
+        self.assertTrue(
+            fetcher._asset_matches_scene_intent(
+                "ancient_history",
+                "Pilgrims left valuables at the Sacred Cenote.",
+                "https://commons.wikimedia.org/wiki/File:Sacred_Cenote_Chichen_Itza.jpg",
+                {"asset_title": "Sacred Cenote at Chichen Itza"},
+            )
+        )
+        self.assertFalse(
+            fetcher._asset_matches_scene_intent(
+                "ancient_history",
+                "Pilgrims left valuables at the Sacred Cenote.",
+                "https://commons.wikimedia.org/wiki/File:Chichen_Itza_colonnade.jpg",
+                {"asset_title": "Chichen Itza colonnade"},
+            )
+        )
+        self.assertTrue(
+            fetcher._asset_matches_scene_intent(
+                "ancient_history",
+                "The Great Ball Court had carved scenes of sacrifice.",
+                "https://commons.wikimedia.org/wiki/File:Great_Ball_Court_relief_Chichen_Itza.jpg",
+                {"asset_title": "Carved relief, Great Ball Court, Chichen Itza"},
+            )
+        )
+        self.assertFalse(
+            fetcher._asset_matches_scene_intent(
+                "ancient_history",
+                "The Great Ball Court had carved scenes of sacrifice.",
+                "https://commons.wikimedia.org/wiki/File:Atlante_Chichen_Itza.jpg",
+                {"asset_title": "Atlante from Warrior's Temple, Chichen Itza"},
+            )
+        )
+        # Accented Commons filenames must not bypass the same semantic guard.
+        self.assertFalse(
+            fetcher._asset_matches_scene_intent(
+                "ancient_history",
+                "Human remains were also recovered at the Sacred Cenote.",
+                "https://commons.wikimedia.org/wiki/File:Chich%C3%A9n_Itz%C3%A1_-_Templo_de_los_Guerreros_8_Relief.jpg",
+                {"asset_title": "Chichén Itzá - Templo de los Guerreros 8 Relief"},
             )
         )
 
@@ -2156,6 +2316,54 @@ class VisualPipelineTests(unittest.TestCase):
             "young adult couple emotional distance ignored phone message relationship",
         )
 
+    def test_repeated_long_scene_searches_supporting_shot_first(self) -> None:
+        class SuccessfulRecordingFetcher(RecordingFetcher):
+            def _download_candidate(self, query: str, raw_dir: Path, sequence: int, **kwargs):  # type: ignore[override]
+                self.queries.append(query)
+                out_path = raw_dir / f"scene_{sequence:02d}.jpg"
+                Image.new("RGB", (1280, 720), (20 * sequence, 40, 60)).save(out_path)
+                return out_path, {
+                    "file": out_path.name,
+                    "url": f"https://videos.example/{sequence}.mp4",
+                    "source": "pexels_video",
+                    "source_page": f"https://www.pexels.com/video/{sequence}/",
+                    "source_page_verified": "true",
+                    "license": "Pexels license",
+                    "artist": "recurring cast",
+                    "asset_title": query,
+                }
+
+        fetcher = SuccessfulRecordingFetcher()
+        topic = make_topic(search_terms=["adult couple calm conflict repair conversation"])
+        topic.content_kind = "video"
+        topic.subject = "Conflict Repair"
+        topic.title = "How Conflict Repair Restores Emotional Safety"
+        topic.scene_plan[0].narration = (
+            "Repair after conflict requires both people to name what happened and listen."
+        )
+        manifest: list[dict] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fetcher._fetch_scene_backgrounds(
+                topic,
+                Path(tmp),
+                ["Repair the rupture", "Repair the rupture"],
+                manifest,
+                media_memory={},
+            )
+
+        self.assertEqual(
+            fetcher.queries,
+            [
+                "adult couple calm conflict repair conversation",
+                "close detail of relaxed hands across a table after a difficult conversation",
+            ],
+        )
+        self.assertEqual(
+            [item.get("shot_role") for item in manifest],
+            ["primary_action", "supporting_context"],
+        )
+
     def test_micro_flirting_short_queries_follow_each_spoken_behavior(self) -> None:
         fetcher = HybridMediaFetcher()
         cases = {
@@ -2224,6 +2432,50 @@ class VisualPipelineTests(unittest.TestCase):
             )
             self.assertEqual(len({path.name for path in backgrounds if path is not None}), 2)
             self.assertEqual(sum(1 for item in manifest if item.get("source") == "local_fact_card"), 2)
+
+    def test_ancient_short_tries_fresh_scene_search_before_continuity_cache(self) -> None:
+        fetcher = BoundedAncientSourceFetcher(successful_scenes=1)
+        topic = make_topic()
+        topic.niche_id = "ancient_history"
+        topic.subject = "Tikal"
+        topic.title = "Tikal Reservoir Engineering"
+        topic.scene_plan = []
+        topic.image_queries = ["Tikal Maya reservoir archaeology"]
+        manifest: list[dict] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cached_path = root / "previous" / "images" / "raw" / "cached.jpg"
+            cached_path.parent.mkdir(parents=True)
+            Image.new("RGB", (720, 1280), "white").save(cached_path)
+            cached_meta = {
+                "file": cached_path.name,
+                "url": "https://upload.wikimedia.org/tikal_cached.jpg",
+                "source": "wikimedia",
+                "source_page": "https://commons.wikimedia.org/wiki/File:Tikal_cached.jpg",
+                "source_page_verified": "true",
+                "license": "CC BY-SA 4.0",
+                "artist": "archive photographer",
+                "asset_title": "Tikal temple overview",
+            }
+            with patch.object(
+                fetcher,
+                "_ancient_continuity_cache",
+                return_value=[(cached_path, cached_meta)],
+            ):
+                current_raw = root / "current" / "images" / "raw"
+                current_raw.mkdir(parents=True)
+                backgrounds = fetcher._fetch_scene_backgrounds(
+                    topic,
+                    current_raw,
+                    ["Tikal Maya reservoir and water management"],
+                    manifest,
+                    media_memory={},
+                )
+
+        self.assertTrue(fetcher.queries)
+        self.assertEqual("raw_01_tikal.jpg", backgrounds[0].name)
+        self.assertFalse(any(item.get("reused_from_run") for item in manifest))
 
     def test_ancient_short_reuses_verified_assets_once_after_eight_unique_sources(self) -> None:
         fetcher = BoundedAncientSourceFetcher(successful_scenes=8)

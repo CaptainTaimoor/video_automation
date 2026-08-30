@@ -18,6 +18,42 @@ from yt_auto.video_builder import VideoBuilder
 
 
 class FastStillAnimationTests(unittest.TestCase):
+    def test_quality_v3_enables_builder_quality_gates(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"YT_QUALITY_V3": "yes", "YT_QUALITY_V2": "0"},
+            clear=True,
+        ):
+            self.assertTrue(VideoBuilder._quality_v2_enabled())
+        with patch.dict(
+            "os.environ",
+            {"YT_QUALITY_V3": "0", "YT_QUALITY_V2": "true"},
+            clear=True,
+        ):
+            self.assertTrue(VideoBuilder._quality_v2_enabled())
+
+    def test_fast_filters_keep_video_natural_and_still_motion_one_way(self) -> None:
+        builder = VideoBuilder(1, 10, target_size=(180, 320))
+
+        video_filter = builder._fast_segment_visual_filter(
+            Path("source.mp4"),
+            6.0,
+            is_hook=True,
+            source_offset=0.25,
+        )
+        still_filter = builder._fast_segment_visual_filter(
+            Path("source.jpg"),
+            6.0,
+            is_hook=True,
+            source_offset=0.25,
+        )
+
+        self.assertNotIn("zoompan", video_filter)
+        self.assertIn("zoompan", still_filter)
+        self.assertIn("min(on/", still_filter)
+        for oscillation in ("abs(", "mod(", "sin(", "cos("):
+            self.assertNotIn(oscillation, still_filter)
+
     def test_audited_motion_offset_skips_a_known_static_clip_opening(self) -> None:
         builder = VideoBuilder(1, 10, target_size=(180, 320))
 
@@ -189,7 +225,7 @@ class FastStillAnimationTests(unittest.TestCase):
                 "short still motion did not meet the production 0.32-second gate",
             )
 
-    def test_fast_video_hook_stays_visibly_live_when_source_opens_static(self) -> None:
+    def test_fast_video_hook_does_not_animate_a_static_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             work_dir = Path(directory)
             source_still = work_dir / "static_opening.png"
@@ -225,13 +261,15 @@ class FastStillAnimationTests(unittest.TestCase):
             finally:
                 clip.close()
             difference = float(np.abs(early - later).mean())
-            self.assertGreater(
+            # Static Brain Lens hook footage is rejected during acquisition.
+            # The renderer should not disguise it with synthetic camera motion.
+            self.assertLess(
                 difference,
-                2.0,
-                f"static video hook failed the motion safeguard (MAD={difference:.3f})",
+                1.5,
+                f"renderer imposed motion on a static video hook (MAD={difference:.3f})",
             )
 
-    def test_fast_non_hook_video_stays_visibly_live_when_source_is_static(self) -> None:
+    def test_fast_non_hook_video_does_not_animate_a_static_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             work_dir = Path(directory)
             source_still = work_dir / "static_source.png"
@@ -267,10 +305,10 @@ class FastStillAnimationTests(unittest.TestCase):
             finally:
                 clip.close()
             difference = float(np.abs(early - later).mean())
-            self.assertGreater(
+            self.assertLess(
                 difference,
-                2.0,
-                f"static non-hook video failed the motion safeguard (MAD={difference:.3f})",
+                0.5,
+                f"renderer imposed motion on a static source video (MAD={difference:.3f})",
             )
 
     def test_long_still_segment_keeps_moving_after_old_zoom_ceiling(self) -> None:

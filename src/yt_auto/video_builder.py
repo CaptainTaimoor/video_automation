@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import random
 import re
@@ -41,6 +42,10 @@ class LongCaptionPreflightError(RuntimeError):
 
 class ShortCaptionPreflightError(RuntimeError):
     """A deterministic short-caption failure that no renderer fallback can fix."""
+
+
+class ShortNarrationPreflightError(RuntimeError):
+    """A short narration that cannot fit without cutting spoken audio."""
 
 
 @dataclass(frozen=True)
@@ -85,6 +90,23 @@ class VideoBuilder:
         "raw_08_adult-couple-plannin.mp4": 4.10,
     }
 
+    @staticmethod
+    def _short_render_duration(raw_duration: float, max_duration: float) -> float:
+        """Return the untrimmed duration or reject an overlong narration."""
+
+        raw_duration = float(raw_duration)
+        max_duration = float(max_duration)
+        if not math.isfinite(raw_duration) or raw_duration <= 0:
+            raise ShortNarrationPreflightError(
+                f"short narration has an invalid duration: {raw_duration!r}"
+            )
+        if raw_duration > max_duration + 0.001:
+            raise ShortNarrationPreflightError(
+                f"short narration is {raw_duration:.3f}s but the configured maximum is "
+                f"{max_duration:.3f}s; refusing to trim spoken audio"
+            )
+        return max(1.0, raw_duration)
+
     def __init__(
         self,
         min_duration: int,
@@ -102,7 +124,11 @@ class VideoBuilder:
 
     @staticmethod
     def _quality_v2_enabled() -> bool:
-        return str(os.getenv("YT_QUALITY_V2", "0")).lower() in {"1", "true", "yes", "on"}
+        truthy = {"1", "true", "yes", "on"}
+        return any(
+            str(os.getenv(name, "0")).strip().lower() in truthy
+            for name in ("YT_QUALITY_V3", "YT_QUALITY_V2")
+        )
 
     def _fit_vertical(self, clip: ImageClip | VideoFileClip) -> ImageClip | VideoFileClip:
         target_w, target_h = self.target_size
@@ -143,6 +169,33 @@ class VideoBuilder:
         if override is not None and source_path.suffix.lower() == ".mp4":
             return float(override)
         return float(base) + ((int(index) % max(1, int(modulo))) * float(step))
+
+    def _apply_still_motion(
+        self,
+        clip: ImageClip,
+        duration: float,
+        *,
+        is_hook: bool,
+    ) -> ImageClip:
+        """Add a restrained, monotonic camera move to a still image."""
+
+        vertical_short = self.target_size[1] > self.target_size[0]
+        if vertical_short:
+            zoom_span = 0.120 if is_hook else 0.045
+        else:
+            zoom_span = 0.080 if is_hook else 0.030
+        safe_duration = max(0.1, float(duration))
+        clip = clip.resize(
+            lambda t: 1.0
+            + zoom_span
+            * min(1.0, max(0.0, float(t)) / safe_duration)
+        )
+        return clip.crop(
+            width=self.target_size[0],
+            height=self.target_size[1],
+            x_center=clip.w / 2,
+            y_center=clip.h / 2,
+        )
 
     def _narration_with_padding(self, narration: AudioFileClip) -> AudioFileClip:
         # Keep narration natural. Do not add artificial silence tails.
@@ -416,14 +469,7 @@ class VideoBuilder:
                 source.close()
                 clip = ImageClip(frame).set_duration(duration)
                 clip = self._fit_vertical(clip)
-                zoom_amount = 0.15 if is_hook else (0.028 if duration >= 5 else 0.04)
-                clip = clip.resize(lambda t: 1 + (zoom_amount * min(t, 2.0) if is_hook else zoom_amount * (t / max(duration, 0.1))))
-                return clip.crop(
-                    width=self.target_size[0],
-                    height=self.target_size[1],
-                    x_center=clip.w / 2,
-                    y_center=clip.h / 2,
-                )
+                return self._apply_still_motion(clip, duration, is_hook=is_hook)
             except Exception:
                 pass
 
@@ -445,14 +491,6 @@ class VideoBuilder:
                 # Strip incoming audio to not clash with our voiceover
                 clip = clip.without_audio()
                 clip = self._fit_vertical(clip)
-                if is_hook:
-                    clip = clip.resize(lambda t: 1 + 0.15 * min(t, 2.0))
-                    clip = clip.crop(
-                        width=self.target_size[0],
-                        height=self.target_size[1],
-                        x_center=clip.w / 2,
-                        y_center=clip.h / 2,
-                    )
                 return clip
             except Exception:
                 pass
@@ -461,20 +499,7 @@ class VideoBuilder:
         frame = np.array(Image.open(path).convert('RGB'))
         clip = ImageClip(frame).set_duration(duration)
         clip = self._fit_vertical(clip)
-        if is_hook:
-            zoom_amount = 0.15
-            clip = clip.resize(lambda t: 1 + (zoom_amount * min(t, 2.0)))
-        else:
-            zoom_amount = 0.028 if duration >= 5 else 0.04
-            clip = clip.resize(lambda t: 1 + (zoom_amount * (t / max(duration, 0.1))))
-            
-        clip = clip.crop(
-            width=self.target_size[0],
-            height=self.target_size[1],
-            x_center=clip.w / 2,
-            y_center=clip.h / 2,
-        )
-        return clip
+        return self._apply_still_motion(clip, duration, is_hook=is_hook)
 
     def _duck_music(self, music: AudioClip, speech: AudioClip, spoken_duration: float, total_duration: float) -> AudioClip:
         # Lower music to 8% when speaking, 25% when silent
@@ -766,17 +791,17 @@ class VideoBuilder:
         frame = frame.crop((left, top, left + target_w, top + target_h))
         frame.save(out_path, quality=93)
 
-    def _render_fast_segment(
+    def _fast_segment_visual_filter(
         self,
-        ffmpeg_path: str,
         source_path: Path,
-        out_path: Path,
         duration: float,
+        *,
         is_hook: bool,
-        source_offset: float = 0.0,
-    ) -> None:
+        source_offset: float,
+    ) -> str:
+        """Build natural video framing or a one-way still-image move."""
+
         target_w, target_h = self.target_size
-        duration = max(0.8, float(duration))
         base_filter = (
             "setpts=PTS-STARTPTS,"
             f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:"
@@ -786,64 +811,75 @@ class VideoBuilder:
             "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709"
         )
         if source_path.suffix.lower() == ".mp4":
+            # The source already contains a camera and human movement. Preserve
+            # that motion instead of laying a synthetic oscillating zoom/pan on
+            # top of it.
+            return base_filter
+
+        vertical_short = target_h > target_w
+        if vertical_short:
+            # The first shot must visibly move even when Commons only returns a
+            # still. A stronger, one-way Ken Burns move is readable on a phone
+            # and avoids the old near-static opening that QA correctly held.
+            zoom_span = 0.180 if is_hook else 0.075
+        else:
+            zoom_span = 0.110 if is_hook else 0.045
+        zoom_base = 1.005
+        final_frame = max(1, int(round(max(0.8, float(duration)) * 30.0)) - 1)
+        progress = f"min(on/{final_frame},1)"
+
+        # Alternate direction between stills, but never reverse direction within
+        # a shot.  The small overscan supplies enough room for the supporting pan.
+        direction = int(abs(float(source_offset)) * 1000.0) % 4
+        if direction == 0:
+            x_position = f"0.12+0.76*{progress}"
+            y_position = "0.50"
+        elif direction == 1:
+            x_position = f"0.88-0.76*{progress}"
+            y_position = "0.50"
+        elif direction == 2:
+            x_position = "0.50"
+            y_position = f"0.12+0.76*{progress}"
+        else:
+            x_position = "0.50"
+            y_position = f"0.88-0.76*{progress}"
+        return (
+            f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:"
+            "in_range=auto:out_range=tv,"
+            f"crop={target_w}:{target_h},"
+            f"zoompan=z='{zoom_base:.3f}+{zoom_span:.3f}*{progress}':"
+            f"x='(iw-iw/zoom)*({x_position})':"
+            f"y='(ih-ih/zoom)*({y_position})':"
+            f"d=1:s={target_w}x{target_h}:fps=30,"
+            "setpts=N/(30*TB),format=yuv420p,"
+            "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709"
+        )
+
+    def _render_fast_segment(
+        self,
+        ffmpeg_path: str,
+        source_path: Path,
+        out_path: Path,
+        duration: float,
+        is_hook: bool,
+        source_offset: float = 0.0,
+    ) -> None:
+        duration = max(0.8, float(duration))
+        if source_path.suffix.lower() == ".mp4":
             input_args = [
                 "-stream_loop", "-1",
                 "-ss", f"{max(0.0, source_offset):.3f}",
                 "-i", str(source_path),
             ]
-            # Stock footage can contain several seconds of a locked-off pose.
-            # Apply a bounded virtual camera move to every source clip, not only
-            # the hook, so low-motion footage cannot create a static six-second
-            # hold after scene planning. Natural source motion remains visible.
-            vertical_short = target_h > target_w
-            cycle_frames = (150 if is_hook else 210) if vertical_short else (210 if is_hook else 300)
-            half_cycle = cycle_frames // 2
-            phase = float(source_offset) % 6.283185
-            zoom_base = 1.015 if is_hook else 1.010
-            zoom_span = 0.045 if vertical_short else 0.030
-            pan_x = 0.20 if vertical_short else 0.14
-            pan_y = 0.15 if vertical_short else 0.11
-            video_filter = (
-                f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:"
-                "in_range=auto:out_range=tv,"
-                f"crop={target_w}:{target_h},"
-                f"zoompan=z='{zoom_base:.3f}+{zoom_span:.3f}*(1-abs(mod(on,{cycle_frames})-{half_cycle})/{half_cycle})':"
-                f"x='(iw-iw/zoom)*(0.5+{pan_x:.2f}*sin(on*0.021991+{phase:.6f}))':"
-                f"y='(ih-ih/zoom)*(0.5+{pan_y:.2f}*cos(on*0.018850+{phase:.6f}))':"
-                f"d=1:s={target_w}x{target_h}:fps=30,"
-                "setpts=N/(30*TB),format=yuv420p,"
-                "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709"
-            )
         else:
             input_args = ["-loop", "1", "-framerate", "30", "-i", str(source_path)]
-            # A capped one-way zoom becomes a literal freeze as soon as it reaches
-            # its ceiling (about 4.4 seconds with the previous long-scene step).
-            # Use a continuous triangular zoom instead: it reaches both endpoints
-            # without dwelling there, reverses smoothly, and remains active for a
-            # hold of any length.  The phase offsets keep consecutive stills from
-            # repeating exactly the same camera move.
-            # Shorts receive a slightly stronger virtual camera move than
-            # landscape documentaries.  The final Brain Lens gate samples
-            # frames just 0.32s apart, so the old 6%-over-10-second move could
-            # look animated to a person yet still measure as static.
-            vertical_short = target_h > target_w
-            cycle_frames = (120 if is_hook else 180) if vertical_short else (180 if is_hook else 300)
-            half_cycle = cycle_frames // 2
-            phase = float(source_offset) % 6.283185
-            zoom_span = 0.12 if vertical_short else 0.06
-            pan_x = 0.30 if vertical_short else 0.22
-            pan_y = 0.22 if vertical_short else 0.18
-            video_filter = (
-                f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:"
-                "in_range=auto:out_range=tv,"
-                f"crop={target_w}:{target_h},"
-                f"zoompan=z='1.0+{zoom_span:.3f}*(1-abs(mod(on,{cycle_frames})-{half_cycle})/{half_cycle})':"
-                f"x='(iw-iw/zoom)*(0.5+{pan_x:.2f}*sin(on*0.014959+{phase:.6f}))':"
-                f"y='(ih-ih/zoom)*(0.5+{pan_y:.2f}*cos(on*0.017453+{phase:.6f}))':"
-                f"d=1:s={target_w}x{target_h}:fps=30,"
-                "format=yuv420p,"
-                "setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709"
-            )
+        video_filter = self._fast_segment_visual_filter(
+            source_path,
+            duration,
+            is_hook=is_hook,
+            source_offset=source_offset,
+        )
+        target_w, target_h = self.target_size
         landscape = target_w > target_h
         segment_preset = "veryfast" if landscape else "ultrafast"
         segment_crf = "20" if landscape else "17"
@@ -1318,7 +1354,7 @@ class VideoBuilder:
         raw_narration = AudioFileClip(str(narration_path))
         try:
             min_duration, max_duration = duration_bounds
-            duration = min(max_duration, max(1.0, raw_narration.duration))
+            duration = self._short_render_duration(raw_narration.duration, max_duration)
             story_beats = self._story_beats(
                 title_text=title_text,
                 narration_text=narration_text,
@@ -1898,9 +1934,10 @@ class VideoBuilder:
                     logo_path=logo_path,
                     music_dir=music_dir,
                 )
-            except ShortCaptionPreflightError:
-                # A different renderer cannot repair a structurally broken or
-                # unreadable caption timeline, so never bypass this gate.
+            except (ShortCaptionPreflightError, ShortNarrationPreflightError):
+                # A different renderer cannot repair a structurally broken
+                # caption timeline or an overlong source narration, so never
+                # bypass either deterministic preflight gate.
                 raise
             except Exception as exc:
                 if os.getenv("YT_ALLOW_SLOW_SHORT_RENDER", "").lower() not in {"1", "true", "yes"}:
@@ -1948,9 +1985,13 @@ class VideoBuilder:
 
         raw_narration = AudioFileClip(str(narration_path))
         spoken_duration = raw_narration.duration
-        narration = self._narration_with_padding(raw_narration)
+        try:
+            duration = self._short_render_duration(spoken_duration, max_duration)
+        except Exception:
+            raw_narration.close()
+            raise
 
-        duration = min(max_duration, max(1.0, narration.duration))
+        narration = self._narration_with_padding(raw_narration)
         narration = narration.subclip(0, duration)
         spoken_duration = max(1.0, min(duration, spoken_duration))
 

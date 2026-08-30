@@ -343,7 +343,9 @@ class SubtitleComposer:
         self.max_cps = max(10.0, float(max_chars_per_second))
 
     def _normalize(self, text: str) -> str:
-        return re.sub(r"\s+", " ", text or "").strip()
+        normalized = re.sub(r"\s*[\u2013\u2014]\s*", ", ", text or "")
+        normalized = re.sub(r",\s*,+", ", ", normalized)
+        return re.sub(r"\s+", " ", normalized).strip()
 
     @classmethod
     def visible_word_count(cls, text: str) -> int:

@@ -11,6 +11,7 @@ from yt_auto.video_builder import (
     LongCaptionPreflightError,
     NarrationBeatTiming,
     ShortCaptionPreflightError,
+    ShortNarrationPreflightError,
     VideoBuilder,
 )
 
@@ -48,6 +49,76 @@ class LongCaptionPreflightTests(unittest.TestCase):
                     )
 
         fallback_audio.assert_not_called()
+
+    def test_overlong_short_narration_never_falls_through_to_slow_renderer(self) -> None:
+        builder = VideoBuilder(min_duration=25, max_duration=40)
+        builder._build_short_fast_ffmpeg = Mock(
+            side_effect=ShortNarrationPreflightError(
+                "short narration is 43.200s but the configured maximum is 40.000s; "
+                "refusing to trim spoken audio"
+            )
+        )
+
+        with patch.dict(os.environ, {"YT_ALLOW_SLOW_SHORT_RENDER": "1"}, clear=False):
+            with patch("yt_auto.video_builder.AudioFileClip") as fallback_audio:
+                with self.assertRaisesRegex(
+                    ShortNarrationPreflightError,
+                    "refusing to trim spoken audio",
+                ):
+                    builder.build(
+                        image_paths=[Path("unused.jpg")],
+                        narration_path=Path("narration.wav"),
+                        music_dir=Path("unused-music"),
+                        out_path=Path("unused.mp4"),
+                        duration_bounds=(25, 40),
+                        content_kind="short",
+                    )
+
+        fallback_audio.assert_not_called()
+
+    def test_fast_short_rejects_43_second_narration_before_visual_encoding(self) -> None:
+        builder = VideoBuilder(min_duration=25, max_duration=40)
+        with (
+            patch("yt_auto.video_builder.AudioFileClip", return_value=_FakeAudioClip(43.2)),
+            patch.object(builder, "_render_fast_segment") as render_segment,
+        ):
+            with self.assertRaisesRegex(
+                ShortNarrationPreflightError,
+                r"43\.200s.*40\.000s.*refusing to trim spoken audio",
+            ):
+                builder._build_short_fast_ffmpeg(
+                    image_paths=[Path("unused.jpg")],
+                    narration_path=Path("narration.wav"),
+                    out_path=Path("unused.mp4"),
+                    narration_text="Complete narration.",
+                    subtitles_path=Path("unused.srt"),
+                    title_text="Title",
+                    visual_captions=None,
+                    narration_beats=["Complete narration."],
+                    scene_durations=[43.2],
+                    duration_bounds=(25, 40),
+                    logo_path=None,
+                    music_dir=Path("unused-music"),
+                )
+
+        render_segment.assert_not_called()
+
+    def test_disabled_fast_short_path_still_refuses_to_trim_narration(self) -> None:
+        builder = VideoBuilder(min_duration=25, max_duration=40)
+        fake_audio = _FakeAudioClip(43.2)
+        with (
+            patch.dict(os.environ, {"YT_DISABLE_FAST_SHORT_RENDER": "1"}, clear=False),
+            patch("yt_auto.video_builder.AudioFileClip", return_value=fake_audio),
+        ):
+            with self.assertRaises(ShortNarrationPreflightError):
+                builder.build(
+                    image_paths=[Path("unused.jpg")],
+                    narration_path=Path("narration.wav"),
+                    music_dir=Path("unused-music"),
+                    out_path=Path("unused.mp4"),
+                    duration_bounds=(25, 40),
+                    content_kind="short",
+                )
 
     def test_dense_beat_is_stretched_without_slowing_sparse_beat(self) -> None:
         builder = VideoBuilder(min_duration=100, max_duration=210)

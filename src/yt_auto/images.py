@@ -18,6 +18,7 @@ import requests
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 from yt_auto.models import TopicCandidate
+from yt_auto.quality_v2.visuals import visual_asset_signatures
 from yt_auto.utils import ensure_dir, slugify_text, write_json
 
 
@@ -31,6 +32,67 @@ class HybridMediaFetcher:
     BRAIN_LENS_BLOCKED_ASSET_IDS = {
         "pexels_video:7577973",
     }
+    # Keep phone intent lexical.  A substring check makes ordinary words such
+    # as "context" look like a request for texting footage.
+    BRAIN_PHONE_LANGUAGE_RE = re.compile(
+        r"\b(?:phone|smartphone|text(?:s|ed|ing)?|message(?:s|d|ing)?|"
+        r"reply|replies|replied|replying)\b",
+        re.IGNORECASE,
+    )
+    BRAIN_RELATIONSHIP_TOPIC_TERMS = (
+        "relationship",
+        "dating",
+        "date",
+        "attachment",
+        "attraction",
+        "chemistry",
+        "flirt",
+        "kiss",
+        "breadcrumb",
+        "situationship",
+        "mixed signal",
+        "silent treatment",
+        "almost relationship",
+        "push pull",
+        "jealousy",
+        "emotional availability",
+        "slow fading",
+        "ghosting",
+        "orbiting",
+        "future faking",
+        "benching",
+        "relationship pacing",
+        "mutual effort",
+        "crush idealization",
+        "limerence",
+        "friends with benefits",
+        # Relationship education is often framed through the work rather than
+        # the dating label itself.  These categories should still receive the
+        # relationship-specific source and relevance safeguards.
+        "conflict repair",
+        "repair after conflict",
+        "relationship repair",
+        "repair conversation",
+        "relationship conflict",
+        "couple conflict",
+        "emotional regulation",
+        "co regulation",
+        "nervous system regulation",
+        "regulate before reacting",
+        "emotional safety",
+        "relationship safety",
+        "relational safety",
+        "safe relationship",
+        "couples therapist",
+        "relationship therapist",
+        "couples therapy",
+        "relationship counseling",
+        "mutual conversation",
+        "mutual communication",
+        "relationship conversation",
+        "conversation between partners",
+        "reciprocity",
+    )
     # Credits verified on the linked Commons file pages.  Keeping this small
     # local manifest makes the documentary's fixed archive spine resilient to
     # MediaWiki API throttling without weakening license or source-page QA.
@@ -62,12 +124,29 @@ class HybridMediaFetcher:
         "obelisk_of_aksum_remains.jpg": ("CC BY-SA 4.0", "Allamiro"),
         "obelisk_of_aksum_remains2.jpg": ("CC BY-SA 4.0", "Allamiro"),
         "aksum,_stele_2_(stele_di_roma)_04.jpg": ("CC BY 3.0", "Sailko"),
+        "el_castillo-templo_de_kukulkan,_chichen_itza,_1923.tif": ("Public domain", "Jerome O. Kilmartin"),
+        "great_ball_court_chichen_itza_03_2011_1427.jpg": ("CC BY-SA 4.0", "Mariordo"),
+        "ballgame_sacrifice_relief,_chichen_itza.jpg": ("CC BY 2.0", "Frank Kovalchek"),
+        "sacred_cenote_chichen_itza.jpg": ("Public domain", "Altairisfar"),
+        "chichen-itza-32-cenote-1980-gje.jpg": ("CC BY-SA 4.0", "Gerd Eichmann"),
+        "ceremonial_way_between_el_castillo_and_el_cenote,_chichen_itza,_1924.tif": ("Public domain", "Jerome O. Kilmartin"),
+        "chichen_itza_juegopelota_relieve.jpg": ("CC BY-SA 3.0", "HJPD"),
+        "jade_recovered_from_sacred_cenote,_chichen_itza.jpg": ("CC0", "Gary Todd"),
+        "panorama_of_chichén_itza_with_temple_of_kukulcán.jpg": ("CC BY-SA 4.0", "Trldp"),
+        "panorama-_chichen_itza,_yucatan,_mexico_(8338607460).jpg": ("No restrictions", "SMU Central University Libraries"),
     }
 
-    def __init__(self, stable_horde_key: str | None = None, pixabay_api_key: str | None = None, pexels_api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        stable_horde_key: str | None = None,
+        pixabay_api_key: str | None = None,
+        pexels_api_key: str | None = None,
+        state_path: Path | None = None,
+    ) -> None:
         self.stable_horde_key = (stable_horde_key or "").strip()
         self.pixabay_api_key = (pixabay_api_key or "").strip()
         self.pexels_api_key = (pexels_api_key or "").strip()
+        self.state_path = Path(state_path) if state_path is not None else Path("data/state/runs.jsonl")
         self.enable_pollinations = str(os.getenv("YT_ENABLE_POLLINATIONS", "0")).lower() in {"1", "true", "yes", "on"}
         self.enable_stable_horde = str(os.getenv("YT_ENABLE_STABLE_HORDE", "0")).lower() in {"1", "true", "yes", "on"}
 
@@ -128,6 +207,28 @@ class HybridMediaFetcher:
         except (TypeError, ValueError):
             value = default
         return max(minimum, min(maximum, value))
+
+    @staticmethod
+    def _contains_phrase(text: str, phrase: str) -> bool:
+        """Match a normalized word or phrase without accidental substrings."""
+
+        words = re.findall(r"[a-z0-9]+", phrase.lower())
+        if not words:
+            return False
+        pattern = r"\b" + r"[\s-]+".join(re.escape(word) for word in words) + r"\b"
+        return re.search(pattern, text or "", flags=re.IGNORECASE) is not None
+
+    @classmethod
+    def _brain_scene_mentions_phone(cls, text: str) -> bool:
+        return cls.BRAIN_PHONE_LANGUAGE_RE.search(text or "") is not None
+
+    @classmethod
+    def _is_brain_relationship_topic(cls, *values: object) -> bool:
+        blob = " ".join(str(value or "") for value in values)
+        return any(
+            cls._contains_phrase(blob, term)
+            for term in cls.BRAIN_RELATIONSHIP_TOPIC_TERMS
+        )
 
     @staticmethod
     def _deadline_timeout(deadline: float | None, default: float) -> float | None:
@@ -1633,7 +1734,12 @@ class HybridMediaFetcher:
             ordered.append(q)
         return ordered[:4]
 
-    def _ancient_scene_priority_queries(self, subject: str, text: str) -> list[str]:
+    def _ancient_scene_priority_queries(
+        self,
+        subject: str,
+        text: str,
+        occurrence: int = 0,
+    ) -> list[str]:
         identity = f"{subject} {text}".lower()
         priorities: list[str] = []
         if "lachish" in identity:
@@ -1687,12 +1793,40 @@ class HybridMediaFetcher:
                 return ["Tikal Temple I Great Plaza Guatemala"]
             return ["Tikal Temple IV rainforest Guatemala"]
         if "chichen itza" in identity:
-            if "ball court" in identity or "game" in identity:
-                return ["Chichen Itza Great Ball Court Yucatan"]
-            if any(term in identity for term in ("cenote", "sinkhole", "offering")):
-                return ["Chichen Itza Sacred Cenote archaeology"]
-            if any(term in identity for term in ("el castillo", "pyramid", "stairway")):
-                return ["Chichen Itza El Castillo pyramid Yucatan"]
+            has_ball_court = "ball court" in identity or "game" in identity
+            has_cenote = any(term in identity for term in ("cenote", "sinkhole", "offering"))
+            has_castillo = any(term in identity for term in ("el castillo", "pyramid", "stairway"))
+            if sum((has_ball_court, has_cenote, has_castillo)) > 1:
+                if "together" in identity or "power visible" in identity:
+                    queries = (
+                        "Sacred Cenote Chichen Itza",
+                        "Chichen Itza archaeological site panorama Yucatan",
+                    )
+                else:
+                    queries = (
+                        "El Castillo Chichen Itza",
+                        "Great Ball Court Chichen Itza",
+                        "Sacred Cenote Chichen Itza",
+                    )
+                return [queries[max(0, occurrence) % len(queries)]]
+            if has_ball_court:
+                queries = (
+                    "Great Ball Court Chichen Itza",
+                    "Great Ball Court Chichen Itza relief",
+                )
+                return [queries[max(0, occurrence) % len(queries)]]
+            if has_cenote:
+                queries = (
+                    "Sacred Cenote Chichen Itza",
+                    "Cenote Sagrado Chichen Itza",
+                )
+                return [queries[max(0, occurrence) % len(queries)]]
+            if has_castillo:
+                queries = (
+                    "El Castillo Chichen Itza",
+                    "Chichen Itza El Castillo stairway summit temple detail",
+                )
+                return [queries[max(0, occurrence) % len(queries)]]
             return ["Chichen Itza Temple of Warriors Maya Yucatan"]
         if "great zimbabwe" in identity:
             if any(term in identity for term in ("soapstone", "bird", "symbol")):
@@ -2423,16 +2557,10 @@ class HybridMediaFetcher:
     ) -> None:
         if topic.niche_id != "brain_lens" or topic.content_kind != "short" or not manifest:
             return
-        topic_blob = f"{topic.subject} {topic.title} {topic.narration}".lower()
-        if not any(
-            term in topic_blob
-            for term in (
-                "relationship", "dating", "attachment", "attraction", "chemistry", "flirt",
-                "kiss", "breadcrumb", "situationship", "push pull", "mixed signal",
-                "emotional availability", "silent treatment", "future faking", "benching",
-                "slow fading", "ghosting", "orbiting", "relationship pacing", "mutual effort",
-                "crush idealization", "limerence", "jealousy", "friends with benefits",
-            )
+        if not self._is_brain_relationship_topic(
+            topic.subject,
+            topic.title,
+            topic.narration,
         ):
             return
 
@@ -3040,8 +3168,8 @@ class HybridMediaFetcher:
             for right in range(left + 1, len(hashes))
         ) > 2
 
-    @staticmethod
-    def _brain_action_cluster(url: str, meta: Dict[str, str]) -> str:
+    @classmethod
+    def _brain_action_cluster(cls, url: str, meta: Dict[str, str]) -> str:
         searchable = re.sub(
             r"[^a-z0-9]+",
             " ",
@@ -3051,11 +3179,12 @@ class HybridMediaFetcher:
             ("affection", ("hug", "embrac", "kiss", "danc", "cuddle", "hold hands", "holding hands")),
             ("conflict", ("argu", "fight", "conflict", "apart", "ignore", "breakup", "breaking up")),
             ("conversation", ("talk", "conversation", "discuss")),
-            ("phone", ("phone", "text", "message")),
         )
         for action, markers in clusters:
             if any(marker in searchable for marker in markers):
                 return action
+        if cls._brain_scene_mentions_phone(searchable):
+            return "phone"
         return ""
 
     def _validate_downloaded_media(
@@ -3111,21 +3240,28 @@ class HybridMediaFetcher:
 
     @staticmethod
     def _asset_search_text(url: str, meta: Dict[str, str]) -> str:
+        # Commons filenames frequently contain accents (for example
+        # ``Chichén``).  Scene-intent matching is lexical, so normalize those
+        # filenames to ASCII before checking markers; otherwise an off-topic
+        # fallback can slip through the Chichen-specific guards simply because
+        # the title uses a diacritic.
+        raw = " ".join(
+            (
+                unquote(url),
+                str(meta.get("asset_title") or ""),
+                str(meta.get("description") or ""),
+                str(meta.get("source_page") or ""),
+            )
+        ).lower()
+        normalized = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
         return re.sub(
             r"[^a-z0-9]+",
             " ",
-            " ".join(
-                (
-                    unquote(url),
-                    str(meta.get("asset_title") or ""),
-                    str(meta.get("description") or ""),
-                    str(meta.get("source_page") or ""),
-                )
-            ).lower(),
+            normalized,
         ).strip()
 
-    @staticmethod
-    def _brain_short_relationship_context_query(scene_text: str) -> str:
+    @classmethod
+    def _brain_short_relationship_context_query(cls, scene_text: str) -> str:
         """Return a concrete, adult relationship search for one Short beat.
 
         Broad searches such as ``emotional relationship body language`` can
@@ -3135,12 +3271,46 @@ class HybridMediaFetcher:
         the action and setting specific enough for the current scene.
         """
         scene = re.sub(r"[^a-z0-9]+", " ", (scene_text or "").lower()).strip()
-        if any(term in scene for term in ("text", "message", "reply", "phone")):
+        if cls._brain_scene_mentions_phone(scene):
             if any(term in scene for term in ("disappear", "silence", "uncertainty", "wait", "ignored")):
                 return "adult couple discussing a phone message emotional distance daytime"
             if any(term in scene for term in ("plan", "follow through", "consistent")):
                 return "adult couple planning a date with a phone conversation daytime"
             return "adult couple reading a phone message together daytime conversation"
+        if any(term in scene for term in ("therapist", "therapy", "counsel", "mental health professional")):
+            return "adult couple speaking with a relationship therapist in a counseling office"
+        if any(
+            term in scene
+            for term in (
+                "repair after conflict", "conflict repair", "repair asks", "name what happened",
+                "apology", "reconcile", "reconciliation", "resolve a disagreement",
+            )
+        ):
+            return "adult couple repairing conflict with a calm apology and listening daytime"
+        if any(
+            term in scene
+            for term in (
+                "regulate", "unclench", "lengthen the exhale", "calmer body",
+                "co regulation", "nervous system",
+            )
+        ):
+            return "adult couple pausing to regulate with calm breathing and respectful space"
+        if any(
+            term in scene
+            for term in (
+                "emotional safety", "relationship safety", "feel safe", "felt safe",
+                "respectful distance", "usable boundary", "boundary under your control",
+            )
+        ):
+            return "adult couple having a respectful boundary conversation with comfortable space"
+        if any(
+            term in scene
+            for term in (
+                "mutual conversation", "mutual communication", "take turns",
+                "both people listen",
+            )
+        ):
+            return "adult couple taking turns speaking and listening in a mutual conversation daytime"
         if any(
             term in scene
             for term in (
@@ -3170,6 +3340,50 @@ class HybridMediaFetcher:
         if any(term in scene for term in ("plan", "date", "consistent")):
             return "adult couple planning a date face to face conversation daytime"
         return "adult couple face to face relationship conversation daytime realistic"
+
+    @classmethod
+    def _brain_relationship_shot_queries(cls, scene_text: str) -> list[tuple[str, str]]:
+        """Return a primary scene plus one purposeful supporting shot.
+
+        Long plans are padded to the configured visual count.  When a narration
+        beat appears again, searching the exact same action tends to produce a
+        duplicate-looking clip.  A supporting shot should advance the idea with
+        a consequence, detail, or ordinary-life proof instead.
+        """
+
+        scene = re.sub(r"[^a-z0-9]+", " ", (scene_text or "").lower()).strip()
+        primary = cls._brain_short_relationship_context_query(scene_text)
+        if cls._brain_scene_mentions_phone(scene):
+            supporting = "young adult putting a phone face down and returning to a daily routine"
+        elif any(term in scene for term in ("therapist", "therapy", "counsel", "mental health professional")):
+            supporting = "relationship therapist listening while an adult couple reflects in counseling"
+        elif any(
+            term in scene
+            for term in (
+                "repair", "conflict", "apology", "reconcile", "disagreement", "name what happened",
+            )
+        ):
+            supporting = "close detail of relaxed hands across a table after a difficult conversation"
+        elif any(
+            term in scene
+            for term in ("regulate", "unclench", "exhale", "calmer body", "nervous system")
+        ):
+            supporting = "young adult walking outdoors and taking a slow breath after relationship stress"
+        elif any(
+            term in scene
+            for term in ("safety", "safe", "boundary", "respectful distance", "consent")
+        ):
+            supporting = "two adults sitting with respectful personal space during a calm discussion"
+        elif any(
+            term in scene
+            for term in ("mutual", "reciprocity", "follow through", "effort", "consistent", "plan")
+        ):
+            supporting = "adult couple making and following a shared plan on a calendar at home"
+        elif any(term in scene for term in ("eye contact", "gaze", "lean", "voice", "tone", "conversation")):
+            supporting = "wide cafe shot of two adults taking turns listening during a conversation"
+        else:
+            supporting = "adult couple doing an ordinary shared household task with cooperative body language"
+        return [("primary_action", primary), ("supporting_context", supporting)]
 
     def _asset_matches_scene_intent(self, niche_id: str, scene_text: str, url: str, meta: Dict[str, str]) -> bool:
         scene = re.sub(r"[^a-z0-9]+", " ", (scene_text or "").lower()).strip()
@@ -3265,15 +3479,9 @@ class HybridMediaFetcher:
                     )
                 )
 
-            phone_scene = any(
-                marker in scene
-                for marker in ("text", "message", "reply", "phone", "smartphone")
-            )
+            phone_scene = self._brain_scene_mentions_phone(scene)
             if phone_scene:
-                return any(
-                    marker in asset
-                    for marker in ("phone", "message", "text", "smartphone")
-                )
+                return self._brain_scene_mentions_phone(asset)
 
             intent_groups = (
                 (("unclench", "lengthen the exhale", "calmer body", "regulate before"), ("calm", "relax", "breath", "meditat", "walk", "outdoor")),
@@ -3287,7 +3495,6 @@ class HybridMediaFetcher:
                 (("usable boundary", "boundary under your control", "access you will offer"), ("talk", "conversation", "discussion", "distance", "apart", "walking")),
                 (("plan", "effort", "mutual", "follow through", "follow-through", "consistent", "behavior scoreboard"), ("plan", "date", "calendar", "schedule", "paper", "note", "book", "conversation", "discussion", "support", "team", "cook", "kitchen", "grocery", "walk", "routine")),
                 (("repeat", "actions match", "clearer", "pattern", "reliable", "consistency"), ("plan", "calendar", "conversation", "phone", "discussion", "talk", "support", "work", "focus", "routine", "walk", "outdoor")),
-                (("text", "message", "reply", "phone"), ("phone", "message", "text", "smartphone")),
                 (("voice", "speak", "conversation", "talk", "tone", "timing"), ("talk", "speak", "conversation", "listen", "discussion", "chat")),
                 (("eye contact", "gaze", "look"), ("eye", "look", "gaze", "conversation", "face to face")),
                 (("lean", "body language", "posture"), ("lean", "body language", "conversation", "talk", "listen", "eye contact")),
@@ -3321,6 +3528,41 @@ class HybridMediaFetcher:
                     if any(marker in scene for marker in scene_markers):
                         return any(marker in asset for marker in asset_markers)
                 return True
+            chichen_scene = any(
+                marker in scene
+                for marker in (
+                    "chichen itza", "el castillo", "great ball court",
+                    "sacred cenote", "ritual sinkhole", "sacrifice",
+                    "carved relief", "carved panel", "human remains",
+                )
+            )
+            if chichen_scene and "chichen" in asset:
+                ball_scene = "ball court" in scene
+                cenote_scene = any(marker in scene for marker in ("cenote", "sinkhole"))
+                castillo_scene = any(marker in scene for marker in ("el castillo", "pyramid", "stairway"))
+                ball_asset = any(marker in asset for marker in ("ball court", "ballcourt", "ballgame", "stone ring"))
+                cenote_asset = "cenote" in asset
+                castillo_asset = any(marker in asset for marker in ("el castillo", "castillo", "kukulcan", "pyramid"))
+                if "sacrifice" in scene and any(marker in scene for marker in ("carved", "relief", "scene")):
+                    return ball_asset and any(
+                        marker in asset
+                        for marker in ("relief", "carv", "panel", "skull", "tzompantli")
+                    )
+                if "human remains" in scene:
+                    return cenote_asset
+                named_intents = [
+                    match
+                    for active, match in (
+                        (ball_scene, ball_asset),
+                        (cenote_scene, cenote_asset),
+                        (castillo_scene, castillo_asset),
+                    )
+                    if active
+                ]
+                if len(named_intents) > 1:
+                    return any(named_intents)
+                if named_intents:
+                    return named_intents[0]
             if any(marker in scene for marker in ("soapstone bird", "soapstone birds")):
                 return any(marker in asset for marker in ("soapstone bird", "soapstone birds", "zimbabwe bird"))
             if any(
@@ -3369,7 +3611,6 @@ class HybridMediaFetcher:
         groups = (
             (("behavior scoreboard", "plan", "follow through", "ordinary week"), ("calendar", "schedule", "plan", "paper", "note", "book")),
             (("unclench", "lengthen the exhale", "regulate before", "calmer body"), ("calm", "space", "apart", "comfort", "relax")),
-            (("text", "message", "reply", "phone"), ("phone", "message", "text", "smartphone")),
             (("observable facts", "two short columns", "write only"), ("write", "note", "notebook", "paper", "pen")),
             (("boundary", "return is new information", "warmth without accountability"), ("distance", "apart", "phone", "message")),
             (("perform indifference", "post for a reaction", "false power"), ("phone", "argument", "upset", "distance")),
@@ -3377,6 +3618,8 @@ class HybridMediaFetcher:
         for scene_markers, asset_markers in groups:
             if any(marker in scene for marker in scene_markers):
                 score += 10 * sum(marker in asset for marker in asset_markers)
+        if self._brain_scene_mentions_phone(scene):
+            score += 10 * int(self._brain_scene_mentions_phone(asset))
         if any(marker in asset for marker in ("conversation", "talk", "discussion")):
             score += 1
         return score
@@ -3487,6 +3730,29 @@ class HybridMediaFetcher:
                     )
                 )
                 recorded_run_dir = str(item.get("run_dir") or "").strip()
+                # Explicit selected-run uploads predate the normal run-log
+                # updater. Their receipt/metadata is still reliable publication
+                # evidence and must consume visual history.
+                if not is_published and recorded_run_dir:
+                    recorded_path = Path(recorded_run_dir)
+                    for evidence_name in ("youtube_upload_receipt.json", "metadata.json"):
+                        try:
+                            evidence = json.loads(
+                                (recorded_path / evidence_name).read_text(encoding="utf-8-sig")
+                            )
+                        except Exception:
+                            continue
+                        if any(
+                            str(evidence.get(key) or "").strip()
+                            for key in (
+                                "youtube_id",
+                                "youtube_video_id",
+                                "facebook_id",
+                                "facebook_video_id",
+                            )
+                        ):
+                            is_published = True
+                            break
                 if is_published and recorded_run_dir:
                     published.add(str(Path(recorded_run_dir).resolve()).lower())
         except Exception:
@@ -3503,20 +3769,29 @@ class HybridMediaFetcher:
         except Exception:
             return None
 
-    def _recent_media_memory(self, run_dir: Path, channel_id: str, manifest_limit: int = 6) -> dict:
+    def _recent_media_memory(self, run_dir: Path, channel_id: str, manifest_limit: int = 24) -> dict:
         memory = {
             "recent_urls": set(),
             "recent_asset_ids": set(),
+            "recent_signatures": set(),
             "recent_hashes": set(),
             "recent_lead_urls": set(),
             "artist_counts": {},
             "recent_lead_artists": set(),
         }
         channel_root = self._channel_root_from_run_dir(run_dir, channel_id=channel_id) or run_dir.parents[3]
-        manifests = sorted(channel_root.rglob('sources.json'), key=lambda p: p.stat().st_mtime, reverse=True)
-        published_run_dirs = self._published_run_directories()
+        published_run_dirs = self._published_run_directories(self.state_path)
+        if published_run_dirs is None:
+            # If the state log is unreadable, retain the conservative legacy
+            # fallback rather than silently forgetting all visual history.
+            manifests = list(channel_root.rglob("sources.json"))
+        else:
+            # The run log is authoritative and global across both channels and
+            # content kinds. It may reference output outside this checkout.
+            manifests = [Path(path) / "sources.json" for path in published_run_dirs]
+            manifests = [path for path in manifests if path.is_file()]
+        manifests = sorted(manifests, key=lambda p: p.stat().st_mtime, reverse=True)
         loaded = 0
-        url_manifest_limit = min(3, manifest_limit)
         for manifest_path in manifests:
             if manifest_path.parent == run_dir:
                 continue
@@ -3546,13 +3821,19 @@ class HybridMediaFetcher:
                     continue
                 url = str(item.get('url', '')).strip()
                 asset_id = str(item.get('asset_id') or self._stable_asset_id(url, item)).strip().lower()
+                signatures = visual_asset_signatures(
+                    source_url=url,
+                    asset_id=asset_id,
+                    source_page=str(item.get("source_page") or ""),
+                )
                 perceptual_hash = str(item.get('perceptual_hash') or '').strip().lower()
                 artist = str(item.get('artist', '')).strip().lower()
-                if url and loaded <= url_manifest_limit:
+                if url:
                     memory['recent_urls'].add(url)
-                if asset_id and loaded <= url_manifest_limit:
+                if asset_id:
                     memory['recent_asset_ids'].add(asset_id)
-                if perceptual_hash and loaded <= url_manifest_limit:
+                memory['recent_signatures'].update(signatures)
+                if perceptual_hash:
                     memory['recent_hashes'].add(perceptual_hash)
                 if artist and artist != 'unknown':
                     memory['artist_counts'][artist] = int(memory['artist_counts'].get(artist, 0)) + 1
@@ -3687,6 +3968,7 @@ class HybridMediaFetcher:
         scene_text: str = "",
         deadline: float | None = None,
         brain_action_counts: dict[str, int] | None = None,
+        prefer_exact: bool = False,
     ) -> tuple[Path, Dict[str, str]] | None:
         if self._deadline_timeout(deadline, 0.2) is None:
             return None
@@ -3696,6 +3978,7 @@ class HybridMediaFetcher:
         brain_action_counts = brain_action_counts if brain_action_counts is not None else {}
         recent_urls = media_memory.get("recent_urls", set())
         recent_asset_ids = media_memory.get("recent_asset_ids", set())
+        recent_signatures = media_memory.get("recent_signatures", set())
         recent_hashes = media_memory.get("recent_hashes", set())
 
         if query.startswith("http://") or query.startswith("https://"):
@@ -3711,7 +3994,12 @@ class HybridMediaFetcher:
             ):
                 return None
             allow_recent_documentary_source = niche_id == "ancient_history" and content_kind == "video"
-            if query in seen_urls or (query in recent_urls and not allow_recent_documentary_source):
+            query_signatures = visual_asset_signatures(source_url=query)
+            if query in seen_urls or (
+                not prefer_exact
+                and not allow_recent_documentary_source
+                and (query in recent_urls or bool(query_signatures & recent_signatures))
+            ):
                 return None
             metadata = self._direct_url_metadata(query, deadline=deadline)
             if niche_id == "ancient_history":
@@ -3724,7 +4012,19 @@ class HybridMediaFetcher:
                 if strict_terms:
                     metadata["verified_subject"] = subject or query
             asset_id = self._stable_asset_id(query, metadata)
-            if asset_id in seen_urls or (asset_id in recent_asset_ids and not allow_recent_documentary_source):
+            candidate_signatures = visual_asset_signatures(
+                source_url=query,
+                asset_id=asset_id,
+                source_page=str(metadata.get("source_page") or ""),
+            )
+            if asset_id in seen_urls or (
+                not prefer_exact
+                and not allow_recent_documentary_source
+                and (
+                    asset_id in recent_asset_ids
+                    or bool(candidate_signatures & recent_signatures)
+                )
+            ):
                 return None
             if not self.allow_unprovenanced_media and not self._has_source_page_provenance(metadata):
                 return None
@@ -3744,7 +4044,10 @@ class HybridMediaFetcher:
                 perceptual_hash = self._media_perceptual_hash(out_path, deadline=deadline) if valid else ""
                 if valid and (
                     self._near_duplicate_hash(perceptual_hash, seen_hashes)
-                    or self._near_duplicate_hash(perceptual_hash, recent_hashes)
+                    or (
+                        not prefer_exact
+                        and self._near_duplicate_hash(perceptual_hash, recent_hashes)
+                    )
                 ):
                     valid, reason = False, "near-duplicate visual"
                 relevance = self._local_visual_relevance(out_path, subject, scene_text, deadline) if valid else None
@@ -3795,16 +4098,15 @@ class HybridMediaFetcher:
         ]
         if niche_id == "brain_lens":
             lower_query = query.lower()
-            relationship_context = any(
-                term in f"{query} {subject}".lower()
-                for term in (
-                    "couple", "relationship", "dating", "date", "flirt", "romantic", "attraction",
-                    "chemistry", "kiss", "partner", "love", "attachment", "breadcrumb", "situationship",
-                    "mixed signal", "silent treatment", "almost relationship", "push pull", "jealousy",
-                )
+            relationship_context = self._is_brain_relationship_topic(query, subject) or any(
+                self._contains_phrase(f"{query} {subject}", term)
+                for term in ("couple", "partner", "romantic", "love")
             )
             human_query = query
-            if relationship_context and not any(term in lower_query for term in ("couple", "relationship", "partner", "dating", "romantic")):
+            if relationship_context and not any(
+                self._contains_phrase(lower_query, term)
+                for term in ("couple", "relationship", "partner", "dating", "romantic")
+            ):
                 human_query = f"young adult couple relationship {query}"
             elif not any(term in lower_query for term in ("person", "people", "portrait", "face", "relationship", "body language", "stress", "office")):
                 human_query = f"{query} real person emotional close up"
@@ -3938,10 +4240,18 @@ class HybridMediaFetcher:
                 continue
             asset_id = self._stable_asset_id(url, meta)
             asset_identity = self._asset_content_identity(meta)
+            candidate_signatures = visual_asset_signatures(
+                source_url=url,
+                asset_id=asset_id,
+                source_page=str(meta.get("source_page") or ""),
+            )
             if niche_id == "brain_lens" and asset_id in self.BRAIN_LENS_BLOCKED_ASSET_IDS:
                 continue
             allow_recent_documentary_source = niche_id == "ancient_history" and content_kind == "video"
-            if url in seen_urls or (url in recent_urls and not allow_recent_documentary_source):
+            if url in seen_urls or (
+                not allow_recent_documentary_source
+                and (url in recent_urls or bool(candidate_signatures & recent_signatures))
+            ):
                 continue
             if asset_id in seen_urls or (asset_id in recent_asset_ids and not allow_recent_documentary_source):
                 continue
@@ -3957,14 +4267,9 @@ class HybridMediaFetcher:
                     " ",
                     f"{url} {meta.get('asset_title', '')} {meta.get('artist', '')}".lower(),
                 ).strip()
-                relationship_query = any(
-                    term in f"{query} {subject}".lower()
-                    for term in (
-                        "couple", "relationship", "dating", "date", "flirt", "romantic",
-                        "attraction", "chemistry", "kiss", "partner", "love", "attachment",
-                        "breadcrumb", "situationship", "mixed signal", "silent treatment",
-                        "almost relationship", "push pull", "jealousy", "friends with benefits",
-                    )
+                relationship_query = self._is_brain_relationship_topic(query, subject) or any(
+                    self._contains_phrase(f"{query} {subject}", term)
+                    for term in ("couple", "partner", "romantic", "love")
                 )
                 relationship_markers = (
                     "couple", "relationship", "partner", "dating", " date ", "romantic",
@@ -3989,11 +4294,10 @@ class HybridMediaFetcher:
                     and not any(marker in padded_asset for marker in relationship_markers)
                 ):
                     continue
-                if sequence == 1 and any(
-                    marker in f"{scene_text} {query}".lower()
-                    for marker in ("phone", "text", "message", "reply", "smartphone")
+                if sequence == 1 and self._brain_scene_mentions_phone(
+                    f"{scene_text} {query}"
                 ):
-                    if not any(marker in searchable_asset for marker in ("phone", "text", "message", "smartphone")):
+                    if not self._brain_scene_mentions_phone(searchable_asset):
                         continue
                 if any(
                     term in searchable_asset
@@ -4029,8 +4333,10 @@ class HybridMediaFetcher:
                 if artist and artist != "unknown":
                     if not is_vid and int(artist_counts.get(artist, 0)) >= (2 if sequence == 1 else 4):
                         continue
-                    if int(seen_artists.get(artist, 0)) >= (2 if is_vid else 1):
-                        continue
+                    # Within one episode, a recurring cast/photographer can make
+                    # the edit feel authored rather than randomly assembled.
+                    # URL, asset-id, perceptual-hash, provenance, dimensions, and
+                    # scene-intent checks still prevent low-quality duplication.
                 action = self._brain_action_cluster(url, meta)
                 action_limit = 6 if content_kind == "short" else 8
                 if action and int(brain_action_counts.get(action, 0)) >= action_limit:
@@ -4145,6 +4451,7 @@ class HybridMediaFetcher:
         reuse_counts: dict[str, int] = {}
         brain_action_counts: dict[str, int] = {}
         diagram_counts: dict[str, int] = {}
+        scene_plan_occurrences: dict[int, int] = {}
         fetch_budget = self.long_fetch_budget_seconds if topic.content_kind == "video" else self.short_fetch_budget_seconds
         fetch_deadline = time.monotonic() + fetch_budget
         scene_budget = self.long_scene_budget_seconds if topic.content_kind == "video" else self.short_scene_budget_seconds
@@ -4154,12 +4461,15 @@ class HybridMediaFetcher:
         for idx, text in enumerate(scene_texts, start=1):
             scene_deadline = min(fetch_deadline, time.monotonic() + scene_budget)
             query_candidates: List[str] = []
+            shot_role_by_query: dict[str, str] = {}
             scene = None
+            scene_plan_index: int | None = None
+            scene_plan_occurrence = 0
             if topic.scene_plan:
-                if topic.content_kind == "short" and topic.niche_id in {"brain_lens", "ancient_history"}:
-                    scene = topic.scene_plan[(idx - 1) % len(topic.scene_plan)]
-                else:
-                    scene = topic.scene_plan[(idx - 1) % len(topic.scene_plan)]
+                scene_plan_index = (idx - 1) % len(topic.scene_plan)
+                scene = topic.scene_plan[scene_plan_index]
+                scene_plan_occurrence = int(scene_plan_occurrences.get(scene_plan_index, 0))
+                scene_plan_occurrences[scene_plan_index] = scene_plan_occurrence + 1
             scene_intent_text = text
             if (
                 topic.niche_id == "brain_lens"
@@ -4197,7 +4507,11 @@ class HybridMediaFetcher:
                 subject_queries = self._scene_query_candidates(topic.subject or topic.title, text)
                 context_queries = self._ancient_context_queries(topic.subject or topic.title, text)
                 query_candidates = [
-                    *self._ancient_scene_priority_queries(topic.subject or topic.title, text),
+                    *self._ancient_scene_priority_queries(
+                        topic.subject or topic.title,
+                        text,
+                        occurrence=scene_plan_occurrence,
+                    ),
                     *context_queries,
                     *subject_queries,
                     *query_candidates,
@@ -4209,52 +4523,44 @@ class HybridMediaFetcher:
                         *query_candidates[2:],
                     ]
             elif topic.niche_id == "brain_lens":
-                relationship_topic = any(
-                    term in f"{topic.subject} {topic.title} {topic.narration}".lower()
-                    for term in (
-                        "relationship", "dating", "attachment", "attraction", "chemistry", "flirt",
-                        "kiss", "breadcrumb", "situationship", "mixed signal", "silent treatment",
-                        "almost relationship", "push pull", "jealousy", "emotional availability",
-                        "slow fading", "ghosting", "orbiting", "future faking", "benching",
-                        "relationship pacing", "mutual effort", "crush idealization", "limerence",
-                        "friends with benefits",
-                    )
+                relationship_topic = self._is_brain_relationship_topic(
+                    topic.subject,
+                    topic.title,
+                    topic.narration,
                 )
                 if relationship_topic:
-                    lowered_text = scene_intent_text.lower()
                     if topic.content_kind == "short":
                         contextual_query = self._brain_short_relationship_context_query(scene_intent_text)
-                    elif scene is not None and scene.search_terms:
-                        # Long-form plans already carry a ranked, scene-specific
-                        # query (journal, phone, boundary, routine, therapist,
-                        # and so on). Keep that intent ahead of the generic
-                        # relationship guard so any-couple footage cannot win.
-                        contextual_query = scene.search_terms[0]
-                    elif any(term in lowered_text for term in ("text", "message", "reply", "phone")):
-                        if any(term in lowered_text for term in ("disappear", "silence", "uncertainty", "wait")):
-                            contextual_query = "young adult couple emotional distance ignored phone message relationship"
-                        elif any(term in lowered_text for term in ("plan", "follow-through", "consistent")):
-                            contextual_query = "young adult couple planning a date relationship conversation"
-                        else:
-                            contextual_query = "young adult couple reading a phone message together relationship"
-                    elif any(term in lowered_text for term in ("clarity", "ask", "behavior", "promise")):
-                        contextual_query = "young adult couple serious honest relationship conversation"
+                        if int(brain_action_counts.get("conversation", 0)) >= 4:
+                            diversity_queries = (
+                                "adult couple cooking together at home realistic daytime",
+                                "adult couple walking outdoors holding hands realistic daytime",
+                                "adult couple planning a date with calendar at home realistic",
+                                "adult couple sharing coffee quietly at a cafe realistic daytime",
+                                "adult couple doing grocery shopping together realistic lifestyle",
+                                "adult couple giving each other respectful space outdoors realistic",
+                            )
+                            contextual_query = diversity_queries[(idx - 1) % len(diversity_queries)]
+                        shot_role_by_query[contextual_query] = "primary_action"
+                        # This query is the explicit relationship-relevance guard.
+                        # Keep it ahead of the per-scene query cap instead of
+                        # appending it where a four-query limit can discard it.
+                        query_candidates = [contextual_query, *query_candidates]
                     else:
-                        contextual_query = "young adult couple emotional relationship body language"
-                    if int(brain_action_counts.get("conversation", 0)) >= 4:
-                        diversity_queries = (
-                            "adult couple cooking together at home realistic daytime",
-                            "adult couple walking outdoors holding hands realistic daytime",
-                            "adult couple planning a date with calendar at home realistic",
-                            "adult couple sharing coffee quietly at a cafe realistic daytime",
-                            "adult couple doing grocery shopping together realistic lifestyle",
-                            "adult couple giving each other respectful space outdoors realistic",
-                        )
-                        contextual_query = diversity_queries[(idx - 1) % len(diversity_queries)]
-                    # This query is the explicit relationship-relevance guard.
-                    # Keep it ahead of the per-scene query cap instead of
-                    # appending it where a four-query limit can discard it.
-                    query_candidates = [contextual_query, *query_candidates]
+                        shot_queries = self._brain_relationship_shot_queries(scene_intent_text)
+                        if scene is not None and scene.search_terms:
+                            # Preserve authored scene specificity for the first
+                            # shot while still giving a repeated beat a distinct,
+                            # purposeful supporting action.
+                            shot_queries[0] = ("primary_action", scene.search_terms[0])
+                        if scene_plan_occurrence > 0:
+                            shot_queries = [shot_queries[1], shot_queries[0]]
+                        for role, query in shot_queries:
+                            shot_role_by_query.setdefault(query, role)
+                        query_candidates = [
+                            *(query for _, query in shot_queries),
+                            *query_candidates,
+                        ]
             query_candidates = list(dict.fromkeys(query_candidates))
             if scene is not None and scene.preferred_image_url:
                 # The preferred URL gets its own bounded attempt below; do not spend a
@@ -4320,40 +4626,12 @@ class HybridMediaFetcher:
                             "artist": "yt_automation",
                             "asset_title": f"{topic.subject or topic.title} {diagram_kind.replace('_', ' ')}",
                             "diagram_kind": diagram_kind,
+                            "shot_role": "explanatory_graphic",
                             "scene_index": idx,
                             "scene_text": text,
                             **self._ancient_diagram_source_metadata(diagram_kind),
                         }
                     )
-
-            # A continuity worker should use the already verified same-subject
-            # archive spine before spending its scene budget on a provider that
-            # is currently returning low-resolution or duplicate files.
-            if (
-                chosen is None
-                and topic.niche_id == "ancient_history"
-                and topic.content_kind == "short"
-                and continuity_cache
-            ):
-                cached_path, cached_meta = continuity_cache.pop(0)
-                cached_out = raw_dir / f"raw_{idx:02d}_continuity_{slugify_text(topic.subject or topic.title, 24)}.jpg"
-                try:
-                    shutil.copy2(cached_path, cached_out)
-                    chosen = cached_out
-                    reused_meta = dict(cached_meta)
-                    reused_meta.update(
-                        {
-                            "file": cached_out.name,
-                            "scene_index": idx,
-                            "scene_text": text,
-                            "search_query": f"verified continuity archive reuse for {topic.subject or topic.title}",
-                            "reused_for_scene": True,
-                            "reused_from_run": str(cached_path.parent.parent.parent),
-                        }
-                    )
-                    manifest.append(reused_meta)
-                except OSError:
-                    chosen = None
 
             # Phase 1: real-world assets first for a more professional Shorts look.
             if chosen is None and scene is not None and scene.preferred_image_url:
@@ -4364,12 +4642,23 @@ class HybridMediaFetcher:
                     seen_artists=seen_artists, seen_hashes=seen_hashes,
                     scene_text=scene_intent_text, deadline=scene_deadline,
                     brain_action_counts=brain_action_counts,
+                    # A curated URL is an authored evidence choice.  It may be
+                    # reused across proof runs when media-memory would
+                    # otherwise force a semantically weaker fallback.
+                    prefer_exact=True,
                 )
                 if result is not None:
                     chosen, meta = result
                     if scene.preferred_image_url in direct_queries:
                         meta["verified_subject"] = topic.subject or topic.title
-                    meta.update({"scene_index": idx, "scene_text": text, "search_query": scene.preferred_image_url})
+                    meta.update(
+                        {
+                            "scene_index": idx,
+                            "scene_text": text,
+                            "search_query": scene.preferred_image_url,
+                            "shot_role": "primary_source",
+                        }
+                    )
                     manifest.append(meta)
 
             if chosen is None:
@@ -4389,7 +4678,19 @@ class HybridMediaFetcher:
                     chosen, meta = result
                     if query in direct_queries:
                         meta["verified_subject"] = topic.subject or topic.title
-                    meta.update({"scene_index": idx, "scene_text": text, "search_query": query})
+                    default_shot_role = (
+                        "primary_evidence"
+                        if topic.niche_id == "ancient_history"
+                        else "primary_action"
+                    )
+                    meta.update(
+                        {
+                            "scene_index": idx,
+                            "scene_text": text,
+                            "search_query": query,
+                            "shot_role": shot_role_by_query.get(query, default_shot_role),
+                        }
+                    )
                     manifest.append(meta)
                     break
 
@@ -4411,6 +4712,7 @@ class HybridMediaFetcher:
                             "artist": "yt_automation",
                             "asset_title": f"{topic.subject or topic.title} {fallback_diagram_kind.replace('_', ' ')}",
                             "diagram_kind": fallback_diagram_kind,
+                            "shot_role": "explanatory_graphic",
                             "scene_index": idx,
                             "scene_text": text,
                             **self._ancient_diagram_source_metadata(fallback_diagram_kind),
@@ -4463,6 +4765,9 @@ class HybridMediaFetcher:
                     )
                     manifest.append(reused_meta)
 
+            # Cross-run continuity is a recovery source, not the first choice.
+            # Always exhaust fresh, current-scene semantic searches above before
+            # copying an older same-subject archive image.
             if (
                 chosen is None
                 and topic.niche_id == "ancient_history"
@@ -4481,6 +4786,7 @@ class HybridMediaFetcher:
                             "scene_index": idx,
                             "scene_text": text,
                             "search_query": f"verified continuity archive reuse for {topic.subject or topic.title}",
+                            "shot_role": "continuity_archive",
                             "reused_for_scene": True,
                             "reused_from_run": str(cached_path.parent.parent.parent),
                         }
@@ -5335,7 +5641,11 @@ class HybridMediaFetcher:
         # scene searches can trigger Wikimedia rate limiting. Every later subject
         # query uses the same cache key and still passes the normal provenance,
         # resolution, relevance, and perceptual-hash checks during download.
-        if topic.niche_id == "ancient_history":
+        has_authored_visual_spine = bool(
+            topic.scene_plan
+            and any(str(scene.preferred_image_url or "").strip() for scene in topic.scene_plan)
+        )
+        if topic.niche_id == "ancient_history" and not has_authored_visual_spine:
             archive_limit = 50 if topic.content_kind == "video" else 40
             archive_subject = re.sub(
                 r"\s+", " ", str(topic.subject or topic.title or "").strip()
