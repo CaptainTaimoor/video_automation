@@ -54,6 +54,37 @@ class FastStillAnimationTests(unittest.TestCase):
         for oscillation in ("abs(", "mod(", "sin(", "cos("):
             self.assertNotIn(oscillation, still_filter)
 
+    def test_long_vertical_still_scales_motion_with_beat_duration(self) -> None:
+        builder = VideoBuilder(1, 10, target_size=(180, 320))
+
+        short_filter = builder._fast_segment_visual_filter(
+            Path("source.jpg"),
+            3.0,
+            is_hook=False,
+            source_offset=0.25,
+        )
+        long_filter = builder._fast_segment_visual_filter(
+            Path("source.jpg"),
+            8.0,
+            is_hook=False,
+            source_offset=0.25,
+        )
+
+        self.assertIn("+0.075*", short_filter)
+        self.assertIn("+0.180*", long_filter)
+
+    def test_landscape_still_hook_keeps_visible_motion_after_hd_scaling(self) -> None:
+        builder = VideoBuilder(180, 600, target_size=(1920, 1080))
+
+        hook_filter = builder._fast_segment_visual_filter(
+            Path("wide_aerial.jpg"),
+            5.8,
+            is_hook=True,
+            source_offset=0.25,
+        )
+
+        self.assertIn("+0.180*", hook_filter)
+
     def test_audited_motion_offset_skips_a_known_static_clip_opening(self) -> None:
         builder = VideoBuilder(1, 10, target_size=(180, 320))
 

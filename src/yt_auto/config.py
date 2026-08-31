@@ -42,9 +42,13 @@ def load_config(path: Path) -> AppConfig:
         openai_allowed_hosts_raw = []
     elif isinstance(openai_allowed_hosts_raw, str):
         openai_allowed_hosts_raw = [openai_allowed_hosts_raw]
+    provider_override = str(os.getenv("YT_SCRIPT_WRITER_PROVIDER", "")).strip().lower()
     script_writer = ScriptWriterConfig(
-        provider=str(script_writer_raw.get("provider", "template")),
-        ollama_model=str(script_writer_raw.get("ollama_model", "llama3.2:3b")),
+        provider=provider_override or str(script_writer_raw.get("provider", "template")),
+        ollama_model=(
+            str(os.getenv("YT_OLLAMA_MODEL", "")).strip()
+            or str(script_writer_raw.get("ollama_model", "llama3.2:3b"))
+        ),
         ollama_url=str(script_writer_raw.get("ollama_url", "http://localhost:11434/api/generate")),
         timeout_seconds=min(
             120,
@@ -59,8 +63,12 @@ def load_config(path: Path) -> AppConfig:
         ],
         provider_cooldown_seconds=max(0, int(script_writer_raw.get("provider_cooldown_seconds", 180))),
         ollama_timeout_seconds=min(
-            180,
+            480,
             max(15, int(script_writer_raw.get("ollama_timeout_seconds", 90))),
+        ),
+        ollama_num_ctx=min(
+            8192,
+            max(2048, int(script_writer_raw.get("ollama_num_ctx", 4096))),
         ),
         openai_compatible_url=str(script_writer_raw.get("openai_compatible_url", "")),
         openai_compatible_model=str(script_writer_raw.get("openai_compatible_model", "")),

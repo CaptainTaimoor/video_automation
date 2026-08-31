@@ -123,6 +123,7 @@ class ScriptWriterConfig:
     provider_order: List[str] = field(default_factory=list)
     provider_cooldown_seconds: int = 180
     ollama_timeout_seconds: int = 90
+    ollama_num_ctx: int = 4096
     openai_compatible_url: str = ""
     openai_compatible_model: str = ""
     openai_compatible_api_key_env: str = "AI_GATEWAY_API_KEY"

@@ -22,6 +22,7 @@ def _config(**overrides) -> ScriptWriterConfig:
         "provider_order": ["gemini", "openai_compatible", "ollama"],
         "provider_cooldown_seconds": 0,
         "ollama_timeout_seconds": 90,
+        "ollama_num_ctx": 4096,
         "openai_compatible_timeout_seconds": 5,
     }
     values.update(overrides)
@@ -638,8 +639,11 @@ class RoutedScriptWriterTests(unittest.TestCase):
         )
         with patch("yt_auto.script_writer.requests.post", return_value=response) as post:
             self.assertEqual(writer._generate_ai("hello"), "local result")
-        self.assertEqual(post.call_args.kwargs["timeout"], 180)
+        self.assertEqual(post.call_args.kwargs["timeout"], 480)
         self.assertFalse(post.call_args.kwargs["allow_redirects"])
+        payload = post.call_args.kwargs["json"]
+        self.assertEqual(payload["options"]["num_ctx"], 4096)
+        self.assertEqual(payload["keep_alive"], "15m")
 
     def test_script_writer_rejects_nonloopback_ollama_before_request(self) -> None:
         writer = ScriptWriter(
@@ -741,11 +745,32 @@ class RoutedScriptWriterTests(unittest.TestCase):
             writer_cfg.provider_order,
             ["gemini", "groq", "cloudflare", "openrouter", "ollama"],
         )
-        self.assertEqual(writer_cfg.ollama_timeout_seconds, 90)
+        self.assertEqual(writer_cfg.ollama_timeout_seconds, 480)
+        self.assertEqual(writer_cfg.ollama_num_ctx, 4096)
         self.assertEqual(
             writer_cfg.openai_compatible_allowed_hosts,
             ["router.huggingface.co"],
         )
+
+    def test_workspace_config_allows_process_local_provider_override(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        with patch.dict(
+            os.environ,
+            {"YT_SCRIPT_WRITER_PROVIDER": "ollama"},
+            clear=False,
+        ):
+            writer_cfg = load_config(root / "config" / "settings.yaml").app.script_writer
+        self.assertEqual(writer_cfg.provider, "ollama")
+
+    def test_workspace_config_allows_process_local_ollama_model_override(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        with patch.dict(
+            os.environ,
+            {"YT_OLLAMA_MODEL": "llama3.1:8b"},
+            clear=False,
+        ):
+            writer_cfg = load_config(root / "config" / "settings.yaml").app.script_writer
+        self.assertEqual(writer_cfg.ollama_model, "llama3.1:8b")
 
 
 if __name__ == "__main__":

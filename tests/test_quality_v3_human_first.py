@@ -1,11 +1,15 @@
 import os
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 from yt_auto.config import load_config
+from yt_auto.models import TopicCandidate
 from yt_auto.pipeline import ShortsFactory
+from yt_auto.script_writer import ScriptWriter
+from yt_auto.source_registry import CURATED_TOPIC_SOURCE_PACKS
 from yt_auto.subtitles import SubtitleComposer, SubtitleSegment
 
 
@@ -79,6 +83,54 @@ class QualityV3HumanFirstTests(unittest.TestCase):
                 "video",
                 candidate,
             )
+        )
+
+    def test_exact_source_bounded_fwb_plan_is_allowed_without_a_paid_model(self) -> None:
+        config = load_config(Path("config/settings.yaml"))
+        channel = next(item for item in config.channels if item.id == "brain_lens")
+        writer = ScriptWriter(config.app.script_writer)
+        seed = TopicCandidate(
+            niche_id="brain_lens",
+            style="explainer",
+            trend_terms=[],
+            title="Friends With Benefits: When Chemistry Changes the Agreement",
+            subject="Friends With Benefits Boundaries",
+            hook="",
+            narration="",
+            visual_captions=[],
+            source_urls=list(CURATED_TOPIC_SOURCE_PACKS["friends with benefits boundaries"]),
+            image_queries=[],
+            hashtags=[],
+            engagement_score=90.0,
+            content_kind="video",
+        )
+        scenes = writer._brain_long_video_plan(channel, seed, seed.subject)
+        curated = replace(
+            seed,
+            scene_plan=scenes,
+            narration=" ".join(scene.narration for scene in scenes),
+            narration_beats=[scene.narration for scene in scenes],
+            visual_captions=[scene.visual_text for scene in scenes],
+            script_provider=ShortsFactory.CURATED_BRAIN_LONG_PROVIDER,
+        )
+
+        self.assertTrue(ShortsFactory._is_exact_curated_brain_long_plan(curated))
+        self.assertIsNone(
+            ShortsFactory._quality_v3_script_provider_issue(
+                "brain_lens",
+                "video",
+                curated,
+            )
+        )
+
+        forged = replace(curated, scene_plan=list(curated.scene_plan[:-1]))
+        self.assertIn(
+            "provenance is invalid",
+            ShortsFactory._quality_v3_script_provider_issue(
+                "brain_lens",
+                "video",
+                forged,
+            ) or "",
         )
 
     def test_v3_dispatches_one_continuous_narration(self) -> None:

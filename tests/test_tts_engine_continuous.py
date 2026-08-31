@@ -30,6 +30,24 @@ def _wav_bytes(duration: float = 0.25, sample_rate: int = 8000) -> bytes:
 
 
 class ContinuousNarrationTests(unittest.TestCase):
+    def test_long_pause_compaction_preserves_words_and_keeps_periodic_breaths(self):
+        text = (
+            "First short sentence. Second short sentence. Third short sentence. "
+            "Fourth short sentence. Fifth short sentence."
+        )
+
+        compact = NarrationEngine._compact_long_sentence_boundaries(text)
+
+        self.assertEqual(
+            NarrationEngine._timing_tokens(text),
+            NarrationEngine._timing_tokens(compact),
+        )
+        self.assertEqual(
+            "First short sentence, Second short sentence, Third short sentence, "
+            "Fourth short sentence. Fifth short sentence.",
+            compact,
+        )
+
     def test_edge_renders_the_whole_story_once_and_returns_pcm_wav_timings(self):
         audio_payload = _wav_bytes()
         constructor_calls: list[dict] = []

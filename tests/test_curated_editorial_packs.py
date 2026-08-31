@@ -51,8 +51,7 @@ class CuratedShortPlanTests(unittest.TestCase):
             content_kind="short",
         )
 
-        self.assertGreaterEqual(len(polished.scene_plan), 6)
-        self.assertLessEqual(len(polished.scene_plan), 12)
+        self.assertEqual(len(polished.scene_plan), 12)
         self.assertEqual(len(polished.scene_plan), len(polished.narration_beats))
         self.assertGreaterEqual(self.writer._word_count(polished.narration), 65)
         self.assertLessEqual(self.writer._word_count(polished.narration), 70)
@@ -60,6 +59,15 @@ class CuratedShortPlanTests(unittest.TestCase):
             max(self.writer._word_count(line) for line in polished.narration_beats),
             10,
         )
+        preferred = [scene.preferred_image_url for scene in polished.scene_plan]
+        self.assertEqual(len(preferred), 12)
+        archive_urls = [url for url in preferred if url]
+        self.assertEqual(len(archive_urls), 11)
+        self.assertEqual(len(set(archive_urls)), 11)
+        self.assertTrue(all(url.startswith("https://upload.wikimedia.org/") for url in archive_urls))
+        self.assertEqual("", preferred[8])
+        self.assertTrue(any("Great_Zimbabwe_%28Donjon%29" in url for url in preferred))
+        self.assertFalse(any("Wall_of_the_great_enclosure_%28far%29" in url for url in preferred))
         narration = polished.narration.lower()
         for fact in (
             "colonial writers denied great zimbabwe's origins",
@@ -72,7 +80,7 @@ class CuratedShortPlanTests(unittest.TestCase):
             "rich gold lands",
             "imported beads and ceramics",
             "broad indian ocean trade",
-            "evidence confirms african origins",
+            "origins stand confirmed",
         ):
             self.assertIn(fact, narration)
         self.assertEqual(
@@ -95,6 +103,38 @@ class CuratedShortPlanTests(unittest.TestCase):
         expected = "Great Zimbabwe: How Archaeology Overturned a Colonial Myth"
         self.assertEqual(expected, chosen.title)
         self.assertEqual([expected], [variant.title for variant in ranked])
+
+    def test_tikal_short_uses_a_complete_ten_scene_evidence_chain(self) -> None:
+        polished = self.writer.improve(
+            self.channels["ancient_history"],
+            candidate("ancient_history", "Tikal"),
+            content_kind="short",
+        )
+
+        self.assertEqual(10, len(polished.scene_plan))
+        self.assertEqual(70, self.writer._word_count(polished.narration))
+        self.assertEqual(len(polished.scene_plan), len(polished.narration_beats))
+        self.assertLessEqual(
+            max(self.writer._word_count(line) for line in polished.narration_beats),
+            10,
+        )
+        narration = polished.narration.lower()
+        for fact in (
+            "sixteen centuries",
+            "reservoirs stored precious water",
+            "thirty-three maya rulers",
+            "last carved monument dates to 869",
+            "tikal faded near 900",
+        ):
+            self.assertIn(fact, narration)
+        self.assertEqual(
+            [],
+            self.writer.editorial_quality_issues(
+                polished,
+                polished.narration_beats,
+                content_kind="short",
+            ),
+        )
 
     def test_reply_time_anxiety_uses_voice_calibrated_scenes(self) -> None:
         polished = self.writer.improve(
@@ -204,6 +244,30 @@ class CuratedShortPlanTests(unittest.TestCase):
         )
         self.assertEqual([], structural_issues)
 
+    def test_great_zimbabwe_long_plan_is_progressive_source_bounded_and_caption_safe(self) -> None:
+        topic = candidate("ancient_history", "Great Zimbabwe")
+        topic.content_kind = "video"
+        scenes = self.writer._history_long_video_plan(
+            self.channels["ancient_history"],
+            topic,
+            topic.subject,
+        )
+        narration = " ".join(scene.narration for scene in scenes)
+        preferred = [scene.preferred_image_url for scene in scenes if scene.preferred_image_url]
+        sections = [(scene.visual_text, scene.narration) for scene in scenes]
+
+        self.assertEqual(20, len(scenes))
+        self.assertGreaterEqual(self.writer._word_count(narration), 1050)
+        self.assertLessEqual(self.writer._word_count(narration), 1145)
+        self.assertEqual([], self.writer._caption_safe_section_issues(sections))
+        self.assertEqual(11, len(preferred))
+        self.assertEqual(len(preferred), len(set(preferred)))
+        self.assertIn("Shona ancestors", narration)
+        self.assertIn("glass beads and glazed ceramics", narration)
+        self.assertIn("No single cause", narration)
+        self.assertTrue(any("Conical_Tower" in url for url in preferred))
+        self.assertTrue(any("Soapstone_birds" in url for url in preferred))
+
     def test_caption_safe_long_sections_fail_before_tts_when_edited_too_long(self) -> None:
         safe = [("Safe scene", "Every sentence remains safely under eight words.")]
         unsafe = [("Unsafe scene", "This deliberately oversized sentence cannot remain whole beneath the strict eight word caption limit.")]
@@ -219,6 +283,9 @@ class CuratedSourcePackTests(unittest.TestCase):
 
     def test_source_packs_merge_dedupe_and_keep_normal_validation(self) -> None:
         cases = {
+            "Tikal": {
+                "https://whc.unesco.org/en/list/64/",
+            },
             "Great Zimbabwe": {
                 "https://whc.unesco.org/en/list/364/",
                 "https://www.metmuseum.org/essays/great-zimbabwe-11th-15th-century",

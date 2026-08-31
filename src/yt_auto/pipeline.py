@@ -28,6 +28,7 @@ from yt_auto.quality_v2.visuals import visual_asset_signatures
 from yt_auto.research import SourceSafeResearchExhaustedError
 from yt_auto.script_writer import ScriptWriter
 from yt_auto.seo import build_youtube_metadata
+from yt_auto.source_registry import CURATED_TOPIC_SOURCE_PACKS
 from yt_auto.thumbnailer import ThumbnailMaker
 from yt_auto.subtitles import SubtitleComposer, SubtitleSegment
 from yt_auto.title_lab import TitleLab, TitleVariant
@@ -75,6 +76,15 @@ class ShortsFactory:
     BRAIN_SHORT_MAX_FACT_CARD_FALLBACKS = 1
     ANCIENT_LONG_WORD_RANGE = (1050, 1145)
     BRAIN_LONG_WORD_RANGE = (1080, 1200)
+    CURATED_BRAIN_LONG_SUBJECT = "friends with benefits boundaries"
+    CURATED_BRAIN_LONG_PROVIDER = "curated_source_plan"
+    CURATED_BRAIN_LONG_PLAN_HASH = (
+        "e3f17248041046bbcfd5bde8f571fda9d844741cc7e9deb0425c36d36f884d38"
+    )
+    CURATED_BRAIN_LONG_REQUIRED_SOURCES = frozenset(
+        url.lower()
+        for url in CURATED_TOPIC_SOURCE_PACKS[CURATED_BRAIN_LONG_SUBJECT]
+    )
 
     @staticmethod
     def _quality_modes_from_environment() -> tuple[bool, bool, bool]:
@@ -555,16 +565,112 @@ class ShortsFactory:
         return review
 
     @staticmethod
+    def _normalized_subject(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+    @classmethod
+    def _is_exact_curated_brain_long_plan(
+        cls,
+        candidate: TopicCandidate,
+    ) -> bool:
+        """Accept only the source-bounded, byte-stable FWB editorial plan."""
+
+        if (
+            cls._normalized_subject(candidate.subject)
+            != cls.CURATED_BRAIN_LONG_SUBJECT
+        ):
+            return False
+        source_urls = {
+            str(url or "").strip().lower()
+            for url in candidate.source_urls
+            if str(url or "").strip()
+        }
+        if not cls.CURATED_BRAIN_LONG_REQUIRED_SOURCES.issubset(source_urls):
+            return False
+        plan_payload = [
+            {
+                "narration": str(scene.narration or "").strip(),
+                "visual_text": str(scene.visual_text or "").strip(),
+            }
+            for scene in candidate.scene_plan
+        ]
+        return (
+            len(plan_payload) == 20
+            and content_hash(plan_payload) == cls.CURATED_BRAIN_LONG_PLAN_HASH
+        )
+
+    def _quality_v3_curated_brain_long_plan(
+        self,
+        channel: ChannelConfig,
+        content_kind: str,
+        candidate: TopicCandidate,
+    ) -> TopicCandidate | None:
+        """Build the one deterministic Brain long plan approved for V3.
+
+        Clearing draft prose and scenes makes the result independent of a
+        provider outage and prevents an arbitrary planner draft from inheriting
+        the curated provenance label.
+        """
+
+        if (
+            channel.id != "brain_lens"
+            or content_kind != "video"
+            or self._normalized_subject(candidate.subject)
+            != self.CURATED_BRAIN_LONG_SUBJECT
+        ):
+            return None
+        source_urls = self.topic_planner.research.enrich_source_urls(
+            candidate.subject,
+            list(candidate.source_urls),
+            limit=6,
+        )
+        deterministic_input = replace(
+            candidate,
+            narration="",
+            narration_beats=[],
+            visual_captions=[],
+            scene_plan=[],
+            source_urls=source_urls,
+            script_provider="",
+            script_provider_endpoint_host="",
+            script_provider_model="",
+        )
+        polished = self.script_writer._polish_scene_plan(
+            channel,
+            deterministic_input,
+            content_kind=content_kind,
+        )
+        polished = replace(polished, source_urls=source_urls)
+        if not self._is_exact_curated_brain_long_plan(polished):
+            raise ValueError(
+                "Curated Friends With Benefits long plan failed its exact "
+                "source or content fingerprint"
+            )
+        return replace(
+            polished,
+            script_provider=self.CURATED_BRAIN_LONG_PROVIDER,
+            script_provider_endpoint_host="",
+            script_provider_model="",
+        )
+
+    @classmethod
     def _quality_v3_script_provider_issue(
+        cls,
         channel_id: str,
         content_kind: str,
         candidate: TopicCandidate,
     ) -> str | None:
-        if (
-            channel_id == "brain_lens"
-            and content_kind == "video"
-            and not str(candidate.script_provider or "").strip()
-        ):
+        if channel_id != "brain_lens" or content_kind != "video":
+            return None
+        provider = str(candidate.script_provider or "").strip()
+        if provider == cls.CURATED_BRAIN_LONG_PROVIDER:
+            if cls._is_exact_curated_brain_long_plan(candidate):
+                return None
+            return (
+                "Brain Lens curated long-form provenance is invalid; only the "
+                "exact source-bounded Friends With Benefits plan is allowed."
+            )
+        if not provider:
             return (
                 "Brain Lens long-form requires a model-authored script; "
                 "the repetitive deterministic outage template is disabled in Quality V3."
@@ -2578,23 +2684,23 @@ class ShortsFactory:
                 "Boundary Response",
                 "Boundary Response: What Their Next Move Actually Reveals",
                 (
-                    "Their plan crosses your boundary. Their response reveals real character.",
-                    "A respectful response stays warm. They may ask once. They should accept your answer.",
-                    "Pressure looks different. Guilt and repeated bargaining create pressure. Punishment turns preference into a test.",
-                    "One disappointed reaction needs context. Repeated patterns reveal their choices. Separate needs expose their response.",
+                    "The date plan crosses your boundary. You say no. Their next move reveals character.",
+                    "A respectful response stays warm. They ask once. They accept your answer.",
+                    "Pressure looks different. Guilt and bargaining add pressure. Punishment can make a choice feel tested.",
+                    "One moment needs context. Repeated choices reveal the pattern. Separate needs expose their response.",
                     "Name the boundary. Do not apologize. Watch what follows later.",
-                    "Attraction feels safer when no remains safe. Respectful, consistent responses are the signal worth trusting next.",
+                    "Respect makes attraction safer. Steady respect earns lasting trust.",
                 ),
             ),
             (
                 "Curiosity and Interest",
                 "Curiosity and Interest: The Difference Between Care and Charm",
                 (
-                    "Their question recalls one detail. Curiosity makes real interest visible.",
-                    "Real interest makes room for answers. It lets your answer breathe.",
-                    "Charm can feel electric. Sometimes charm centers its performer.",
-                    "Notice whether questions deepen naturally. Do they remember your preferences? Do they respect important boundaries?",
-                    "You do not need an interview. Balanced conversation moves both ways. It leaves breathing room.",
+                    "They remember your interview. Curiosity makes interest visible.",
+                    "Interest makes room for answers. It lets your answer breathe.",
+                    "Charm can feel electric. Charm centers its performer.",
+                    "Notice whether questions deepen naturally. Do they remember your preferences? Do they respect boundaries?",
+                    "You do not need an interview. Conversation moves both ways. It leaves breathing room.",
                     "Chemistry catches attention. Curious follow-through builds clarity. Real interest stays curious about you.",
                 ),
             ),
@@ -2785,7 +2891,7 @@ class ShortsFactory:
                 visual_text=self.image_fetcher._clean_caption(beat),
                 search_terms=[
                     self.image_fetcher._brain_short_relationship_context_query(beat),
-                    f"adult age 25 to 35 {subject.lower()} realistic lifestyle b roll",
+                    self.image_fetcher._brain_relationship_shot_queries(beat)[1][1],
                 ],
                 visual_prompt=(
                     f"{subject}. {beat} Premium dating psychology creator look, "
@@ -6131,7 +6237,29 @@ class ShortsFactory:
         quality_v2_reports: dict[str, dict] = {}
         quality_v2_visual_reports: dict[str, dict] = {}
         scored_candidates: list[tuple[float, dict, TopicCandidate, list[TitleVariant]]] = []
+        forced_history_subject = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            os.getenv("YT_FORCE_HISTORY_SUBJECT", "").lower(),
+        ).strip()
+        forced_history_video = bool(
+            forced_history_subject
+            and channel.id == "ancient_history"
+            and content_kind == "video"
+        )
         candidate_pool_size = max(1, int(getattr(self.config.app, "candidate_pool_size", 4) or 4))
+        # A local final-QA build may deliberately exercise one free model on a
+        # low-memory PC. Keep normal scheduler diversity unchanged unless this
+        # explicit, process-local override is present.
+        qa_candidate_pool = str(os.getenv("YT_QA_CANDIDATE_POOL_SIZE", "")).strip()
+        if qa_candidate_pool:
+            try:
+                candidate_pool_size = min(8, max(1, int(qa_candidate_pool)))
+            except ValueError:
+                self.logger.warning(
+                    channel.id,
+                    "Ignoring invalid YT_QA_CANDIDATE_POOL_SIZE override",
+                )
         if channel.id == "brain_lens" and content_kind == "short":
             candidate_pool_size = 3
         if channel.id == "ancient_history" and content_kind == "short":
@@ -6141,6 +6269,21 @@ class ShortsFactory:
         max_topic_attempts = 14 if channel.id == "brain_lens" and content_kind == "short" else 15
         if channel.id == "ancient_history" and content_kind == "short":
             max_topic_attempts = 12
+        if forced_history_video:
+            # A forced QA subject must never drift to unrelated history after
+            # one rejected draft. Keep a few bounded retries for transient free
+            # providers, and stop as soon as one candidate clears planning.
+            candidate_pool_size = 1
+            max_topic_attempts = 4
+        qa_max_attempts = str(os.getenv("YT_QA_MAX_TOPIC_ATTEMPTS", "")).strip()
+        if qa_max_attempts:
+            try:
+                max_topic_attempts = min(15, max(1, int(qa_max_attempts)))
+            except ValueError:
+                self.logger.warning(
+                    channel.id,
+                    "Ignoring invalid YT_QA_MAX_TOPIC_ATTEMPTS override",
+                )
         all_continuity_fallbacks = (
             self._ancient_short_continuity_fallbacks(channel)
             if str(os.getenv("YT_CONTINUITY_RECOVERY", "")).lower()
@@ -6157,12 +6300,17 @@ class ShortsFactory:
 
         for attempt_index in range(max_topic_attempts):
             self.logger.info(channel.id, f"Planning candidate {attempt_index + 1}/{max_topic_attempts}")
+            planning_avoids = (
+                set(published_avoid_titles)
+                if forced_history_video
+                else avoid_titles
+            )
             try:
                 candidate = self.topic_planner.plan(
                     channel,
                     style_bias=style_bias,
                     term_bias=term_bias,
-                    avoid_titles=avoid_titles,
+                    avoid_titles=planning_avoids,
                     content_kind=content_kind,
                     dna=dna,
                 )
@@ -6179,6 +6327,22 @@ class ShortsFactory:
                     )
                 else:
                     continue
+            if (
+                channel.id == "brain_lens"
+                and content_kind == "video"
+                and forced_brain_subject == self.CURATED_BRAIN_LONG_SUBJECT
+            ):
+                # Final-QA can request the exact source-bounded long episode
+                # without depending on the randomized free-topic shortlist.
+                # The curated builder below clears every draft scene before it
+                # assigns provenance, so an unrelated planner draft can never
+                # leak into this episode.
+                candidate = replace(
+                    candidate,
+                    subject="Friends With Benefits Boundaries",
+                    title="Friends With Benefits: When Chemistry Changes the Agreement",
+                    source_urls=[],
+                )
             if not candidate.source_urls:
                 context_source = self.topic_planner.research._default_source_url(
                     candidate.subject or candidate.title
@@ -6209,7 +6373,18 @@ class ShortsFactory:
                     if candidate.selected_title_pattern == "continuity_evergreen_fallback"
                     else ""
                 )
-                if candidate.selected_title_pattern in {
+                curated_brain_long = (
+                    self._quality_v3_curated_brain_long_plan(
+                        channel,
+                        content_kind,
+                        candidate,
+                    )
+                    if getattr(self, "quality_v3_enabled", False)
+                    else None
+                )
+                if curated_brain_long is not None:
+                    candidate = curated_brain_long
+                elif candidate.selected_title_pattern in {
                     "deterministic_brain_fallback",
                     "continuity_evergreen_fallback",
                 }:
@@ -6222,7 +6397,7 @@ class ShortsFactory:
                         channel=channel,
                         topic=candidate,
                         content_kind=content_kind,
-                        avoid_titles=avoid_titles,
+                        avoid_titles=planning_avoids,
                         dna=dna,
                     )
                 provider_issue = (
@@ -6235,6 +6410,11 @@ class ShortsFactory:
                     else None
                 )
                 if provider_issue:
+                    rejection_reason = str(
+                        getattr(self.script_writer, "last_script_rejection_reason", "") or ""
+                    ).strip()
+                    if rejection_reason:
+                        provider_issue = f"{provider_issue} Last model result: {rejection_reason}."
                     raise ValueError(provider_issue)
                 candidate = replace(
                     candidate,
@@ -6269,7 +6449,11 @@ class ShortsFactory:
                         candidate,
                         content_kind=content_kind,
                     )
-                validation_avoids = avoid_titles
+                validation_avoids = (
+                    set(published_avoid_titles)
+                    if forced_history_video
+                    else avoid_titles
+                )
                 if continuity_fallback_title:
                     # Reusing a vetted subject with a materially new angle is
                     # preferable to an unsourced gap. Do not let the exact
@@ -6291,7 +6475,11 @@ class ShortsFactory:
                 ai_score = (
                     {}
                     if channel.id == "ancient_history" and content_kind == "short"
-                    else self.script_writer.score_topic_candidate(channel, candidate, avoid_titles)
+                    else self.script_writer.score_topic_candidate(
+                        channel,
+                        candidate,
+                        planning_avoids,
+                    )
                 )
                 score = float(ai_score.get("score") or candidate.engagement_score or 0)
                 scored_candidates.append((score, ai_score, candidate, variants))
@@ -6645,6 +6833,10 @@ class ShortsFactory:
                     compact_beat_pauses=(
                         getattr(self, "quality_v3_enabled", False)
                         and selected_channel.id == "brain_lens"
+                    ),
+                    compact_sentence_pauses=(
+                        getattr(self, "quality_v3_enabled", False)
+                        and content_kind == "video"
                     ),
                 )
                 voice_id, durations = self._synthesize_narration_beats(

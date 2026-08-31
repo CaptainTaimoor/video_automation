@@ -134,6 +134,22 @@ class HybridMediaFetcher:
         "jade_recovered_from_sacred_cenote,_chichen_itza.jpg": ("CC0", "Gary Todd"),
         "panorama_of_chichén_itza_with_temple_of_kukulcán.jpg": ("CC BY-SA 4.0", "Trldp"),
         "panorama-_chichen_itza,_yucatan,_mexico_(8338607460).jpg": ("No restrictions", "SMU Central University Libraries"),
+        "the_discoveries_at_the_great_zimbabwe_in_mashonaland_(upright).png": ("Public domain", "Mabel Bent"),
+        "140_of_'the_ruined_cities_of_mashonaland-_being_a_record_of_excavation_and_exploration_in_1891_..._with_a_chapter_on_the_orientation_and_mensuration_of_the_temples_by_r._m._w._swan._(with_plates.)'_(11217936264).jpg": ("No restrictions", "The British Library"),
+        "great-zim-aerial-looking-west.jpg": ("CC BY-SA 4.0", "Janice Bell"),
+        "the_great_zimbabwe_hill_complex.jpg": ("CC BY-SA 2.0", "Andrew Moore"),
+        "great_inclosure_–_great_zimbabwe_(16).jpg": ("CC BY 3.0", "Fanny Schertzer"),
+        "conical_tower_-_great_enclosure_iii_(33736918448).jpg": ("CC BY-SA 2.0", "Andrew Moore"),
+        "asc_leiden_-_rietveld_collection_-_east_africa_1975_-_05_-_034_-_the_inner_wall_of_the_ruins_of_great_zimbabwe_-_masvingo,_zimbabwe.jpg": ("CC BY-SA 4.0", "Aart Rietveld"),
+        "great_zimbabwe_(great_enclosure).jpg": ("CC BY-SA 4.0", "Todinirunganga"),
+        "wall_of_the_great_enclosure,_great_zimbabwe.jpg": ("CC BY 3.0", "Jens Klinzing"),
+        "great_zimbabwe_(donjon).jpg": ("CC BY-SA 3.0", "Hans Hillewaert"),
+        "soapstone_birds_on_pedestals.jpg": ("Public domain", "James Theodore Bent"),
+        "asc_leiden_-_rietveld_collection_-_east_africa_1975_-_05_-_033_-_a_wall_of_the_ruins_of_great_zimbabwe_-_masvingo,_zimbabwe.jpg": ("CC BY-SA 4.0", "Aart Rietveld"),
+    }
+    CURATED_WIKIMEDIA_DESCRIPTIONS: dict[str, str] = {
+        "great-zim-aerial-looking-west.jpg": "Great Zimbabwe ruins, aerial view looking west",
+        "soapstone_birds_on_pedestals.jpg": "Zimbabwe Birds found at Great Zimbabwe",
     }
 
     def __init__(
@@ -173,8 +189,9 @@ class HybridMediaFetcher:
         self.session = requests.Session()
         self.session.headers.update(
             {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+                "User-Agent": "video-automation/3.0 (https://github.com/CaptainTaimoor/video_automation; licensed-media fetcher)",
                 "Referer": "https://en.wikipedia.org/",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
             }
         )
 
@@ -430,6 +447,7 @@ class HybridMediaFetcher:
                 "license": license_name,
                 "artist": artist,
                 "asset_title": page_title,
+                "description": self.CURATED_WIKIMEDIA_DESCRIPTIONS.get(filename.lower(), ""),
                 "asset_id": f"wikimedia:file:{filename.lower()}",
                 "source_page": f"https://commons.wikimedia.org/wiki/{quote(page_title, safe=':')}",
                 "media_width": "",
@@ -479,10 +497,20 @@ class HybridMediaFetcher:
                         "media_width": str(info.get("width") or ""),
                         "media_height": str(info.get("height") or ""),
                     }
-                except Exception:
-                    pause = self._deadline_timeout(deadline, 0.6 + attempt)
+                except Exception as exc:
+                    response = getattr(exc, "response", None)
+                    retry_after = 0.6 + attempt
+                    if int(getattr(response, "status_code", 0) or 0) == 429:
+                        try:
+                            retry_after = float(
+                                str(getattr(response, "headers", {}).get("Retry-After", 2 ** (attempt + 1))).strip()
+                            )
+                        except (TypeError, ValueError):
+                            retry_after = float(2 ** (attempt + 1))
+                    retry_after = max(0.2, min(8.0, retry_after))
+                    pause = self._deadline_timeout(deadline, retry_after)
                     if attempt < 2 and pause is not None:
-                        time.sleep(min(0.6 + attempt, pause))
+                        time.sleep(min(retry_after, pause))
         return None
 
     def _pexels_photo_search(self, query: str, limit: int = 4, orientation: str = "portrait", deadline: float | None = None) -> List[Tuple[str, Dict[str, str]]]:
@@ -548,17 +576,26 @@ class HybridMediaFetcher:
             timeout = self._deadline_timeout(deadline, 16.0)
             if timeout is None:
                 return False
+            retry_after = 0.5 + attempt
             try:
                 r = self.session.get(url, timeout=timeout)
                 r.raise_for_status()
                 if self._save_media_bytes(r.content, out_path):
                     return True
-            except Exception:
-                pass
-            pause = self._deadline_timeout(deadline, 0.5 + attempt)
+            except Exception as exc:
+                response = getattr(exc, "response", None)
+                if int(getattr(response, "status_code", 0) or 0) == 429:
+                    try:
+                        retry_after = float(
+                            str(getattr(response, "headers", {}).get("Retry-After", 2 ** (attempt + 1))).strip()
+                        )
+                    except (TypeError, ValueError):
+                        retry_after = float(2 ** (attempt + 1))
+                retry_after = max(0.2, min(8.0, retry_after))
+            pause = self._deadline_timeout(deadline, retry_after)
             if pause is None:
                 return False
-            time.sleep(min(0.5 + attempt, pause))
+            time.sleep(min(retry_after, pause))
         return False
 
     def _pexels_video_search(self, query: str, limit: int = 3, orientation: str = "portrait", deadline: float | None = None) -> List[Tuple[str, Dict[str, str]]]:
@@ -2408,6 +2445,11 @@ class HybridMediaFetcher:
         """
         if topic.niche_id != "ancient_history" or topic.content_kind != "short":
             return []
+        if str(os.getenv("YT_QUALITY_V3", "")).strip().lower() in {"1", "true", "yes", "on"}:
+            # V3 promises one distinct evidence asset per authored beat. Reuse
+            # would hide a missing source and later fail the episode duplicate
+            # gate anyway, so strict runs fail closed instead.
+            return []
 
         generated_sources = {
             "local_documentary_diagram",
@@ -2471,6 +2513,11 @@ class HybridMediaFetcher:
         repeat is more truthful and more watchable than failing the entire
         scheduled slot because a single later stock query timed out.
         """
+        if str(os.getenv("YT_QUALITY_V3", "")).strip().lower() in {"1", "true", "yes", "on"}:
+            # The strict episode gate forbids within-video repeats. Returning
+            # a reused clip here only wastes render time before that gate holds
+            # the candidate, so V3 requires a fresh real asset for every beat.
+            return []
         generated_sources = {
             "local_documentary_diagram",
             "local_fact_card",
@@ -2555,6 +2602,14 @@ class HybridMediaFetcher:
         manifest: List[Dict[str, str]],
         reuse_counts: dict[str, int],
     ) -> None:
+        if str(os.getenv("YT_QUALITY_V3", "")).strip().lower() in {"1", "true", "yes", "on"}:
+            # V3 already requires each Short beat to secure a fresh real asset.
+            # Replacing a valid solo reaction shot with an earlier couple clip
+            # makes the relationship ratio look stronger by manufacturing an
+            # exact within-episode duplicate.  The strict preflight should judge
+            # the footage that was actually acquired and fail closed when that
+            # mix is not good enough.
+            return
         if topic.niche_id != "brain_lens" or topic.content_kind != "short" or not manifest:
             return
         if not self._is_brain_relationship_topic(
@@ -3168,6 +3223,37 @@ class HybridMediaFetcher:
             for right in range(left + 1, len(hashes))
         ) > 2
 
+    def _brain_short_video_has_sustained_motion(
+        self,
+        path: Path,
+        deadline: float | None = None,
+    ) -> bool:
+        """Reject subtle stock clips that become a multi-second visual hold."""
+
+        hashes: List[str] = []
+        for timestamp in (0.75, 1.75, 2.75, 3.75, 4.75, 5.75):
+            timeout = self._deadline_timeout(deadline, 4.0)
+            if timeout is None:
+                return False
+            frame = self._extract_video_frame(path, timestamp=timestamp, timeout=timeout)
+            if frame is None:
+                break
+            hashes.append(self._background_dhash(frame))
+        if len(hashes) < 3:
+            return False
+
+        longest_static_run = 0
+        current_static_run = 0
+        visible_transitions = 0
+        for left, right in zip(hashes, hashes[1:]):
+            if self._hash_distance(left, right) <= 2:
+                current_static_run += 1
+                longest_static_run = max(longest_static_run, current_static_run)
+            else:
+                visible_transitions += 1
+                current_static_run = 0
+        return visible_transitions > 0 and longest_static_run < 4
+
     @classmethod
     def _brain_action_cluster(cls, url: str, meta: Dict[str, str]) -> str:
         searchable = re.sub(
@@ -3290,6 +3376,14 @@ class HybridMediaFetcher:
         if any(
             term in scene
             for term in (
+                "guilt", "bargaining", "pressure", "punishment", "say no", "accept your answer",
+                "crosses your boundary", "name the boundary", "no must remain safe",
+            )
+        ):
+            return "adult couple discussing a firm boundary with respectful personal space daytime"
+        if any(
+            term in scene
+            for term in (
                 "regulate", "unclench", "lengthen the exhale", "calmer body",
                 "co regulation", "nervous system",
             )
@@ -3311,6 +3405,14 @@ class HybridMediaFetcher:
             )
         ):
             return "adult couple taking turns speaking and listening in a mutual conversation daytime"
+        if any(
+            term in scene
+            for term in (
+                "curiosity", "curious", "interview", "remember your", "remember last",
+                "makes room for answers", "answer breathe", "questions deepen",
+            )
+        ):
+            return "adult couple listening attentively during cafe conversation daytime"
         if any(
             term in scene
             for term in (
@@ -3379,6 +3481,11 @@ class HybridMediaFetcher:
             for term in ("mutual", "reciprocity", "follow through", "effort", "consistent", "plan")
         ):
             supporting = "adult couple making and following a shared plan on a calendar at home"
+        elif any(
+            term in scene
+            for term in ("curiosity", "curious", "interview", "question", "answer", "remember")
+        ):
+            supporting = "adult couple asking questions and taking turns listening over coffee daytime"
         elif any(term in scene for term in ("eye contact", "gaze", "lean", "voice", "tone", "conversation")):
             supporting = "wide cafe shot of two adults taking turns listening during a conversation"
         else:
@@ -4003,6 +4110,12 @@ class HybridMediaFetcher:
                 return None
             metadata = self._direct_url_metadata(query, deadline=deadline)
             if niche_id == "ancient_history":
+                if prefer_exact and self._has_source_page_provenance(metadata):
+                    # The scene plan selected this exact licensed archive file.
+                    # Preserve that authored subject binding before the generic
+                    # filename matcher evaluates abbreviations such as
+                    # ``Great-zim`` or object labels such as ``soapstone birds``.
+                    metadata["verified_subject"] = subject or query
                 strict_terms = self._strict_ancient_terms(query, subject=subject)
                 if (
                     strict_terms
@@ -4350,6 +4463,17 @@ class HybridMediaFetcher:
                 if (
                     valid
                     and niche_id == "brain_lens"
+                    and content_kind == "short"
+                    and is_vid
+                    and not self._brain_short_video_has_sustained_motion(
+                        out_path,
+                        deadline=deadline,
+                    )
+                ):
+                    valid, reason = False, "video lacks sustained visible motion"
+                if (
+                    valid
+                    and niche_id == "brain_lens"
                     and sequence == 1
                     and is_vid
                     and not self._hook_video_has_motion(out_path, deadline=deadline)
@@ -4612,7 +4736,15 @@ class HybridMediaFetcher:
                         idx,
                         diagram_counts,
                     )
-            if diagram_kind:
+            if (
+                diagram_kind
+                and not (
+                    str(os.getenv("YT_QUALITY_V3", "")).strip().lower()
+                    in {"1", "true", "yes", "on"}
+                    and scene is not None
+                    and bool(scene.preferred_image_url)
+                )
+            ):
                 out_path = raw_dir / f"raw_{idx:02d}_{diagram_kind}.jpg"
                 if self._generate_ancient_documentary_diagram(topic, out_path, diagram_kind):
                     chosen = out_path

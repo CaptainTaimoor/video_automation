@@ -40,6 +40,7 @@ class NarrationEngine:
         backend_preference: str = "",
         edge_rate: str | None = None,
         compact_beat_pauses: bool = False,
+        compact_sentence_pauses: bool = False,
     ) -> None:
         self.voices = voices or ["en-US-JennyNeural"]
         self.voice_mode = (voice_mode or "mix").lower()
@@ -48,6 +49,7 @@ class NarrationEngine:
         if not re.fullmatch(r"[+-]\d+(?:\.\d+)?%", self.edge_rate):
             self.edge_rate = self.EDGE_NARRATION_RATE
         self.compact_beat_pauses = bool(compact_beat_pauses)
+        self.compact_sentence_pauses = bool(compact_sentence_pauses)
         self.piper_executable = self._default_piper_executable()
         self.piper_model = self._default_piper_model()
         self.piper_config = self._default_piper_config()
@@ -653,6 +655,31 @@ class NarrationEngine:
         durations[-1] = total_duration - sum(durations[:-1])
         return durations
 
+    @staticmethod
+    def _compact_long_sentence_boundaries(text: str, group_size: int = 4) -> str:
+        """Lighten micro-pauses without changing any spoken words."""
+
+        sentences = [
+            value.strip()
+            for value in re.split(r"(?<=[.!?])\s+", str(text or "").strip())
+            if value.strip()
+        ]
+        if len(sentences) < 2:
+            return str(text or "").strip()
+        group_size = max(2, int(group_size))
+        period_index = 0
+        rendered: list[str] = []
+        for index, sentence in enumerate(sentences):
+            is_last = index == len(sentences) - 1
+            if not is_last and sentence.endswith("."):
+                period_index += 1
+                if period_index % group_size:
+                    sentence = sentence[:-1].rstrip() + ","
+            elif sentence.endswith(("?", "!")):
+                period_index = 0
+            rendered.append(sentence)
+        return " ".join(rendered)
+
     def _durations_from_edge_boundaries(
         self,
         beats: List[str],
@@ -784,15 +811,20 @@ class NarrationEngine:
         out_path = Path(out_path)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.compact_beat_pauses and len(clean_beats) > 1:
+        spoken_beats = (
+            [self._compact_long_sentence_boundaries(beat) for beat in clean_beats]
+            if self.compact_sentence_pauses
+            else clean_beats
+        )
+        if self.compact_beat_pauses and len(spoken_beats) > 1:
             # A period between every authored beat makes Edge insert long,
             # repeated pauses.  Keep sentence punctuation inside each beat,
             # but use a light comma at beat boundaries so the read remains
             # continuous while visual timing still comes from word events.
-            boundary_safe = [beat.rstrip(" .!?;,:…") for beat in clean_beats]
+            boundary_safe = [beat.rstrip(" .!?;,:…") for beat in spoken_beats]
             continuous_text = ", ".join(boundary_safe[:-1]) + ". " + boundary_safe[-1]
         else:
-            continuous_text = " ".join(clean_beats)
+            continuous_text = " ".join(spoken_beats)
         edge_voices = [
             str(voice)
             for voice in self.voices

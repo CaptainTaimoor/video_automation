@@ -170,6 +170,22 @@ class VideoBuilder:
             return float(override)
         return float(base) + ((int(index) % max(1, int(modulo))) * float(step))
 
+    @staticmethod
+    def _still_zoom_span(duration: float, *, is_hook: bool, vertical_short: bool) -> float:
+        """Keep still-image motion perceptible even when a narration beat is long."""
+
+        safe_duration = max(0.8, float(duration))
+        if vertical_short:
+            if is_hook:
+                return 0.180
+            return min(0.180, max(0.075, safe_duration * 0.0225))
+        if is_hook:
+            # Landscape documentary openers are often wide aerial/archive
+            # frames.  A smaller push-in can disappear after 1080p scaling and
+            # compression, so match the proven Short hook span here.
+            return 0.180
+        return min(0.120, max(0.045, safe_duration * 0.0135))
+
     def _apply_still_motion(
         self,
         clip: ImageClip,
@@ -180,10 +196,11 @@ class VideoBuilder:
         """Add a restrained, monotonic camera move to a still image."""
 
         vertical_short = self.target_size[1] > self.target_size[0]
-        if vertical_short:
-            zoom_span = 0.120 if is_hook else 0.045
-        else:
-            zoom_span = 0.080 if is_hook else 0.030
+        zoom_span = self._still_zoom_span(
+            duration,
+            is_hook=is_hook,
+            vertical_short=vertical_short,
+        )
         safe_duration = max(0.1, float(duration))
         clip = clip.resize(
             lambda t: 1.0
@@ -817,13 +834,13 @@ class VideoBuilder:
             return base_filter
 
         vertical_short = target_h > target_w
-        if vertical_short:
-            # The first shot must visibly move even when Commons only returns a
-            # still. A stronger, one-way Ken Burns move is readable on a phone
-            # and avoids the old near-static opening that QA correctly held.
-            zoom_span = 0.180 if is_hook else 0.075
-        else:
-            zoom_span = 0.110 if is_hook else 0.045
+        # Longer stills need a larger total move so that the motion remains
+        # readable from one second to the next instead of slowing into a hold.
+        zoom_span = self._still_zoom_span(
+            duration,
+            is_hook=is_hook,
+            vertical_short=vertical_short,
+        )
         zoom_base = 1.005
         final_frame = max(1, int(round(max(0.8, float(duration)) * 30.0)) - 1)
         progress = f"min(on/{final_frame},1)"

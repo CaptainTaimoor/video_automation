@@ -736,6 +736,7 @@ class ContentResearcher:
     )
 
     _HISTORY_SHORT_MIN_FACT_WORDS = 70
+    _HISTORY_LONG_MIN_FACTS = 14
     _HISTORY_SHORT_VISUAL_READY_SUBJECTS = frozenset(
         {
             "angkor wat",
@@ -759,6 +760,34 @@ class ContentResearcher:
         concrete = [
             item
             for item in items
+            if item
+            and not any(
+                marker in self._clean_text(item).lower()
+                for marker in self._GENERIC_HISTORY_SUPPORT_MARKERS
+            )
+        ]
+        return self._dedupe_bullets(concrete, limit=limit)
+
+    def _history_long_specific_bullets(self, items: List[str], limit: int = 16) -> List[str]:
+        """Return one complete, concrete researched fact per long-form beat.
+
+        Some curated support entries contain several short sentences.  Keeping
+        those as one bullet made the research layer report a thin pack even
+        though it contained enough distinct evidence, while generic support
+        prompts could still count toward the downstream scene total.  Split the
+        real sentences first, reject generic framing, and apply the same final
+        completeness/deduplication pass used by the rest of the researcher.
+        """
+
+        expanded: List[str] = []
+        for item in items:
+            if not item:
+                continue
+            sentences = self._split_sentences(item)
+            expanded.extend(sentences or [item])
+        concrete = [
+            item
+            for item in expanded
             if item
             and not any(
                 marker in self._clean_text(item).lower()
@@ -1483,21 +1512,18 @@ class ContentResearcher:
                 ),
                 "",
             )
-            if forced_match and not self._is_duplicate_subject(
-                forced_match,
-                avoid_subjects,
-            ):
-                # Local QA can request one deterministic subject without changing
-                # normal scheduled randomness. Later planning attempts receive
-                # the first subject in ``avoid_subjects`` and continue normally.
-                pool = [
-                    forced_match,
-                    *[
-                        subject
-                        for subject in pool
-                        if self._normalize_subject(subject) != forced_subject
-                    ],
-                ]
+            if not forced_match:
+                raise SourceSafeResearchExhaustedError(
+                    f"Forced Ancient History subject is not in the curated catalog: {forced_subject}"
+                )
+            if self._is_duplicate_subject(forced_match, used):
+                raise SourceSafeResearchExhaustedError(
+                    f"Forced Ancient History subject is already published: {forced_match}"
+                )
+            # A force flag is an exact QA constraint, not a one-attempt hint.
+            # Per-build rejection memory must not silently move later attempts
+            # to unrelated subjects. Published-history memory remains binding.
+            pool = [forced_match]
         if content_kind == "short":
             pool = [
                 subject
@@ -1526,7 +1552,10 @@ class ContentResearcher:
             if not item:
                 continue
             title = item.get("title", subject)
-            if self._is_duplicate_subject(title, used) or self._is_duplicate_subject(title, avoid_subjects):
+            if self._is_duplicate_subject(title, used) or (
+                not forced_subject
+                and self._is_duplicate_subject(title, avoid_subjects)
+            ):
                 continue
             bullets = []
             first_fact = self._override_fact_for_title(subject) or self._override_fact_for_title(title) or self._first_clean_fact(item)
@@ -1567,7 +1596,16 @@ class ContentResearcher:
                     # subject instead of handing generic filler to ScriptWriter.
                     continue
             else:
-                bullets = self._dedupe_bullets(bullets, limit=bullet_limit)
+                bullets = self._history_long_specific_bullets(
+                    bullets,
+                    limit=bullet_limit,
+                )
+                if len(bullets) < self._HISTORY_LONG_MIN_FACTS:
+                    # ScriptWriter requires fourteen distinct source facts
+                    # before it adds documentary context. Enforce that contract
+                    # here so planning can try another subject instead of
+                    # spending a full candidate attempt on an impossible draft.
+                    continue
             if len(bullets) < 3:
                 continue
             return {
@@ -1620,10 +1658,9 @@ class ContentResearcher:
                 )
             fallback_subject, fallback_bullets = ready_fallback
         else:
-            fallback_fact = self._override_fact_for_title(fallback_subject) or f"{fallback_subject} is still remembered because historians treat it as an important piece of the ancient record."
-            fallback_bullets = self._dedupe_bullets(
-                [fallback_fact, *self._history_supporting_bullets(fallback_subject)],
-                limit=4,
+            raise SourceSafeResearchExhaustedError(
+                "No source-safe Ancient History long video has at least "
+                f"{self._HISTORY_LONG_MIN_FACTS} distinct researched facts"
             )
         return {
             "headline": fallback_subject.title(),

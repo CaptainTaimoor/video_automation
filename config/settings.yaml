@@ -23,9 +23,11 @@
     gemini_url: https://generativelanguage.googleapis.com/v1beta/models
     ollama_model: llama3.2:3b
     ollama_url: http://localhost:11434/api/generate
+    # Keep the local 3B fallback inside the memory budget of a 12 GB PC.
+    ollama_num_ctx: 4096
     # Leave enough time for a cold local-model start, while keeping the final
     # fallback bounded so an unavailable daemon cannot stall a build forever.
-    ollama_timeout_seconds: 90
+    ollama_timeout_seconds: 480
     # Legitimate free-tier fallback already available in this workspace. Set
     # AI_GATEWAY_URL, AI_GATEWAY_MODEL, and AI_GATEWAY_API_KEY together to use
     # a separate authorized profile without sending HF_API_KEY to another host.

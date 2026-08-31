@@ -58,6 +58,7 @@ VERIFIED_CONTEXT_URLS = {
     "Lachish siege-ramp construction": "https://onlinelibrary.wiley.com/doi/10.1111/ojoa.12231",
     "Great Zimbabwe UNESCO": "https://whc.unesco.org/en/list/364/",
     "Great Zimbabwe Met": "https://www.metmuseum.org/essays/great-zimbabwe-11th-15th-century",
+    "Tikal UNESCO": "https://whc.unesco.org/en/list/64/",
     "Reply-time attachment study": "https://pubmed.ncbi.nlm.nih.gov/35085449/",
     "APA relationship texting research": "https://www.apa.org/news/press/releases/2018/08/relationship-texting",
     "Friends-with-benefits rules study": "https://pubmed.ncbi.nlm.nih.gov/34779977/",
@@ -72,6 +73,9 @@ VERIFIED_CONTEXT_URL_SET = frozenset(VERIFIED_CONTEXT_URLS.values())
 # never bypass ``ContentResearcher._validated_sources``; the exact URLs above
 # merely make stable institutional pages resilient to transient bot blocking.
 CURATED_TOPIC_SOURCE_PACKS = {
+    "tikal": (
+        VERIFIED_CONTEXT_URLS["Tikal UNESCO"],
+    ),
     "great zimbabwe": (
         VERIFIED_CONTEXT_URLS["Great Zimbabwe UNESCO"],
         VERIFIED_CONTEXT_URLS["Great Zimbabwe Met"],

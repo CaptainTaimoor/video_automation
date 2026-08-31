@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import tempfile
 import time
@@ -1557,6 +1558,46 @@ class VisualPipelineTests(unittest.TestCase):
         factory.image_fetcher = fetcher
         self.assertIsNone(factory._brain_visual_preflight_issue(candidate, sources))
 
+    def test_quality_v3_brain_short_never_repairs_ratio_with_a_duplicate(self) -> None:
+        fetcher = HybridMediaFetcher()
+        candidate = make_topic()
+        candidate.title = "Boundary Response: What Their Next Move Reveals"
+        candidate.subject = "Boundary Response"
+        candidate.narration = "You state a boundary and watch what follows."
+        backgrounds = [Path(f"raw_{index:02d}.mp4") for index in range(1, 8)]
+        original_backgrounds = list(backgrounds)
+        sources = [
+            {
+                "file": path.name,
+                "source": "pexels_video",
+                "url": f"https://videos.example/{'couple' if index < 4 else 'solo'}-{index}.mp4",
+                "source_page": f"https://www.pexels.com/video/{index}/",
+                "source_page_verified": "true",
+                "license": "Pexels license",
+                "asset_title": (
+                    "adult couple discussing a boundary"
+                    if index < 4
+                    else "single adult reflecting after a conversation"
+                ),
+                "scene_index": index,
+                "scene_text": "A visible boundary response.",
+            }
+            for index, path in enumerate(backgrounds, start=1)
+        ]
+        original_sources = [dict(item) for item in sources]
+
+        with patch.dict(os.environ, {"YT_QUALITY_V3": "1"}, clear=False):
+            fetcher._repair_brain_short_relationship_backgrounds(
+                candidate,
+                backgrounds,
+                sources,
+                {},
+            )
+
+        self.assertEqual(original_backgrounds, backgrounds)
+        self.assertEqual(original_sources, sources)
+        self.assertFalse(any(item.get("reused_for_scene") for item in sources))
+
     def test_brain_phone_hook_outranks_generic_plan_footage(self) -> None:
         fetcher = HybridMediaFetcher()
         scene = (
@@ -1711,6 +1752,28 @@ class VisualPipelineTests(unittest.TestCase):
         moving = [frame(8), frame(48), frame(96)]
         with patch.object(fetcher, "_extract_video_frame", side_effect=moving):
             self.assertTrue(fetcher._hook_video_has_motion(Path("moving-hook.mp4")))
+
+    def test_brain_short_sustained_motion_guard_rejects_long_static_run(self) -> None:
+        fetcher = HybridMediaFetcher.__new__(HybridMediaFetcher)
+
+        def frame(position: int) -> Image.Image:
+            image = Image.new("RGB", (160, 90), "black")
+            image.paste("white", (position, 10, min(159, position + 32), 80))
+            return image
+
+        static_then_move = [
+            frame(20), frame(20), frame(20), frame(20), frame(20), frame(80)
+        ]
+        with patch.object(fetcher, "_extract_video_frame", side_effect=static_then_move):
+            self.assertFalse(
+                fetcher._brain_short_video_has_sustained_motion(Path("static-scene.mp4"))
+            )
+
+        sustained = [frame(8), frame(24), frame(40), frame(56), frame(72), frame(88)]
+        with patch.object(fetcher, "_extract_video_frame", side_effect=sustained):
+            self.assertTrue(
+                fetcher._brain_short_video_has_sustained_motion(Path("moving-scene.mp4"))
+            )
 
     def test_brain_short_preflight_rejects_ai_generated_visual(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)

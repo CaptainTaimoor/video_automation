@@ -59,6 +59,7 @@ class ScriptWriter:
         self.script_provider = ""
         self.script_provider_endpoint_host = ""
         self.script_provider_model = ""
+        self.last_script_rejection_reason = ""
         self.provider_attempts: list[dict] = []
         self.provider_attempt_history: list[dict] = []
         self._provider_call_index = 0
@@ -83,6 +84,7 @@ class ScriptWriter:
         self.script_provider = ""
         self.script_provider_endpoint_host = ""
         self.script_provider_model = ""
+        self.last_script_rejection_reason = ""
         self.provider_attempts = []
         self.provider_attempt_history = []
         self._provider_call_index = 0
@@ -1981,36 +1983,136 @@ class ScriptWriter:
                     ["Chichen Itza archaeological site panorama Yucatan"],
                 ),
             ]
-        if channel.id == "ancient_history" and "great zimbabwe" in topic_blob:
+        if channel.id == "ancient_history" and re.search(r"\btikal\b", topic_blob):
             specs = [
                 (
-                    "Colonial writers denied Great Zimbabwe's origins. Finds confirmed its African origins independently.",
+                    "Tikal's temples rise above Guatemala's rainforest canopy.",
+                    "TEMPLES ABOVE THE RAINFOREST",
+                    ["Tikal Temple IV rainforest canopy Guatemala"],
+                ),
+                (
+                    "The skyline hides a vast city.",
+                    "A VAST MAYA CITY",
+                    ["Tikal archaeological site aerial urban core"],
+                ),
+                (
+                    "People occupied it across sixteen centuries.",
+                    "SIXTEEN CENTURIES OF OCCUPATION",
+                    ["Tikal Maya settlement archaeology excavation"],
+                ),
+                (
+                    "Its core held temples, palaces, and homes.",
+                    "TEMPLES PALACES AND HOMES",
+                    ["Tikal Great Plaza palaces residences"],
+                ),
+                (
+                    "Roads linked districts; reservoirs stored precious water.",
+                    "ROADS AND RESERVOIRS",
+                    ["Tikal causeway historic water reservoir aguada"],
+                ),
+                (
+                    "Carved stelae recorded rulers, accessions, and ceremonies.",
+                    "HISTORY CARVED IN STONE",
+                    ["Tikal carved stela hieroglyphic inscription ruler"],
+                ),
+                (
+                    "The surviving sequence names thirty-three Maya rulers.",
+                    "THIRTY-THREE RULERS",
+                    ["Tikal stela dynastic sequence Maya rulers"],
+                ),
+                (
+                    "Yet inscriptions record distant rivals and allies.",
+                    "RIVALS AND ALLIES",
+                    ["Tikal Calakmul Teotihuacan inscription archaeology"],
+                ),
+                (
+                    "The last carved monument dates to 869.",
+                    "THE LAST MONUMENT: 869",
+                    ["Tikal Stela 11 last carved monument 869"],
+                ),
+                (
+                    "Tikal faded near 900, but its evidence survived.",
+                    "THE CITY FADED; EVIDENCE SURVIVED",
+                    ["Tikal ruins rainforest panorama Guatemala"],
+                ),
+            ]
+        if channel.id == "ancient_history" and "great zimbabwe" in topic_blob:
+            # These twelve Commons files form a subject-specific archive spine.
+            # The previous six-beat plan forced the fetcher to cycle scenes in a
+            # ten-asset edit, which eventually repeated the same photograph.
+            preferred_urls = [
+                "https://upload.wikimedia.org/wikipedia/commons/3/39/The_Discoveries_at_the_Great_Zimbabwe_in_Mashonaland_%28upright%29.png",
+                "https://upload.wikimedia.org/wikipedia/commons/f/f0/140_of_%27The_Ruined_Cities_of_Mashonaland-_being_a_record_of_excavation_and_exploration_in_1891_..._With_a_chapter_on_the_orientation_and_mensuration_of_the_temples_by_R._M._W._Swan._%28With_plates.%29%27_%2811217936264%29.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Great-zim-aerial-looking-West.JPG/1920px-Great-zim-aerial-looking-West.JPG",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/The_Great_Zimbabwe_Hill_Complex.jpg/1920px-The_Great_Zimbabwe_Hill_Complex.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Great_inclosure_%E2%80%93_Great_Zimbabwe_%2816%29.jpg/1920px-Great_inclosure_%E2%80%93_Great_Zimbabwe_%2816%29.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Conical_Tower_-_Great_Enclosure_III_%2833736918448%29.jpg/1920px-Conical_Tower_-_Great_Enclosure_III_%2833736918448%29.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_034_-_The_inner_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg/1920px-ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_034_-_The_inner_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/Great_Zimbabwe_%28Great_Enclosure%29.jpg/1920px-Great_Zimbabwe_%28Great_Enclosure%29.jpg",
+                "",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Great_Zimbabwe_%28Donjon%29.jpg/960px-Great_Zimbabwe_%28Donjon%29.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Soapstone_birds_on_pedestals.jpg/1920px-Soapstone_birds_on_pedestals.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_033_-_A_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg/1920px-ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_033_-_A_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg",
+            ]
+            specs = [
+                (
+                    "Colonial writers denied Great Zimbabwe's origins.",
                     "COLONIAL CLAIM DISPROVED",
                     ["Great Zimbabwe early archaeology colonial denial African builders"],
                 ),
                 (
-                    "Shona ancestors built Great Zimbabwe. It became a key African capital. Construction spanned 1100 through 1450 CE.",
-                    "SHONA BUILDERS, 1100-1450",
+                    "Finds confirmed its African origins conclusively.",
+                    "ARCHAEOLOGY CORRECTED THE RECORD",
+                    ["Great Zimbabwe early archaeological excavation African origins"],
+                ),
+                (
+                    "Shona ancestors built Great Zimbabwe.",
+                    "SHONA BUILDERS",
                     ["Great Zimbabwe Great Enclosure dry stone walls"],
                 ),
                 (
-                    "Granite walls rose without any mortar. Cattle may have fueled elite wealth. Its state reached rich gold lands.",
-                    "DRY STONE, CATTLE, GOLD",
+                    "It became a key African capital.",
+                    "AN AFRICAN CAPITAL",
+                    ["Great Zimbabwe Hill Complex capital ruins"],
+                ),
+                (
+                    "Construction spanned 1100 through 1450.",
+                    "BUILT ACROSS CENTURIES",
+                    ["Great Zimbabwe Great Enclosure construction"],
+                ),
+                (
+                    "Granite walls rose without any mortar.",
+                    "WALLS WITHOUT MORTAR",
                     ["Great Zimbabwe mortarless granite wall conical tower"],
                 ),
                 (
-                    "Excavations found imported beads and ceramics. They reveal broad Indian Ocean trade.",
-                    "INDIAN OCEAN TRADE EVIDENCE",
+                    "Cattle may have fueled elite wealth.",
+                    "CATTLE AND ELITE WEALTH",
+                    ["Great Zimbabwe Valley Ruins settlement"],
+                ),
+                (
+                    "Its state reached rich gold lands.",
+                    "GOLD LANDS SUPPORTED POWER",
+                    ["Great Zimbabwe Great Enclosure ruins"],
+                ),
+                (
+                    "Excavations found imported beads and ceramics.",
+                    "IMPORTED BEADS AND CERAMICS",
                     ["Great Zimbabwe imported beads ceramics Indian Ocean trade"],
                 ),
                 (
-                    "Birds may have marked royal authority. Even their exact meaning remains unknown.",
-                    "THE SOAPSTONE BIRDS",
+                    "They reveal broad Indian Ocean trade.",
+                    "INDIAN OCEAN TRADE",
+                    ["Great Zimbabwe Indian Ocean trade archaeology"],
+                ),
+                (
+                    "Birds may signal authority; meanings remain unknown.",
+                    "SOAPSTONE BIRDS REMAIN MYSTERIOUS",
                     ["Zimbabwe Bird soapstone sculpture Great Zimbabwe"],
                 ),
                 (
-                    "The evidence confirms African origins. Great Zimbabwe linked distant trade.",
-                    "AN AFRICAN CAPITAL",
+                    "Great Zimbabwe's origins stand confirmed.",
+                    "EVIDENCE CONFIRMS AFRICAN ORIGINS",
                     ["Great Zimbabwe panoramic ruins Zimbabwe"],
                 ),
             ]
@@ -2609,12 +2711,277 @@ class ScriptWriter:
             scene.preferred_image_url = preferred_archive_by_caption.get(scene.visual_text, "")
         return plan
 
+    def _great_zimbabwe_long_video_plan(
+        self,
+        channel: ChannelConfig,
+        topic: TopicCandidate,
+        subject: str,
+    ) -> list[ScenePlanItem]:
+        """Build the source-bounded Great Zimbabwe documentary episode.
+
+        The episode follows physical evidence from architecture through daily
+        life, exchange, colonial distortion, and modern meaning.  Every
+        sentence is deliberately short enough to remain whole in an eight-word
+        landscape caption, which prevents the TTS/caption pacing failures seen
+        in generic long-form expansion.
+        """
+
+        sections = [
+            (
+                "Walls that refuse the myth",
+                "These walls rise without a single mortar joint. "
+                "Their curves still dominate the southern plateau. "
+                "Yet stone is only the opening clue. "
+                "Great Zimbabwe was an inhabited African capital. "
+                "Homes once stood beside these surviving walls. "
+                "Workshops, cattle, ritual, and politics met here. "
+                "The ruins preserve achievement and historical violence. "
+                "Their evidence overturns a deliberately manufactured myth.",
+            ),
+            (
+                "The lie attached to ruins",
+                "Late nineteenth-century colonizers saw monumental stonework. "
+                "They refused to credit African builders. "
+                "Biblical visitors and foreign miners were imagined. "
+                "Those stories served a colonial political purpose. "
+                "African achievement threatened claims of European superiority. "
+                "Early excavation also removed important objects. "
+                "Context disappeared whenever collectors chased spectacular treasure. "
+                "The myth survived because power repeated it.",
+            ),
+            (
+                "Archaeology corrects the record",
+                "Careful archaeology dismantled those imported fantasies. "
+                "Stratigraphy linked buildings with local occupation. "
+                "Pottery connected ruins to regional traditions. "
+                "Radiocarbon evidence later refined the chronology. "
+                "Gertrude Caton-Thompson publicly affirmed African construction. "
+                "Later research expanded far beyond her methods. "
+                "Today no credible evidence supports foreign builders. "
+                "Shona ancestors created this extraordinary urban landscape.",
+            ),
+            (
+                "Reading the whole landscape",
+                "The monument contains three major architectural groups. "
+                "Hill Ruins occupy a steep granite height. "
+                "Great Enclosure curves across lower ground. "
+                "Valley Ruins spread between surrounding ridges. "
+                "Those divisions changed through several centuries. "
+                "They never formed one frozen master plan. "
+                "Paths connected elite, household, and sacred spaces. "
+                "Reading the landscape reveals a changing capital.",
+            ),
+            (
+                "A city grows slowly",
+                "Settlement began before the grandest surviving walls. "
+                "Communities occupied this landscape during earlier centuries. "
+                "Growth accelerated between eleventh and fifteenth centuries. "
+                "More people required food, water, and organization. "
+                "Builders transformed loose granite into social architecture. "
+                "Houses filled spaces now appearing strangely empty. "
+                "Authority became visible through placement and access. "
+                "The capital emerged through generations of decisions.",
+            ),
+            (
+                "Hill Complex above the plains",
+                "The Hill Complex overlooks routes and settlements below. "
+                "Its position made separation physically visible. "
+                "Repeated occupation left multiple settlement layers there. "
+                "Eastern Enclosure held several famous soapstone birds. "
+                "Walls guided movement through narrow passages. "
+                "Elevated spaces probably carried political significance. "
+                "Ritual activity also shaped this commanding place. "
+                "Archaeology cautions against assigning one fixed function.",
+            ),
+            (
+                "Stonework without mortar",
+                "Builders stacked shaped granite without binding mortar. "
+                "Each stone depended on careful weight distribution. "
+                "Later courses became remarkably even and precise. "
+                "Long curves gave enclosures their distinctive form. "
+                "Decorative chevrons interrupted selected exterior surfaces. "
+                "Skilled masons understood local stone exceptionally well. "
+                "Labor coordination mattered as much as technique. "
+                "Every finished wall records organized human effort.",
+            ),
+            (
+                "Great Enclosure's curved wall",
+                "Great Enclosure contains the site's largest wall. "
+                "Its outer circuit follows an immense curve. "
+                "Some surviving sections rise about eleven meters. "
+                "A narrow passage runs beside an inner wall. "
+                "The architecture shaped privacy and controlled movement. "
+                "It was not simply a defensive fortress. "
+                "Nearby daga houses completed the lived environment. "
+                "Stone alone therefore shows an incomplete city.",
+            ),
+            (
+                "What the Conical Tower proves",
+                "The Conical Tower stands inside Great Enclosure. "
+                "It is solid rather than hollow. "
+                "No doorway reveals an interior chamber. "
+                "Its original purpose remains uncertain today. "
+                "Scholars propose political or symbolic meanings. "
+                "No single interpretation is securely proven. "
+                "The tower demonstrates skilled and coordinated construction. "
+                "Honest history preserves mystery alongside firm evidence.",
+            ),
+            (
+                "Valley Ruins held daily life",
+                "Valley Ruins held substantial residential compounds. "
+                "Many residents lived beyond monumental stone walls. "
+                "Mud-and-thatch houses once crowded the settlement. "
+                "Floors, benches, basins, and hearths survive archaeologically. "
+                "These traces return ordinary life to view. "
+                "Families cooked, worked, raised animals, and traded. "
+                "Elite architecture depended upon wider communities. "
+                "A capital is always more than monuments.",
+            ),
+            (
+                "Stone walls show only fragments",
+                "Weather erased much of the original city. "
+                "Daga walls dissolved while granite walls survived. "
+                "That survival creates a powerful visual bias. "
+                "Stone makes elite spaces seem unusually complete. "
+                "Household architecture appears smaller than its importance. "
+                "Archaeologists rebuild context from floors and artifacts. "
+                "Absence never automatically means historical emptiness. "
+                "What vanished still shaped everyday urban experience.",
+            ),
+            (
+                "Cattle wealth and political power",
+                "Cattle anchored wealth across the regional economy. "
+                "Herds supplied food, status, and productive power. "
+                "Elite management likely concentrated important resources. "
+                "Animal bones document consumption inside the settlement. "
+                "Goats and sheep also supported residents. "
+                "Crops included sorghum and several millets. "
+                "Wealth therefore began within a productive landscape. "
+                "Overseas trade complemented that local economic foundation.",
+            ),
+            (
+                "Gold connected the plateau",
+                "Gold-rich plateaux strengthened the surrounding state. "
+                "Mining communities produced metal for distant exchange. "
+                "Great Zimbabwe did not stand beside mines. "
+                "Political networks linked capital and producing zones. "
+                "Gold foil and working evidence reached archaeologists. "
+                "Ivory and animal products also moved outward. "
+                "Control involved people, routes, and relationships. "
+                "Stone walls alone never generated this wealth.",
+            ),
+            (
+                "Roads reached Indian Ocean ports",
+                "Interior routes eventually reached Indian Ocean ports. "
+                "Sofala and Kilwa connected wider commercial worlds. "
+                "Traders moved goods through many intermediaries. "
+                "Great Zimbabwe was never culturally isolated. "
+                "Coastal exchange linked Africa, Arabia, and Asia. "
+                "No single caravan traveled every connection. "
+                "Networks worked through repeated regional transactions. "
+                "Distance became visible inside local archaeological deposits.",
+            ),
+            (
+                "Imports become archaeological witnesses",
+                "Excavators found glass beads and glazed ceramics. "
+                "Porcelain arrived from China and Persia. "
+                "Coins from Kilwa also reached the region. "
+                "Every import carries chronological and geographic information. "
+                "These objects do not erase local agency. "
+                "African merchants chose, moved, and valued goods. "
+                "Imports reveal exchange, not foreign ownership. "
+                "Their contexts expose a confidently connected capital.",
+            ),
+            (
+                "Birds carried power and meaning",
+                "Eight carved soapstone birds became enduring symbols. "
+                "Six came from Hill Complex's Eastern Enclosure. "
+                "Their bodies combine human and avian features. "
+                "Scholars connect them with status or authority. "
+                "Their precise meanings nevertheless remain uncertain. "
+                "Colonial collectors removed several sculptures from Zimbabwe. "
+                "Returned birds now embody cultural restitution too. "
+                "Zimbabwe placed their image on its flag.",
+            ),
+            (
+                "Authority shaped private space",
+                "Monumental walls shaped access and privacy. "
+                "They likely separated elite households from others. "
+                "Height made political distinction visibly permanent. "
+                "Yet walls adjoined fragile residential buildings. "
+                "Courtyards organized encounters, work, and ceremony. "
+                "Authority operated through movement and controlled proximity. "
+                "Architecture communicated without written royal chronicles. "
+                "Its message survives, but never perfectly.",
+            ),
+            (
+                "The city changed across centuries",
+                "Great Zimbabwe changed throughout its long occupation. "
+                "Hill spaces held especially deep settlement layers. "
+                "Great Enclosure belongs to later architectural expansion. "
+                "Valley compounds also developed across changing phases. "
+                "One date cannot describe every structure. "
+                "Neither can one ruler explain centuries. "
+                "Archaeology separates sequences that legend compresses. "
+                "The city was a process, not a snapshot.",
+            ),
+            (
+                "Why influence moved elsewhere",
+                "Influence weakened during the later fifteenth century. "
+                "Khami became increasingly powerful to the southwest. "
+                "Scholars examine political, economic, and environmental pressures. "
+                "Resource stress may have affected dense settlement. "
+                "Trade routes and leadership centers also shifted. "
+                "No single cause explains every regional change. "
+                "People moved; their knowledge did not vanish. "
+                "New capitals continued southern African stone traditions.",
+            ),
+            (
+                "Evidence defeats the old myth",
+                "Return now to the mortarless walls. "
+                "Their builders never needed imaginary foreign masters. "
+                "Archaeology identifies local materials and regional traditions. "
+                "Trade goods reveal connection without colonial fantasy. "
+                "Cattle, crops, crafts, and households sustained power. "
+                "Soapstone birds preserve authority and unresolved meaning. "
+                "Great Zimbabwe's evidence is globally significant. "
+                "The old myth fails every material test. "
+                "African history does not require outside permission.",
+            ),
+        ]
+        sections = self._require_caption_safe_sections(
+            sections,
+            label="Great Zimbabwe long",
+        )
+        plan = [
+            self._long_scene(channel.id, subject, narration, caption)
+            for caption, narration in sections
+        ]
+        preferred_archive_by_caption = {
+            "Walls that refuse the myth": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Great-zim-aerial-looking-West.JPG/1920px-Great-zim-aerial-looking-West.JPG",
+            "The lie attached to ruins": "https://upload.wikimedia.org/wikipedia/commons/3/39/The_Discoveries_at_the_Great_Zimbabwe_in_Mashonaland_%28upright%29.png",
+            "Archaeology corrects the record": "https://upload.wikimedia.org/wikipedia/commons/f/f0/140_of_%27The_Ruined_Cities_of_Mashonaland-_being_a_record_of_excavation_and_exploration_in_1891_..._With_a_chapter_on_the_orientation_and_mensuration_of_the_temples_by_R._M._W._Swan._%28With_plates.%29%27_%2811217936264%29.jpg",
+            "Reading the whole landscape": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_033_-_A_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg/1920px-ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_033_-_A_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg",
+            "A city grows slowly": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/Great_Zimbabwe_%28Great_Enclosure%29.jpg/1920px-Great_Zimbabwe_%28Great_Enclosure%29.jpg",
+            "Hill Complex above the plains": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/The_Great_Zimbabwe_Hill_Complex.jpg/1920px-The_Great_Zimbabwe_Hill_Complex.jpg",
+            "Stonework without mortar": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_034_-_The_inner_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg/1920px-ASC_Leiden_-_Rietveld_Collection_-_East_Africa_1975_-_05_-_034_-_The_inner_wall_of_the_ruins_of_Great_Zimbabwe_-_Masvingo%2C_Zimbabwe.jpg",
+            "Great Enclosure's curved wall": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Great_inclosure_%E2%80%93_Great_Zimbabwe_%2816%29.jpg/1920px-Great_inclosure_%E2%80%93_Great_Zimbabwe_%2816%29.jpg",
+            "What the Conical Tower proves": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Conical_Tower_-_Great_Enclosure_III_%2833736918448%29.jpg/1920px-Conical_Tower_-_Great_Enclosure_III_%2833736918448%29.jpg",
+            "Valley Ruins held daily life": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Great_Zimbabwe_%28Donjon%29.jpg/960px-Great_Zimbabwe_%28Donjon%29.jpg",
+            "Birds carried power and meaning": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Soapstone_birds_on_pedestals.jpg/1920px-Soapstone_birds_on_pedestals.jpg",
+        }
+        for scene in plan:
+            scene.preferred_image_url = preferred_archive_by_caption.get(scene.visual_text, "")
+        return self._fit_long_scene_plan_word_budget(channel, plan)
+
     def _history_long_video_plan(
         self,
         channel: ChannelConfig,
         topic: TopicCandidate,
         subject: str,
     ) -> list[ScenePlanItem]:
+        if "great zimbabwe" in subject.lower():
+            return self._great_zimbabwe_long_video_plan(channel, topic, subject)
         raw_points = []
         scenes = list(topic.scene_plan or [])
         middle_scenes = scenes[1:-1] if len(scenes) >= 3 else scenes
@@ -3308,7 +3675,7 @@ class ScriptWriter:
             (
                 "What the event actually proves",
                 "Begin with one strict limit. Examine behavior without diagnosing anybody. "
-                "Ask what happened more than once. Recall what both people actually discussed. "
+                "Ask which behavior appeared repeatedly. Recall what both people actually discussed. "
                 "Notice what followed any rising tension. One painful moment proves very little. "
                 "It cannot measure your human worth. It cannot reveal someone's hidden motives. "
                 "Repeated patterns deserve closer attention. Isolated moments still deserve context.",
@@ -3323,7 +3690,7 @@ class ScriptWriter:
             ),
             (
                 "When uncertainty leaves questions open",
-                "Uncertainty can leave important questions open. Charged moments often feel strangely clarifying. "
+                "Open questions can survive intense moments. Charged moments often feel strangely clarifying. "
                 "They rarely settle an unstated agreement. Compare that spike with the week. "
                 "Study calm moments between intimate ones. Attraction can remain completely genuine. "
                 "Compatibility may still remain uncertain. Both truths can exist together. "
@@ -3350,7 +3717,7 @@ class ScriptWriter:
                 "Pause before high-stakes messages. Pause before accusations or promises. "
                 "Unclench your jaw and exhale slowly. Drink water or step outside. "
                 "Call a trusted, grounded friend. Choose someone who avoids gossip. "
-                "Describe the problem in plain words. No pause guarantees better judgment. "
+                "Describe the problem in plain words. A pause cannot promise wiser judgment. "
                 "It simply creates deliberate choice. Warm responses can hold firm boundaries.",
             ),
             (
@@ -3363,8 +3730,8 @@ class ScriptWriter:
             ),
             (
                 "Chemistry is not the same as repair",
-                "A charged reunion can feel resolving. Brief relief can mimic real repair. "
-                "Repair asks for more evidence. Can both people name what happened? "
+                "Reunions can feel more resolved than they are. Brief relief can mimic real repair. "
+                "Repair asks for more evidence. Can both adults describe the rupture? "
                 "Does a specific change follow? Can either person choose slower? "
                 "Can either person freely stop? Does new behavior survive ordinary days? "
                 "Physical closeness cannot replace consent. Sexual tension cannot replace accountability. "
@@ -3392,8 +3759,8 @@ class ScriptWriter:
                 "Ask three direct questions. Is this arrangement still working? "
                 "Have your feelings changed? Have your boundaries changed? "
                 "Choose a calm, non-intimate moment. Avoid speeches built for agreement. "
-                "Directness cannot guarantee mutual interest. It can replace endless decoding. "
-                "Both people gain shared information. Different intentions may still sting. "
+                "Directness cannot manufacture mutual desire. It can end hours of decoding. "
+                "Both adults leave with the same facts. Different intentions may still sting. "
                 "They also prevent imaginary agreements.",
             ),
             (
@@ -3416,18 +3783,18 @@ class ScriptWriter:
             ),
             (
                 "A personal observation window",
-                "Use a personal observation window. Do not call it validated testing. "
-                "Schedule one calm check-in. Meet outside an intimate moment. "
-                "Compare current feelings with prior agreements. Keep work, sleep, movement, and friendships visible. "
-                "Notice your urges without diagnosing them. Record direct behavior without diagnosing anyone. "
-                "Review after one suitable timeframe. One week may fit some people. "
-                "Another timeframe may fit better. Never provoke jealousy or strategic silence.",
+                "A personal review window can help. Treat it as reflection, not science. "
+                "Choose one quiet daytime conversation. Talk somewhere outside the usual intimate setting. "
+                "Revisit the words you originally exchanged. Protect routines that keep you grounded. "
+                "Track impulses without assigning a diagnosis. Write down actions, dates, and follow-through. "
+                "Pick a review date that fits. Several days may reveal enough. "
+                "Longer arrangements may need more time. Avoid jealousy tests and tactical silence.",
             ),
             (
                 "If the intensity suddenly returns",
                 "Renewed chemistry offers new information. It does not prove compatibility. "
                 "It does not prove repair. Ask what has actually changed. "
-                "Ask what each person wants now. Check whether stated boundaries remain respected. "
+                "Invite each person to name today's intention. Check whether stated boundaries remain respected. "
                 "Stay curious without reopening every door. Intensity never creates a new agreement. "
                 "Clear words need sustained action. Test trust slowly while reality unfolds. "
                 "Consent stays revisable during reconnection.",
@@ -3463,8 +3830,8 @@ class ScriptWriter:
             (
                 "Let reality deliver the ending",
                 "Here is your complete reset. Catch the earliest visible cue. "
-                "Separate facts from predictions. Pause before reacting automatically. "
-                "Ask one clean question. Compare answers with ordinary behavior. "
+                "Sort observations away from predictions. Pause before reacting automatically. "
+                "Ask one plainly worded question. Compare answers with ordinary behavior. "
                 "Keep the boundary you chose. Never erase chemistry to feel safer. "
                 "Never pretend hurt cannot reach you. Stay warm while reality answers. "
                 "Growing clarity supports careful exploration. Ongoing confusion also provides information. "
@@ -4269,10 +4636,17 @@ class ScriptWriter:
             "model": self.cfg.ollama_model,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": "15m",
             "options": {
                 "temperature": 0.8,
                 "top_p": 0.92,
                 "num_predict": max(300, int(max_output_tokens)),
+                # Recent Ollama releases may otherwise inherit a 131k context.
+                # That makes a small 3B fallback request exceed a 12 GB PC.
+                "num_ctx": min(
+                    8192,
+                    max(2048, int(getattr(self.cfg, "ollama_num_ctx", 4096) or 4096)),
+                ),
             },
         }
         if response_mime_type == "application/json":
@@ -4282,7 +4656,7 @@ class ScriptWriter:
             endpoint,
             json=payload,
             timeout=min(
-                180,
+                480,
                 max(15, int(getattr(self.cfg, "ollama_timeout_seconds", 90) or 90)),
             ),
             allow_redirects=False,
@@ -5381,6 +5755,7 @@ class ScriptWriter:
                 dna: dict | None = None) -> TopicCandidate:
         provider = (self.cfg.provider or "template").lower().strip()
         improved = topic
+        self.last_script_rejection_reason = ""
         v2_drafts_enabled = str(os.getenv("YT_QUALITY_V2_DRAFTS", "0")).lower() in {
             "1", "true", "yes", "on"
         }
@@ -5444,17 +5819,19 @@ class ScriptWriter:
                             purpose="script_expansion",
                         )
                     )
+                generated_word_count = self._word_count(generated)
                 if self._word_count_ok(generated, content_kind=content_kind, channel=channel):
                     candidate = replace(
                         topic,
                         narration=generated,
                         narration_beats=self._sentences(generated),
                     )
-                    if not self.editorial_quality_issues(
+                    editorial_issues = self.editorial_quality_issues(
                         candidate,
                         beats=candidate.narration_beats,
                         content_kind=content_kind,
-                    ):
+                    )
+                    if not editorial_issues:
                         provenance = self._accept_last_ai_content("script")
                         improved = replace(
                             candidate,
@@ -5462,7 +5839,23 @@ class ScriptWriter:
                             script_provider_endpoint_host=provenance["endpoint_host"],
                             script_provider_model=provenance["model"],
                         )
-            except Exception:
+                    else:
+                        self.last_script_rejection_reason = (
+                            "model draft failed editorial checks: "
+                            + "; ".join(editorial_issues[:3])
+                        )
+                else:
+                    minimum, maximum, _ = self._long_word_budget(channel)
+                    self.last_script_rejection_reason = (
+                        f"model draft had {generated_word_count} words; "
+                        f"needs {minimum}-{maximum}"
+                    )
+            except Exception as exc:
+                # Keep logs actionable without copying provider responses or
+                # credentials into run artifacts.
+                self.last_script_rejection_reason = (
+                    f"model script generation failed ({type(exc).__name__})"
+                )
                 improved = topic
 
         return self._polish_scene_plan(channel, improved, content_kind=content_kind)
