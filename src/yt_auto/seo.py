@@ -143,6 +143,11 @@ def _natural_subject_keyword(subject: str, channel_id: str) -> str:
     }
     if channel_id == "brain_lens" and lowered in brain_rewrites:
         return brain_rewrites[lowered]
+    history_rewrites = {
+        "great zimbabwe": "Great Zimbabwe",
+    }
+    if channel_id == "ancient_history" and lowered in history_rewrites:
+        return history_rewrites[lowered]
     return cleaned
 
 

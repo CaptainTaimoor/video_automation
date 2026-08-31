@@ -17,7 +17,7 @@ from yt_auto.models import ScenePlanItem, ScriptWriterConfig, TopicCandidate
 from yt_auto.pipeline import ShortsFactory
 from yt_auto.research import ContentResearcher
 from yt_auto.script_writer import ScriptWriter
-from yt_auto.seo import _source_url_is_live, build_youtube_metadata
+from yt_auto.seo import _natural_subject_keyword, _source_url_is_live, build_youtube_metadata
 from yt_auto.subtitles import SubtitleComposer, SubtitleSegment
 from yt_auto.thumbnailer import ThumbnailMaker
 from yt_auto.title_lab import TitleLab
@@ -1104,6 +1104,24 @@ class ThumbnailQualityTests(unittest.TestCase):
 
 
 class LongVideoPackagingTests(unittest.TestCase):
+    def test_great_zimbabwe_long_metadata_preserves_proper_noun_casing(self) -> None:
+        candidate = topic(
+            niche_id="ancient_history",
+            title="great zimbabwe",
+            subject="great zimbabwe",
+            content_kind="video",
+        )
+        factory = ShortsFactory.__new__(ShortsFactory)
+
+        self.assertEqual(
+            "Great Zimbabwe: What the Surviving Evidence Actually Reveals",
+            factory._ancient_long_title(candidate),
+        )
+        self.assertEqual(
+            "Great Zimbabwe",
+            _natural_subject_keyword(candidate.subject, "ancient_history"),
+        )
+
     def test_lachish_forced_ancient_long_title_keeps_ranked_specific_copy(self) -> None:
         candidate = topic(
             niche_id="ancient_history",

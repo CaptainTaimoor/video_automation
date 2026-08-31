@@ -773,6 +773,7 @@ class ShortsFactory:
             (("antikythera",), "The Antikythera Mechanism: Gears, Astronomy, and an Ancient Mystery"),
             (("cyrus cylinder",), "The Cyrus Cylinder: Royal Propaganda, Babylon, and a Modern Myth"),
             (("persepolis",), "Persepolis: How Persia Built Power Into Stone"),
+            (("great zimbabwe",), "Great Zimbabwe: What the Surviving Evidence Actually Reveals"),
         )
         for markers, title in titles:
             if any(marker in lowered for marker in markers):
