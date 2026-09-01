@@ -146,9 +146,46 @@ class FastStillAnimationTests(unittest.TestCase):
         self.assertTrue(
             all(left.resolve() != right.resolve() for left, right in zip(planned_images, planned_images[1:]))
         )
+        last_seen = {}
+        for position, image_path in enumerate(planned_images):
+            key = image_path.resolve()
+            if key in last_seen:
+                self.assertGreaterEqual(position - last_seen[key] - 1, 3)
+            last_seen[key] = position
         for beat_index in range(20):
             first_for_beat = beat_indices.index(beat_index)
             self.assertEqual(images[beat_index], planned_images[first_for_beat])
+
+        # The old local-neighbour planner exposed only four assets in roughly
+        # the first 90 seconds. The full library must now be distributed early.
+        first_ninety = {
+            image.resolve()
+            for segment, image in zip(segments, planned_images)
+            if segment.start < 90.0
+        }
+        self.assertGreaterEqual(len(first_ninety), 10)
+
+    def test_long_visual_plan_uses_best_possible_gap_with_three_assets(self) -> None:
+        builder = VideoBuilder(180, 240, target_size=(320, 180))
+        images = [Path(f"scarce_{index}.jpg") for index in range(3)]
+        beats = [
+            SubtitleSegment(index * 20.0, (index + 1) * 20.0, f"Beat {index}")
+            for index in range(3)
+        ]
+
+        _, planned_images, _ = builder._beat_aligned_visual_plan(
+            image_paths=images,
+            beat_segments=beats,
+            story_beats=[beat.text for beat in beats],
+            duration=180.0,
+        )
+
+        last_seen = {}
+        for position, image_path in enumerate(planned_images):
+            key = image_path.resolve()
+            if key in last_seen:
+                self.assertGreaterEqual(position - last_seen[key] - 1, 2)
+            last_seen[key] = position
 
     def test_adjacent_reused_still_is_one_continuous_visual_hold(self) -> None:
         builder = VideoBuilder(1, 10, target_size=(180, 320))

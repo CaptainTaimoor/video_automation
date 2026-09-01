@@ -3610,6 +3610,36 @@ class ShortsFactory:
             "silence_ratio_limits": list(silence_limits),
         }
 
+    @staticmethod
+    def _timeline_close_repeat_issue(
+        visual_timeline: list[dict],
+        minimum_intervening: int = 3,
+    ) -> str | None:
+        """Reject visible A-B-A loops while ignoring one continuous hold."""
+        physical_sources: list[str] = []
+        for item in visual_timeline or []:
+            if not isinstance(item, dict):
+                continue
+            source = str(item.get("source_file") or "").strip().casefold()
+            if not source:
+                continue
+            if physical_sources and physical_sources[-1] == source:
+                continue
+            physical_sources.append(source)
+        unique_count = len(set(physical_sources))
+        required_gap = min(max(0, int(minimum_intervening)), max(0, unique_count - 1))
+        last_seen: dict[str, int] = {}
+        for position, source in enumerate(physical_sources):
+            previous = last_seen.get(source)
+            intervening = position - previous - 1 if previous is not None else required_gap
+            if previous is not None and intervening < required_gap:
+                return (
+                    f"long-form visual {source} repeats after only {intervening} "
+                    f"intervening shot(s); needs {required_gap}"
+                )
+            last_seen[source] = position
+        return None
+
     def _quality_review(
         self,
         channel: ChannelConfig,
@@ -3814,6 +3844,18 @@ class ShortsFactory:
             "pollinations_ai",
             "unknown",
         }
+        generated_graphics = sum(
+            source_counts.get(source_type, 0)
+            for source_type in ("local_documentary_diagram", "local_fact_card")
+        )
+        if self.quality_v3_enabled and generated_graphics:
+            visual_issue = (
+                f"contains {generated_graphics} generated fallback graphic(s); "
+                "V3 requires real licensed footage or documentary imagery"
+            )
+            issues.append(visual_issue)
+            blocking_issues.append(visual_issue)
+            score -= min(32, 16 * generated_graphics)
         archival_sources = [
             item
             for item in sources
@@ -4178,6 +4220,7 @@ class ShortsFactory:
                 ),
                 default=999.0,
             )
+            close_repeat_issue = self._timeline_close_repeat_issue(visual_timeline)
             if not visual_timeline or (expected_beat_count and len(timeline_beat_indices) < expected_beat_count):
                 visual_issue = "long visual timeline is missing narration-section alignment"
                 issues.append(visual_issue)
@@ -4188,6 +4231,10 @@ class ShortsFactory:
                 issues.append(visual_issue)
                 blocking_issues.append(visual_issue)
                 score -= 18
+            elif close_repeat_issue:
+                issues.append(close_repeat_issue)
+                blocking_issues.append(close_repeat_issue)
+                score -= 22
             else:
                 strengths.append(
                     f"long-form cuts cover {len(timeline_beat_indices)} sections with {longest_visual:.1f}s maximum hold"

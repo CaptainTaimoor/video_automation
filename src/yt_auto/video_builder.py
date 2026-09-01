@@ -276,6 +276,40 @@ class VideoBuilder:
         visual_segments = []
         ordered_images: List[Path] = []
         beat_indices: List[int] = []
+
+        def asset_key(candidate: Path) -> str:
+            """Return one stable identity for cooldown and duplicate checks."""
+            return os.path.normcase(str(Path(candidate).resolve())).casefold()
+
+        long_form = duration >= 180
+        long_slot_counts: list[int] = []
+        long_slot_starts: list[int] = []
+        if long_form:
+            running_slots = 0
+            for index in range(beat_count):
+                segment = beat_segments[index]
+                raw_images = list(image_paths[index::beat_count])
+                requested = max(1, len(raw_images))
+                start = max(0.0, float(segment.start))
+                end = min(duration, max(start + 0.8, float(segment.end)))
+                slots = max(requested, int(np.ceil((end - start) / 7.5)))
+                long_slot_starts.append(running_slots)
+                long_slot_counts.append(slots)
+                running_slots += slots
+
+        unique_asset_keys = {asset_key(path) for path in image_paths}
+        # Three *different intervening shots* is the normal long-form rule. If
+        # a degraded run has fewer than four unique assets, use the strongest
+        # mathematically possible round-robin gap and let the later diversity
+        # gate decide whether the episode may ship.
+        long_reuse_gap = min(3, max(0, len(unique_asset_keys) - 1))
+        long_last_position: dict[str, int] = {}
+        long_use_count: dict[str, int] = {}
+        primary_beats_by_key: dict[str, list[int]] = {}
+        if long_form:
+            for index in range(min(beat_count, len(image_paths))):
+                primary_beats_by_key.setdefault(asset_key(image_paths[index]), []).append(index)
+
         for beat_index in range(beat_count):
             beat_segment = beat_segments[beat_index]
             raw_beat_images = list(image_paths[beat_index::beat_count])
@@ -301,19 +335,18 @@ class VideoBuilder:
             beat_start = max(0.0, float(beat_segment.start))
             beat_end = min(duration, max(beat_start + 0.8, float(beat_segment.end)))
             image_slots = min(requested_slots, len(beat_images))
-            if duration >= 180:
-                image_slots = max(image_slots, int(np.ceil((beat_end - beat_start) / 7.5)))
-                # A long beat usually owns one primary asset. Repeating that one
-                # file in every slot was later merged into a 25-30 second hold:
-                # technically animated, but visually monotonous. Keep the primary
-                # first, then intercut the nearest story-neighbour assets as B-roll.
-                # Adjacent scenes are the safest semantic context for both the
-                # chronological documentary and relationship case-study formats.
+            if long_form:
+                image_slots = long_slot_counts[beat_index]
+                # Keep the spoken beat's primary first when its cooldown permits,
+                # then draw from the whole researched library. New assets win
+                # before repeats; repeats need three other physical shots between
+                # appearances. This prevents A-B-A and four-asset loops while
+                # retaining nearby story assets as the semantic tie-breaker.
                 candidate_images: List[Path] = []
-                candidate_keys: set[Path] = set()
+                candidate_keys: set[str] = set()
 
                 def add_candidate(candidate: Path) -> None:
-                    key = Path(candidate).resolve()
+                    key = asset_key(candidate)
                     if key not in candidate_keys:
                         candidate_keys.add(key)
                         candidate_images.append(candidate)
@@ -321,36 +354,83 @@ class VideoBuilder:
                 for candidate in beat_images:
                     add_candidate(candidate)
                 radius = 1
-                desired_pool_size = min(
-                    len(image_paths),
-                    max(4, image_slots + 2),
-                )
-                while len(candidate_images) < desired_pool_size and radius < len(image_paths):
+                while len(candidate_images) < len(unique_asset_keys) and radius < len(image_paths):
                     for neighbour in (beat_index - radius, beat_index + radius):
                         if 0 <= neighbour < min(beat_count, len(image_paths)):
                             add_candidate(image_paths[neighbour])
                     radius += 1
+                for candidate in image_paths:
+                    add_candidate(candidate)
 
-                selected_images = list(candidate_images[:image_slots])
-                if beat_index + 1 < min(beat_count, len(image_paths)) and selected_images:
-                    next_primary = Path(image_paths[beat_index + 1]).resolve()
-                    if Path(selected_images[-1]).resolve() == next_primary:
-                        replacement = next(
-                            (
-                                candidate
-                                for candidate in candidate_images[image_slots:]
-                                if Path(candidate).resolve() != next_primary
-                            ),
-                            None,
+                primary = image_paths[beat_index] if beat_index < len(image_paths) else beat_images[0]
+                semantic_positions: dict[str, int] = {}
+                for source_index, candidate in enumerate(image_paths[:beat_count]):
+                    key = asset_key(candidate)
+                    distance = abs(source_index - beat_index)
+                    semantic_positions[key] = min(distance, semantic_positions.get(key, distance))
+
+                selected_images: List[Path] = []
+                for slot_index in range(image_slots):
+                    position = len(ordered_images) + len(selected_images)
+
+                    def cooldown_ready(candidate: Path) -> bool:
+                        key = asset_key(candidate)
+                        previous = long_last_position.get(key)
+                        if previous is None:
+                            return True
+                        return position - previous - 1 >= long_reuse_gap
+
+                    def preserves_future_primary(candidate: Path) -> bool:
+                        key = asset_key(candidate)
+                        for future_beat in primary_beats_by_key.get(key, []):
+                            if future_beat <= beat_index:
+                                continue
+                            future_position = long_slot_starts[future_beat]
+                            return future_position - position - 1 >= long_reuse_gap
+                        return True
+
+                    eligible = [
+                        candidate
+                        for candidate in candidate_images
+                        if cooldown_ready(candidate) and preserves_future_primary(candidate)
+                    ]
+                    if not eligible:
+                        # Reservation is only a relevance preference; never relax
+                        # the actual repeat cooldown to satisfy it.
+                        eligible = [candidate for candidate in candidate_images if cooldown_ready(candidate)]
+                    if not eligible:
+                        raise RuntimeError(
+                            "long visual planner could not satisfy the minimum reuse gap"
                         )
-                        if replacement is not None:
-                            selected_images[-1] = replacement
-                if selected_images:
-                    beat_images = selected_images
+
+                    primary_key = asset_key(primary)
+                    if slot_index == 0 and any(asset_key(item) == primary_key for item in eligible):
+                        chosen = next(item for item in eligible if asset_key(item) == primary_key)
+                    else:
+                        def candidate_rank(candidate: Path) -> tuple[int, int, int, int]:
+                            key = asset_key(candidate)
+                            used = long_use_count.get(key, 0)
+                            previous = long_last_position.get(key, -1000000)
+                            return (
+                                0 if used == 0 else 1,
+                                used,
+                                semantic_positions.get(key, beat_count + 1),
+                                previous,
+                            )
+
+                        chosen = min(eligible, key=candidate_rank)
+
+                    selected_images.append(chosen)
+                    chosen_key = asset_key(chosen)
+                    long_last_position[chosen_key] = position
+                    long_use_count[chosen_key] = long_use_count.get(chosen_key, 0) + 1
+                beat_images = selected_images
+
             if (
-                ordered_images
+                not long_form
+                and ordered_images
                 and len(beat_images) > 1
-                and Path(ordered_images[-1]).resolve() == Path(beat_images[0]).resolve()
+                and asset_key(ordered_images[-1]) == asset_key(beat_images[0])
             ):
                 beat_images = beat_images[1:] + beat_images[:1]
             slot_duration = (beat_end - beat_start) / image_slots
@@ -424,7 +504,7 @@ class VideoBuilder:
             merged_segments.append(segment)
             merged_images.append(image_path)
             merged_indices.append(beat_index)
-        if duration >= 180:
+        if long_form:
             longest_shot = max(
                 (float(segment.end) - float(segment.start) for segment in merged_segments),
                 default=0.0,
@@ -434,6 +514,16 @@ class VideoBuilder:
                     "long visual plan contains a physical shot longer than 8.5 seconds: "
                     f"{longest_shot:.2f}s"
                 )
+            last_seen: dict[str, int] = {}
+            for position, image_path in enumerate(merged_images):
+                key = asset_key(image_path)
+                previous = last_seen.get(key)
+                if previous is not None and position - previous - 1 < long_reuse_gap:
+                    raise RuntimeError(
+                        "long visual plan repeats a source without enough intervening shots: "
+                        f"{Path(image_path).name} at positions {previous} and {position}"
+                    )
+                last_seen[key] = position
         return merged_segments, merged_images, merged_indices
 
     def _write_visual_timeline(

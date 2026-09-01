@@ -66,6 +66,32 @@ class QualityV3HumanFirstTests(unittest.TestCase):
         self.assertFalse(report["enabled"])
         self.assertIn("voice-first", report["strength"])
 
+    def test_long_timeline_rejects_close_repeats_but_allows_spaced_reuse(self) -> None:
+        close_loop = [
+            {"source_file": source}
+            for source in ("a.jpg", "b.jpg", "a.jpg", "c.jpg", "d.jpg")
+        ]
+        spaced = [
+            {"source_file": source}
+            for source in ("a.jpg", "b.jpg", "c.jpg", "d.jpg", "a.jpg")
+        ]
+
+        self.assertIn(
+            "repeats after only 1",
+            ShortsFactory._timeline_close_repeat_issue(close_loop) or "",
+        )
+        self.assertIsNone(ShortsFactory._timeline_close_repeat_issue(spaced))
+
+    def test_continuous_visual_hold_is_not_counted_as_a_repeat_cut(self) -> None:
+        timeline = [
+            {"source_file": "a.jpg", "continuous_visual_hold": True},
+            {"source_file": "a.jpg", "continuous_visual_hold": True},
+            {"source_file": "b.jpg"},
+            {"source_file": "c.jpg"},
+        ]
+
+        self.assertIsNone(ShortsFactory._timeline_close_repeat_issue(timeline))
+
     def test_brain_long_rejects_non_model_outage_template(self) -> None:
         candidate = SimpleNamespace(script_provider="")
 
@@ -160,6 +186,18 @@ class QualityV3HumanFirstTests(unittest.TestCase):
         self.assertFalse(channels["brain_lens"].background_music_enabled)
         self.assertTrue(channels["ancient_history"].voices[0].endswith("Neural"))
         self.assertTrue(channels["brain_lens"].voices[0].endswith("Neural"))
+
+    def test_requested_daily_schedule_is_staggered_and_resource_bounded(self) -> None:
+        config = load_config(Path("config/settings.yaml"))
+        all_times = []
+        for channel in config.channels:
+            self.assertEqual(10, len(channel.shorts.schedule_times))
+            self.assertEqual(5, len(channel.videos.schedule_times))
+            self.assertEqual(15, channel.daily_upload_cap)
+            all_times.extend(channel.shorts.schedule_times)
+            all_times.extend(channel.videos.schedule_times)
+
+        self.assertEqual(len(all_times), len(set(all_times)))
 
     def test_missing_continuous_pcm_narration_is_held(self) -> None:
         report = ShortsFactory._quality_v3_audio_report(

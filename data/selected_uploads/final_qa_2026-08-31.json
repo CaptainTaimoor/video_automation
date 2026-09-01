@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "channel": "ancient_history",
+      "run_dir": "E:/yt_automation_v2/output/ancient_history/short/2026-08-30/20260830_220635",
+      "youtube_url": "https://youtu.be/QfB4AYEZbYQ"
+    },
+    {
+      "channel": "ancient_history",
+      "run_dir": "E:/yt_automation_v2/output/ancient_history/short/2026-08-31/20260831_103156",
+      "youtube_url": "https://youtu.be/ThXLuSW1BNs"
+    },
+    {
+      "channel": "ancient_history",
+      "run_dir": "E:/yt_automation_v2/output/ancient_history/video/2026-08-31/20260831_162051",
+      "youtube_url": "https://youtu.be/KIyJAubKp0E"
+    },
+    {
+      "channel": "brain_lens",
+      "run_dir": "E:/yt_automation_v2/output/brain_lens/short/2026-08-31/20260831_151000_motionfix",
+      "youtube_url": "https://youtu.be/JzPg7RFkNhE"
+    },
+    {
+      "channel": "brain_lens",
+      "run_dir": "E:/yt_automation_v2/output/brain_lens/short/2026-08-31/20260831_145500_motionfix",
+      "youtube_url": "https://youtu.be/q4jkf4YYwIk"
+    },
+    {
+      "channel": "brain_lens",
+      "run_dir": "E:/yt_automation_v2/output/brain_lens/video/2026-08-31/20260831_154841",
+      "youtube_url": "https://youtu.be/nngWGCPIv1c"
+    }
+  ]
+}
