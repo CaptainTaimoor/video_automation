@@ -83,36 +83,51 @@ channels:
       - listicle
       - story
       - motivational
-    # Competitor-optimized slots (our analytics winners: 00, 08, 10, 15, 19)
+    # Phase C (best-time trim): keep top hours from performance-report.
+    # Winners: 21, 19, 15, 07, 00, 18, 10 (+ a few near-winner probes).
     schedule_times:
       - "00:20"
-      - "08:20"
-      - "10:20"
-      - "12:50"
-      - "15:20"
-      - "17:50"
-      - "19:20"
+      - "07:10"
+      - "08:10"
+      - "10:10"
+      - "12:10"
+      - "15:10"
+      - "16:10"
+      - "18:10"
+      - "19:10"
+      - "20:10"
+      - "21:10"
+      - "22:10"
     content_profiles:
       shorts:
         enabled: true
         schedule_times:
           - "00:20"
-          - "08:20"
-          - "10:20"
-          - "12:50"
-          - "15:20"
-          - "17:50"
-          - "19:20"
+          - "07:10"
+          - "08:10"
+          - "10:10"
+          - "12:10"
+          - "15:10"
+          - "16:10"
+          - "18:10"
+          - "19:10"
+          - "20:10"
+          - "21:10"
+          - "22:10"
         min_duration_seconds: 50
         max_duration_seconds: 59
         target_width: 1080
         target_height: 1920
       videos:
         enabled: true
+        # Longs aligned to strong hours (still 6/day within 5–8 target).
         schedule_times:
-          - "09:30"
-          - "16:30"
-          - "22:30"
+          - "07:30"
+          - "10:30"
+          - "15:30"
+          - "18:30"
+          - "19:30"
+          - "21:30"
         min_duration_seconds: 480
         max_duration_seconds: 600
         target_width: 1920
@@ -140,15 +155,15 @@ channels:
       - "#civilization"
       - "#ancientcivilizations"
     output_dir: output/ancient_history
-    daily_upload_cap: 10
-    max_upload_gap_hours: 4.0
+    daily_upload_cap: 18
+    max_upload_gap_hours: 3.0
     upload_gap_retry_cooldown_minutes: 20
     short_build_timeout_minutes: 45
     video_build_timeout_minutes: 90
     short_build_stall_minutes: 12
     video_build_stall_minutes: 25
-    schedule_interval_hours: 2
-    backlog_schedule_interval_minutes: 90
+    schedule_interval_hours: 1
+    backlog_schedule_interval_minutes: 60
     youtube:
       upload_enabled: true
       client_secrets_file: client_secrets.json
@@ -159,6 +174,17 @@ channels:
       upload_enabled: false
       page_id: "101382192681601"
       access_token_env_var: "FB_PAGE_TOKEN_ANCIENT_HISTORY"
+
+    monetization:
+      enabled: true
+      long_form_cta: "Watch our longer documentaries on this channel for maps, sources, and the full evidence trail."
+      long_form_playlist_url: ""
+      pinned_comment_template: "Full documentary-style videos are on this channel. {title}"
+      affiliates:
+        - label: "Recommended history book"
+          url_env: "AFFILIATE_ANCIENT_BOOK_URL"
+        - label: "History tool / course pick"
+          url_env: "AFFILIATE_ANCIENT_TOOL_URL"
 
   - id: brain_lens
     display_name: "Brain Lens"
@@ -181,24 +207,26 @@ channels:
       - story
       - listicle
       - spicy_relationship
-    # Quality-first slots (our analytics winners: 05, 09, 10, 14, 17, 22)
-    # Reduced from 9→6 shorts/day while Brain Lens retention recovers.
+    # Phase C: trim to best hours (10, 21, 13) + strong nearby slots.
+    # Dropped weak 12:xx cluster (very low avg views in report).
     schedule_times:
-      - "05:50"
       - "09:20"
       - "10:20"
-      - "14:20"
-      - "17:20"
+      - "13:20"
+      - "16:20"
+      - "19:20"
+      - "21:20"
       - "22:20"
     content_profiles:
       shorts:
         enabled: true
         schedule_times:
-          - "05:50"
           - "09:20"
           - "10:20"
-          - "14:20"
-          - "17:20"
+          - "13:20"
+          - "16:20"
+          - "19:20"
+          - "21:20"
           - "22:20"
         min_duration_seconds: 50
         max_duration_seconds: 59
@@ -207,8 +235,11 @@ channels:
       videos:
         enabled: true
         schedule_times:
-          - "11:00"
+          - "10:00"
+          - "13:00"
+          - "16:00"
           - "18:00"
+          - "21:00"
         min_duration_seconds: 480
         max_duration_seconds: 600
         target_width: 1920
@@ -223,8 +254,8 @@ channels:
       - https://www.youtube.com/@HealthyGamerGG
       - https://www.youtube.com/@ImprovementPill
       - https://www.youtube.com/@JimmyonRelationships
-    daily_upload_cap: 8
-    max_upload_gap_hours: 4.0
+    daily_upload_cap: 12
+    max_upload_gap_hours: 3.5
     upload_gap_retry_cooldown_minutes: 20
     short_build_timeout_minutes: 45
     video_build_timeout_minutes: 90
@@ -245,8 +276,8 @@ channels:
       - "#brainscience"
       - "#selfimprovement"
     output_dir: output/brain_lens
-    schedule_interval_hours: 2
-    backlog_schedule_interval_minutes: 60
+    schedule_interval_hours: 1
+    backlog_schedule_interval_minutes: 45
     heygen:
       enabled: false
       use_for_shorts: true
@@ -305,4 +336,15 @@ channels:
       upload_enabled: false
       page_id: "1004784862724921"
       access_token_env_var: "FB_PAGE_TOKEN_BRAIN_LENS"
+
+    monetization:
+      enabled: true
+      long_form_cta: "Watch our longer Brain Lens videos for the full framework and practical next steps."
+      long_form_playlist_url: ""
+      pinned_comment_template: "Deeper breakdowns are in our longer videos. {title}"
+      affiliates:
+        - label: "Recommended relationship / psychology book"
+          url_env: "AFFILIATE_BRAIN_BOOK_URL"
+        - label: "Useful skill tool / course"
+          url_env: "AFFILIATE_BRAIN_TOOL_URL"
 

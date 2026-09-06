@@ -104,6 +104,34 @@ class VideoBuilder:
         self.subtitle_composer = SubtitleComposer(max_words_per_caption=subtitle_max_words)
         self.last_music_path: Path | None = None
         self.last_video_encoder: str = ""
+        self.last_claim_card_text: str = ""
+
+    def _short_claim_card_text(self, title_text: str, channel_id: str | None) -> str:
+        """Compress a Short title into a top-of-frame claim for the first second."""
+        cleaned = re.sub(r"\s+", " ", (title_text or "").replace("—", " ").replace("–", " ")).strip()
+        if not cleaned or channel_id != "brain_lens":
+            return ""
+        lowered = cleaned.lower()
+        presets = (
+            ("late repl", "ONE REPLY PROVES NOTHING"),
+            ("micro flirt", "MICRO FLIRTING OR FRIENDLINESS?"),
+            ("almost relationship", "ALMOST RELATIONSHIPS: THE LOOP"),
+            ("future fak", "FUTURE FAKING: THE TRAP"),
+            ("friends with benefits", "FRIENDS WITH BENEFITS?"),
+            ("mixed signal", "MIXED SIGNALS LOOP"),
+            ("love bomb", "LOVE BOMBING TRAP"),
+            ("texting anx", "STOP REREADING TEXTS"),
+        )
+        for marker, claim in presets:
+            if marker in lowered:
+                return claim
+        words = re.findall(r"[A-Za-z0-9']+", cleaned)
+        stop = {"the", "a", "an", "to", "of", "and", "or", "that", "this", "with", "your", "you"}
+        keep = [w for w in words if w.lower() not in stop] or words
+        keep = keep[:6]
+        if len(keep) < 2:
+            return ""
+        return " ".join(keep).upper()
 
     def _h264_encode_argv(
         self,
@@ -645,13 +673,25 @@ class VideoBuilder:
                 rendered.append(word)
         return " ".join(rendered)
 
-    def _write_ass_captions(self, segments: list, out_path: Path) -> None:
+    def _write_ass_captions(
+        self,
+        segments: list,
+        out_path: Path,
+        claim_card_text: str = "",
+    ) -> None:
         target_w, target_h = self.target_size
         landscape = target_w > target_h
         font_size = max(42, int(target_h * 0.052)) if landscape else max(44, int(target_w * 0.082))
         margin_v = max(64, int(target_h * 0.075)) if landscape else max(220, int(target_h * 0.235))
         margin_h = max(90, int(target_w * 0.065)) if landscape else 70
         outline = 4 if landscape else 8
+        claim_font = max(40, int(target_w * 0.055)) if not landscape else max(36, int(target_h * 0.045))
+        claim_margin_v = max(72, int(target_h * 0.06)) if not landscape else max(48, int(target_h * 0.05))
+        claim_outline = 6 if not landscape else 4
+        claim_style = (
+            f"Style: ClaimCard,Montserrat,{claim_font},&H00FFFFFF,&H00FFFFFF,&H00000000,&H90050A16,"
+            f"-1,0,0,0,100,100,0,0,3,{claim_outline},0,8,{margin_h},{margin_h},{claim_margin_v},1\n"
+        )
         header = (
             "[Script Info]\n"
             "ScriptType: v4.00+\n"
@@ -664,11 +704,21 @@ class VideoBuilder:
             "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
             "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
             f"Style: Caption,Montserrat,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H30050A16,"
-            f"-1,0,0,0,100,100,0,0,3,{outline},0,2,{margin_h},{margin_h},{margin_v},1\n\n"
+            f"-1,0,0,0,100,100,0,0,3,{outline},0,2,{margin_h},{margin_h},{margin_v},1\n"
+            f"{claim_style}"
+            "\n"
             "[Events]\n"
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
         )
         events = []
+        claim = re.sub(r"[{}\\]", "", (claim_card_text or "").strip())
+        if claim:
+            safe_claim = claim.replace("\n", " ")
+            events.append(
+                "Dialogue: 1,0:00:00.00,0:00:01.15,ClaimCard,,0,0,0,,"
+                f"{{\\fad(40,80)}}{safe_claim}"
+            )
+            self.last_claim_card_text = claim
         for segment in segments:
             clean_text = str(getattr(segment, "text", "") or "").strip()
             if not clean_text:
@@ -1558,9 +1608,11 @@ class VideoBuilder:
         duration_bounds: tuple[int, int],
         logo_path: Path | None,
         music_dir: Path,
+        channel_id: str | None = None,
     ) -> float:
         import imageio_ffmpeg
 
+        self.last_claim_card_text = ""
         raw_narration = AudioFileClip(str(narration_path))
         try:
             min_duration, max_duration = duration_bounds
@@ -1639,8 +1691,19 @@ class VideoBuilder:
                         handle.write(f"file '{segment_path.as_posix()}'\n")
 
                 ass_path = temp_dir / "captions.ass"
+                claim_card = self._short_claim_card_text(title_text, channel_id)
+                if channel_id == "brain_lens" and not claim_card:
+                    raise ShortCaptionPreflightError(
+                        "Brain Lens Short requires a first-second claim card from the title"
+                    )
                 if self.subtitle_enabled and subtitle_segments:
-                    self._write_ass_captions(subtitle_segments[:28], ass_path)
+                    self._write_ass_captions(
+                        subtitle_segments[:28],
+                        ass_path,
+                        claim_card_text=claim_card,
+                    )
+                elif claim_card:
+                    self._write_ass_captions([], ass_path, claim_card_text=claim_card)
 
                 ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
                 diagnostic_path = out_path.with_suffix(".ffmpeg.log")
@@ -2117,10 +2180,12 @@ class VideoBuilder:
         content_kind: str = "short",
         presenter_avatar_path: Path | None = None,
         presenter_layout_mode: str = "rotating_avatar_broll",
+        channel_id: str | None = None,
     ) -> float:
         if target_size:
             self.target_size = target_size
         self.last_music_path = None
+        self.last_claim_card_text = ""
         if not image_paths:
             raise RuntimeError('No images available to build video')
 
@@ -2140,6 +2205,7 @@ class VideoBuilder:
                     duration_bounds=(min_duration, max_duration),
                     logo_path=logo_path,
                     music_dir=music_dir,
+                    channel_id=channel_id,
                 )
             except ShortCaptionPreflightError:
                 # A different renderer cannot repair a structurally broken or
@@ -2349,6 +2415,37 @@ class VideoBuilder:
                 except Exception as e:
                     print(f"Caption failure: {e}")
                     continue
+
+        claim_card = self._short_claim_card_text(title_text, channel_id)
+        if content_kind == "short" and channel_id == "brain_lens" and not claim_card:
+            raise ShortCaptionPreflightError(
+                "Brain Lens Short requires a first-second claim card from the title"
+            )
+        if claim_card:
+            try:
+                claim_array = self._render_word_caption(
+                    claim_card,
+                    highlight=False,
+                    width=min(980, self.target_size[0] - 60),
+                )
+                claim_overlay = ImageClip(
+                    claim_array if isinstance(claim_array, np.ndarray) else np.array(claim_array),
+                    transparent=True,
+                )
+                claim_overlay = (
+                    claim_overlay
+                    .set_start(0.0)
+                    .set_duration(1.15)
+                    .set_position(("center", max(48, int(self.target_size[1] * 0.06))))
+                )
+                composite_sources.append(claim_overlay)
+                self.last_claim_card_text = claim_card
+            except Exception as exc:
+                print(f"Claim card overlay skipped: {exc}")
+                if channel_id == "brain_lens" and content_kind == "short":
+                    raise ShortCaptionPreflightError(
+                        f"Brain Lens claim card render failed: {exc}"
+                    ) from exc
 
         final_video = CompositeVideoClip(composite_sources, size=self.target_size) if len(composite_sources) > 1 else video
         final_video = final_video.set_duration(duration)

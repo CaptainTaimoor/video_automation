@@ -763,6 +763,16 @@ class ContentResearcher:
             "nubian pyramids",
             "terrace farming at machu picchu",
             "roman concrete",
+            "petra",
+            "nazca lines",
+            "gobekli tepe",
+            "cahokia",
+            "teotihuacan",
+            "knossos",
+            "rosetta stone",
+            "pompeii plaster casts",
+            "carthage harbor",
+            "sogdian merchants",
         }
     )
 
@@ -1006,6 +1016,55 @@ class ContentResearcher:
                 "Commercial messages name traded goods including gold, silver, pepper, musk, wheat, silk and other cloth.",
                 "Sogdian communities carried religious traditions and artistic styles as well as merchandise between Central Asia and China.",
             ]
+        if normalized == "petra" or "petra " in normalized:
+            return [
+                "Nabataean engineers cut channels, dams and cisterns into Petra's sandstone cliffs to capture rare desert rain.",
+                "The Siq canyon controlled every approach to the city, while carved tombs and temples faced the visitor route.",
+                "Incense and caravan trade funded the stonework that made Petra a hydraulic and commercial capital.",
+                "Plaster-lined pipes and overflow paths show that water control was planned as carefully as monumental façades.",
+            ]
+        if "gobekli" in normalized or "göbekli" in normalized:
+            return [
+                "Göbekli Tepe in southeastern Turkey preserves T-shaped limestone pillars carved with animals inside circular enclosures.",
+                "Radiocarbon dates place major construction in the Pre-Pottery Neolithic, earlier than farming villages were once expected.",
+                "Builders later deliberately buried the enclosures, sealing pillars and fill that excavators now reconstruct phase by phase.",
+                "The scale of quarrying and carving suggests organized ritual gatherings before permanent agricultural towns dominated the region.",
+            ]
+        if "cahokia" in normalized:
+            return [
+                "Cahokia near present-day St. Louis raised Monks Mound and dozens of earthen platforms beside the Mississippi floodplain.",
+                "Woodhenge posts and plaza layouts mark ceremonial calendars while residential neighborhoods spread across a huge urban footprint.",
+                "Trade in copper, shell and other goods connected Cahokia to distant regions of North America.",
+                "Population decline after about 1200 CE left the mounds as the clearest surviving map of Mississippian political power.",
+            ]
+        if "teotihuacan" in normalized:
+            return [
+                "Teotihuacan's Avenue of the Dead aligns the Pyramid of the Sun and Pyramid of the Moon inside a planned urban grid.",
+                "Apartment compounds housed thousands of residents while specialized workshops produced obsidian tools and craft goods.",
+                "No long king list survives for the city, so scholars debate collective or palace-centered rule from architecture and murals.",
+                "Later burning damaged major buildings, but the street plan still preserves one of Mesoamerica's largest planned cities.",
+            ]
+        if "knossos" in normalized:
+            return [
+                "The palace complex at Knossos on Crete includes storage magazines, courtyards and frescoed rooms excavated by Arthur Evans.",
+                "Evans rebuilt parts in concrete and named spaces boldly, shaping the modern labyrinth image beyond the original ashlar remains.",
+                "Linear A tablets from the site remain undeciphered, while later Mycenaean Linear B shows a changed administrative phase.",
+                "Earthquake damage and rebuilding phases remind researchers to separate archaeological evidence from reconstructed tourist corridors.",
+            ]
+        if "rosetta stone" in normalized:
+            return [
+                "The Rosetta Stone carries the same Ptolemaic decree in hieroglyphic, Demotic and Greek scripts.",
+                "French soldiers found the slab near Rashid in 1799, and scholars used repeated royal names in cartouches as reading keys.",
+                "Jean-François Champollion's phonetic readings opened Egyptian hieroglyphs to modern historical study.",
+                "The decree itself records priestly privileges under Ptolemy V, so the stone is both a political text and a linguistic key.",
+            ]
+        if "pompeii" in normalized:
+            return [
+                "When Vesuvius buried Pompeii in 79 CE, ash hardened around bodies and later left hollow cavities excavators could fill with plaster.",
+                "The resulting casts preserve final postures, clothing folds and group scenes that ordinary skeletons rarely show so clearly.",
+                "Houses nearby still hold bread, tools, graffiti and furniture, tying the casts to everyday Roman life interrupted mid-action.",
+                "Modern conservation treats the casts as reconstructions that require ethical display choices as much as scientific care.",
+            ]
         if "ziggurat of ur" in normalized or normalized == "ur":
             return [
                 "King Ur-Nammu began the ziggurat around 2100 BCE, using a mudbrick core protected by fired-brick facing.",
@@ -1040,8 +1099,9 @@ class ContentResearcher:
         if "nazca" in normalized or "nasca" in normalized:
             return [
                 "The Nazca Lines sit in the desert of southern Peru, where dark surface stones were moved to reveal pale ground.",
-                "Many figures are best understood from above, which is why aerial views became central to modern study.",
-                "Archaeologists connect the geoglyphs to ritual landscapes, pathways and water concerns in an extremely dry region.",
+                "Geometric paths and animal figures stretch for hundreds of meters across the pampa while nearby pottery helps date Nazca activity.",
+                "Survey work shows many lines functioned as walking routes, so ritual procession is a stronger explanation than sky-only viewing.",
+                "Extreme aridity preserved the geoglyphs, while modern tracks and tourism still threaten edges that archaeologists must protect.",
             ]
         if any(token in normalized for token in ("battle", "siege", "sack")):
             return [

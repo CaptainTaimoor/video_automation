@@ -81,7 +81,9 @@ def _load_optional_dotenv() -> str | None:
 class ShortsFactory:
     ANCIENT_SHORT_VISUAL_CANDIDATES = 6
     SHORT_TIMING_RETRY_ROUNDS = 3
-    ANCIENT_SHORT_MIN_VERIFIED_REAL_VISUALS = 8
+    # 8 was starving continuity recovery when Commons only returned a handful
+    # of verified subject-relevant stills. Keep quality high, but unblock gaps.
+    ANCIENT_SHORT_MIN_VERIFIED_REAL_VISUALS = 6
     ANCIENT_SHORT_MAX_FACT_CARD_FALLBACKS = 2
     BRAIN_SHORT_MAX_FACT_CARD_FALLBACKS = 1
     BRAIN_LONG_MAX_AI_GENERATED_VISUALS = 1
@@ -1322,9 +1324,19 @@ class ShortsFactory:
         )
         recent_fingerprints = self._recent_story_fingerprints(channel.id)
         if fingerprint and fingerprint in recent_fingerprints:
-            raise ValueError(
-                f"Rejected repeated story '{fingerprint}' already used in: {recent_fingerprints[fingerprint]}"
-            )
+            # Continuity evergreen packs already ship unique titles. Blocking them
+            # by loose subject fingerprints empties the recovery pool and grows
+            # upload gaps when AI research is stuck on one weak topic.
+            if str(getattr(topic, "selected_title_pattern", "") or "") == "continuity_evergreen_fallback":
+                prior_title = str(recent_fingerprints.get(fingerprint) or "").strip().lower()
+                if prior_title and prior_title == str(topic.title or "").strip().lower():
+                    raise ValueError(
+                        f"Rejected repeated continuity title already used in: {recent_fingerprints[fingerprint]}"
+                    )
+            else:
+                raise ValueError(
+                    f"Rejected repeated story '{fingerprint}' already used in: {recent_fingerprints[fingerprint]}"
+                )
         hook_issue = self._opening_hook_issue(topic)
         if hook_issue:
             raise ValueError(f"Rejected weak opener: {hook_issue} ({topic.title})")
@@ -1952,6 +1964,15 @@ class ShortsFactory:
                 if identity:
                     unique_verified.setdefault(identity, item)
             required_real = self.ANCIENT_SHORT_MIN_VERIFIED_REAL_VISUALS
+            if str(os.getenv("YT_CONTINUITY_RECOVERY", "")).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }:
+                # Continuity recovery already chose a sourced pack; do not leave a
+                # multi-hour gap because Commons returned 5 instead of 6 stills.
+                required_real = min(required_real, 4)
             if len(unique_verified) < required_real:
                 return (
                     f"only {len(unique_verified)} unique verified real Ancient visuals; "
@@ -2681,25 +2702,32 @@ class ShortsFactory:
                 str(os.getenv("YT_CONTINUITY_RECOVERY", "")).strip().lower()
                 in {"1", "true", "yes", "on"}
             )
-            candidate_limit = 6 if recovery_mode else self.ANCIENT_SHORT_VISUAL_CANDIDATES
+            # Recovery should try fewer, fresher packs quickly — not burn six
+            # sparse subjects while the upload gap widens.
+            candidate_limit = 2 if recovery_mode else self.ANCIENT_SHORT_VISUAL_CANDIDATES
             candidates = list(scored_candidates)
             # Sort the full pool before applying the limit. Slicing first used to
             # exclude archive-rich fallbacks such as Lascaux while a sparse subject
             # consumed the full visual-fetch budget.
             archive_priority = {
-                "lascaux": 0,
-                "boudica revolt": 1,
-                "mohenjo-daro": 2,
-                "roman concrete": 3,
-                "great zimbabwe": 4,
-                "tikal": 5,
-                "angkor wat": 6,
-                "chichen itza": 7,
-                "olmec colossal heads": 8,
-                "axum obelisks": 9,
-                "justinianic plague": 10,
-                "nubian pyramids": 11,
-                "sogdian merchants": 12,
+                "petra": 0,
+                "gobekli tepe": 1,
+                "pompeii plaster casts": 2,
+                "rosetta stone": 3,
+                "carthage harbor": 4,
+                "sogdian merchants": 5,
+                "lascaux": 6,
+                "boudica revolt": 7,
+                "mohenjo-daro": 8,
+                "roman concrete": 9,
+                "great zimbabwe": 10,
+                "tikal": 11,
+                "angkor wat": 12,
+                "chichen itza": 13,
+                "olmec colossal heads": 14,
+                "axum obelisks": 15,
+                "justinianic plague": 16,
+                "nubian pyramids": 17,
             }
             try:
                 recovery_stage = int(os.getenv("YT_RECOVERY_STAGE", "0") or 0)
@@ -2779,6 +2807,38 @@ class ShortsFactory:
         research = self.topic_planner.research
         packs = (
             (
+                "pompeii plaster casts",
+                "Pompeii Plaster Casts: Bodies Preserved by Sudden Ash",
+            ),
+            (
+                "rosetta stone",
+                "Rosetta Stone: Three Scripts That Unlocked Egyptian Writing",
+            ),
+            (
+                "gobekli tepe",
+                "Gobekli Tepe: The Ritual Site That Overturned Farming First",
+            ),
+            (
+                "carthage harbor",
+                "Carthage's Circular Harbor: Naval Power Built Into Stone",
+            ),
+            (
+                "petra",
+                "Petra's Water Channels: How a Desert City Stored Life",
+            ),
+            (
+                "cahokia",
+                "Cahokia's Monks Mound: Engineering Power on the Mississippi",
+            ),
+            (
+                "knossos",
+                "Knossos: How Excavation Invented the Labyrinth Story",
+            ),
+            (
+                "sogdian merchants",
+                "Sogdian Merchants: The Ancient Letters Behind the Silk Road",
+            ),
+            (
                 "great zimbabwe",
                 "Great Zimbabwe's Trade Network: What Imported Goods Prove",
             ),
@@ -2813,10 +2873,6 @@ class ShortsFactory:
             (
                 "lascaux",
                 "Lascaux Cave: How Visitors Nearly Destroyed Ice Age Art",
-            ),
-            (
-                "sogdian merchants",
-                "Sogdian Merchants: The Ancient Letters Behind the Silk Road",
             ),
             (
                 "boudica revolt",
@@ -3114,6 +3170,168 @@ class ShortsFactory:
                 "Collapse was a connected crisis.",
                 "Evidence rejects one simple villain.",
             ),
+            "petra": (
+                "Petra hides water in rock.",
+                "Nabataean channels cut the cliffs.",
+                "Cisterns stored rare desert rain.",
+                "Dams slowed sudden flash floods.",
+                "The Siq guided every visitor.",
+                "Carved tombs faced the canyon.",
+                "Trade caravans paid for stonework.",
+                "Incense routes funded the city.",
+                "Engineers sealed pipes with plaster.",
+                "Overflow paths protected streets.",
+                "Temples rose above the reservoirs.",
+                "Control of water meant control of trade.",
+                "Later earthquakes damaged parts.",
+                "Yet channels still map the plan.",
+                "Petra was not only a tomb city.",
+                "It was a hydraulic machine.",
+            ),
+            "nazca lines": (
+                "Nazca figures stretch across Peru.",
+                "They were scraped into desert gravel.",
+                "Light soil shows under darker stone.",
+                "Some designs run for hundreds of meters.",
+                "Spirals and animals share the plain.",
+                "Nearby pottery helps date the culture.",
+                "Researchers mapped walking paths carefully.",
+                "Many lines were meant to be walked.",
+                "Ritual processions may explain their scale.",
+                "Not every figure needs sky viewing.",
+                "Water rituals also fit the landscape.",
+                "Dry climate preserved the drawings.",
+                "Modern tracks damaged some fragile edges.",
+                "Careful surveys still recover lost shapes.",
+                "The desert keeps the evidence intact.",
+                "Nazca design was local and deliberate.",
+            ),
+            "gobekli tepe": (
+                "Gobekli Tepe changed deep history.",
+                "Stone pillars rose before farming villages.",
+                "Carved animals cover T-shaped stones.",
+                "Builders buried the circles later.",
+                "Hunter-gatherers organized huge labor.",
+                "No domestic houses dominate the mound.",
+                "Ritual gathering best fits the plan.",
+                "Radiocarbon dates push the timeline early.",
+                "Farming may have followed ritual centers.",
+                "That reverses older textbook order.",
+                "Pillars weigh many tons each.",
+                "Transport required shared effort.",
+                "Enclosure layouts differ by phase.",
+                "Fill layers sealed older rings.",
+                "The site forces a new question.",
+                "Complex ritual came before farms.",
+            ),
+            "cahokia": (
+                "Cahokia rose near the Mississippi.",
+                "Monks Mound still dominates the plain.",
+                "Earthen platforms held elite buildings.",
+                "Woodhenges marked ritual calendars.",
+                "Neighborhoods spread across huge ground.",
+                "Trade brought copper and shells.",
+                "Maize fields fed dense crowds.",
+                "Borrow pits show massive earthmoving.",
+                "Flood risk shaped settlement choices.",
+                "Social ranks appear in burials.",
+                "The city later lost population.",
+                "Climate stress may have mattered.",
+                "Political fracture may have followed.",
+                "Mounds still map former power.",
+                "Cahokia proves Native urban scale.",
+                "Engineering here was earth and labor.",
+            ),
+            "teotihuacan": (
+                "Teotihuacan still hides its rulers.",
+                "The Avenue of the Dead runs straight.",
+                "Pyramids of Sun and Moon rise beside it.",
+                "Apartment compounds housed many families.",
+                "Craft workshops filled whole neighborhoods.",
+                "Obsidian tools spread far beyond the city.",
+                "Murals show ritual scenes and status.",
+                "No long king list survives in the ruins.",
+                "Power may have been collective instead.",
+                "Foreign enclaves lived inside the grid.",
+                "Later fire damaged major buildings.",
+                "The collapse remains hotly debated.",
+                "Yet the street plan remains clear.",
+                "Urban order outlasted named dynasties.",
+                "Teotihuacan ruled by careful design.",
+                "Its anonymity is part of the evidence.",
+            ),
+            "knossos": (
+                "Knossos shaped the Minotaur myth.",
+                "Excavators rebuilt parts in concrete.",
+                "Arthur Evans named rooms boldly.",
+                "The labyrinth idea grew from that work.",
+                "Minoan frescoes show ritual scenes.",
+                "Storage magazines held huge jars.",
+                "Linear A tablets remain unread.",
+                "Earthquake damage appears in phases.",
+                "Later Mycenaean use also left traces.",
+                "Tourists now walk restored corridors.",
+                "Scholars still separate fact from rebuild.",
+                "Original ashlar blocks remain key.",
+                "The palace was a complex hub.",
+                "Myth filled gaps in the evidence.",
+                "Knossos teaches caution.",
+                "Excavation can invent a story.",
+            ),
+            "rosetta stone": (
+                "The Rosetta Stone holds three scripts.",
+                "Hieroglyphs sit above Demotic text.",
+                "Greek closes the same decree.",
+                "French soldiers found it in 1799.",
+                "Scholars compared repeated royal names.",
+                "Cartouches guided early readings.",
+                "Champollion linked sound values carefully.",
+                "Egyptian writing opened after that breakthrough.",
+                "Temple walls became readable history.",
+                "The decree itself is Ptolemaic politics.",
+                "Priests receive listed privileges.",
+                "Propaganda sits beside scholarship.",
+                "The British Museum still displays the slab.",
+                "Copies helped more people study the text.",
+                "One slab unlocked a language family.",
+                "Evidence beat pure guessing.",
+            ),
+            "pompeii plaster casts": (
+                "Pompeii preserves sudden deaths.",
+                "Ash sealed empty body cavities.",
+                "Workers later poured plaster inside.",
+                "Casts show final postures.",
+                "Some victims shield their faces.",
+                "Others cling to family members.",
+                "Volcanic gas and heat killed fast.",
+                "Houses nearby keep daily objects.",
+                "Bread, tools, and graffiti remain.",
+                "Casts are not original bodies.",
+                "They are archaeological reconstructions.",
+                "Newer scans refine older fills.",
+                "Ethics debates now guide display.",
+                "Still, the casts teach urgency.",
+                "One eruption froze ordinary life.",
+                "Pompeii makes time visible.",
+            ),
+            "carthage harbor": (
+                "Carthage built a circular war harbor.",
+                "Merchant docks sat beside it.",
+                "Ships entered through controlled channels.",
+                "Dry docks ringed the military basin.",
+                "Admiralty island held command space.",
+                "Stone quays guided every hull.",
+                "Naval power funded Mediterranean trade.",
+                "Rome later destroyed the city.",
+                "Harbor outlines still appear in surveys.",
+                "Underwater archaeology maps the basins.",
+                "Punic engineers planned for fleets.",
+                "Speed of launch mattered in war.",
+                "Commerce and combat shared one coast.",
+                "The design was strategic infrastructure.",
+                "Carthage stored power in waterworks.",
+                "Harbor stone still proves it.",
+            ),
         }
         out: list[TopicCandidate] = []
         for subject, title in packs:
@@ -3243,6 +3461,12 @@ class ShortsFactory:
                 "Precise, checkable evidence is what keeps this story honest.",
                 "Dated proof on the ground still rewards careful readers.",
                 "Each verified detail changes how the first hard clue should be read.",
+                "Field notes still separate rumor from measurable remains.",
+                "Layer by layer, the surviving record narrows what can be claimed.",
+                "Comparisons across sites stop one object from standing alone.",
+                "Clear provenance is what turns a striking image into usable history.",
+                "Later restorations must be separated from the original construction.",
+                "The strongest claims stay tied to dated, visible material.",
             )
             spoken_beats = self._pad_short_beats_to_word_window(
                 list(polished.narration_beats or [polished.narration]),
@@ -3271,6 +3495,15 @@ class ShortsFactory:
                         "justinianic plague": "https://en.wikipedia.org/wiki/Plague_of_Justinian",
                         "bronze age collapse": "https://en.wikipedia.org/wiki/Late_Bronze_Age_collapse",
                         "nubian pyramids": "https://en.wikipedia.org/wiki/Nubian_pyramids",
+                        "petra": "https://en.wikipedia.org/wiki/Petra",
+                        "nazca lines": "https://en.wikipedia.org/wiki/Nazca_Lines",
+                        "gobekli tepe": "https://en.wikipedia.org/wiki/G%C3%B6bekli_Tepe",
+                        "cahokia": "https://en.wikipedia.org/wiki/Cahokia",
+                        "teotihuacan": "https://en.wikipedia.org/wiki/Teotihuacan",
+                        "knossos": "https://en.wikipedia.org/wiki/Knossos",
+                        "rosetta stone": "https://en.wikipedia.org/wiki/Rosetta_Stone",
+                        "pompeii plaster casts": "https://en.wikipedia.org/wiki/Pompeii",
+                        "carthage harbor": "https://en.wikipedia.org/wiki/Ports_of_Carthage",
                     }
                     fallback_source = known_sources.get(str(subject_words).strip().lower(), "")
                 if fallback_source:
@@ -3468,7 +3701,22 @@ class ShortsFactory:
             )
             if opener and not (opener.startswith(concrete_starts) or any(cue in opener for cue in concrete_cues)):
                 issues.append("Brain Lens opener is abstract instead of behavior-first")
+                blocking_issues.append("Brain Lens opener is abstract instead of behavior-first")
                 score -= 18
+            claim_card = str(metadata.get("claim_card_text") or "").strip()
+            if content_kind == "short":
+                if not claim_card or len(claim_card.split()) < 2:
+                    claim_issue = "Brain Lens Short missing first-second on-screen claim card"
+                    issues.append(claim_issue)
+                    blocking_issues.append(claim_issue)
+                    score -= 20
+                elif len(claim_card) > 54:
+                    claim_issue = "Brain Lens claim card text is too long for first-second readability"
+                    issues.append(claim_issue)
+                    blocking_issues.append(claim_issue)
+                    score -= 12
+                else:
+                    strengths.append("Brain Lens first-second claim card present")
             if not (50 <= duration_seconds <= 59.5):
                 issues.append("duration outside Brain Lens winning range")
                 score -= 12
@@ -5948,6 +6196,10 @@ class ShortsFactory:
             candidate_pool_size = max(candidate_pool_size, 6)
         if channel.id == "ancient_history" and content_kind == "short":
             candidate_pool_size = self.ANCIENT_SHORT_VISUAL_CANDIDATES
+            # During continuity recovery, prefer shipping one solid pack quickly
+            # over collecting six weak research candidates while the gap grows.
+            if str(os.getenv("YT_CONTINUITY_RECOVERY", "")).lower() in {"1", "true", "yes", "on"}:
+                candidate_pool_size = min(candidate_pool_size, 2)
         if channel.id == "ancient_history" and content_kind == "video":
             candidate_pool_size = max(candidate_pool_size, 5)
         max_topic_attempts = 24 if channel.id == "brain_lens" and content_kind == "short" else 15
@@ -5960,19 +6212,47 @@ class ShortsFactory:
             and content_kind == "short"
             else []
         )
+        # Drop packs whose exact title was already published so recovery does not
+        # burn attempts on known repeats before reaching fresh subjects.
+        published_title_keys = {
+            str(item or "").strip().lower()
+            for item in published_avoid_titles
+            if str(item or "").strip()
+        }
+        all_continuity_fallbacks = [
+            item
+            for item in all_continuity_fallbacks
+            if str(item.title or "").strip().lower() not in published_title_keys
+        ]
         continuity_fallbacks = list(all_continuity_fallbacks)
+        rejected_title_counts: dict[str, int] = {}
+        consecutive_plan_failures = 0
 
         for attempt_index in range(max_topic_attempts):
             self.logger.info(channel.id, f"Planning candidate {attempt_index + 1}/{max_topic_attempts}")
             try:
-                candidate = self.topic_planner.plan(
-                    channel,
-                    style_bias=style_bias,
-                    term_bias=term_bias,
-                    avoid_titles=avoid_titles,
-                    content_kind=content_kind,
-                    dna=dna,
-                )
+                # After a few AI failures, prefer curated continuity packs so the
+                # upload gap does not wait for all 20 weak research attempts.
+                if (
+                    channel.id == "ancient_history"
+                    and content_kind == "short"
+                    and consecutive_plan_failures >= 3
+                    and continuity_fallbacks
+                ):
+                    candidate = continuity_fallbacks.pop(0)
+                    self.logger.warning(
+                        channel.id,
+                        "Switching to curated continuity fallback after repeated AI topic failures.",
+                    )
+                else:
+                    candidate = self.topic_planner.plan(
+                        channel,
+                        style_bias=style_bias,
+                        term_bias=term_bias,
+                        avoid_titles=avoid_titles,
+                        content_kind=content_kind,
+                        dna=dna,
+                    )
             except SourceSafeResearchExhaustedError as exc:
                 self.logger.warning(
                     channel.id,
@@ -5998,14 +6278,35 @@ class ShortsFactory:
                     if candidate.selected_title_pattern == "continuity_evergreen_fallback"
                     else ""
                 )
-                if candidate.selected_title_pattern in {
-                    "deterministic_brain_fallback",
-                    "continuity_evergreen_fallback",
-                }:
+                if candidate.selected_title_pattern == "continuity_evergreen_fallback":
+                    # Pad/polish curated beats before quality gates. Skipping this
+                    # left new packs under the 120-word Short floor and stalled recovery.
+                    validation_avoids = {
+                        item
+                        for item in avoid_titles
+                        if item not in {
+                            str(candidate.subject or "").lower().strip(),
+                            str(continuity_fallback_title).lower().strip(),
+                        }
+                    }
+                    candidate = self._prepare_ancient_continuity_fallback(
+                        channel,
+                        candidate,
+                        validation_avoids,
+                    )
+                    variants = [
+                        TitleVariant(
+                            pattern_id="continuity_evergreen_fallback",
+                            title=candidate.title,
+                            predicted_score=86.0,
+                        )
+                    ]
+                elif candidate.selected_title_pattern == "deterministic_brain_fallback":
                     # These complete, QA'd fallback beats are intentionally
                     # kept verbatim. Rewriting them during an AI outage was
                     # producing broken caption fragments and weaker hooks.
                     candidate = replace(candidate)
+                    candidate, variants = self._rank_and_apply_title(channel, candidate)
                 else:
                     candidate = self.script_writer.improve(
                         channel=channel,
@@ -6014,16 +6315,16 @@ class ShortsFactory:
                         avoid_titles=avoid_titles,
                         dna=dna,
                     )
-                candidate = replace(
-                    candidate,
-                    source_urls=self.topic_planner.research.enrich_source_urls(
-                        candidate.subject or candidate.title,
-                        list(candidate.source_urls),
-                        limit=6,
-                    ),
-                )
-                candidate, variants = self._rank_and_apply_title(channel, candidate)
-                if continuity_fallback_title:
+                    candidate = replace(
+                        candidate,
+                        source_urls=self.topic_planner.research.enrich_source_urls(
+                            candidate.subject or candidate.title,
+                            list(candidate.source_urls),
+                            limit=6,
+                        ),
+                    )
+                    candidate, variants = self._rank_and_apply_title(channel, candidate)
+                if continuity_fallback_title and candidate.selected_title_pattern != "continuity_evergreen_fallback":
                     # TitleLab is allowed to learn from published winners, but
                     # it must not select an already-published title while this
                     # recovery angle is being used.
@@ -6033,21 +6334,22 @@ class ShortsFactory:
                         title_variants=[continuity_fallback_title],
                         selected_title_pattern="continuity_evergreen_fallback",
                     )
-                validation_avoids = avoid_titles
-                if continuity_fallback_title:
-                    # Reusing a vetted subject with a materially new angle is
-                    # preferable to an unsourced gap. Do not let the exact
-                    # subject label itself reject the fresh title; the
-                    # fingerprint and script/visual gates still run normally.
-                    validation_avoids = {
-                        item
-                        for item in avoid_titles
-                        if item not in {
-                            str(candidate.subject or "").lower().strip(),
-                            str(continuity_fallback_title).lower().strip(),
+                if candidate.selected_title_pattern != "continuity_evergreen_fallback":
+                    validation_avoids = avoid_titles
+                    if continuity_fallback_title:
+                        # Reusing a vetted subject with a materially new angle is
+                        # preferable to an unsourced gap. Do not let the exact
+                        # subject label itself reject the fresh title; the
+                        # fingerprint and script/visual gates still run normally.
+                        validation_avoids = {
+                            item
+                            for item in avoid_titles
+                            if item not in {
+                                str(candidate.subject or "").lower().strip(),
+                                str(continuity_fallback_title).lower().strip(),
+                            }
                         }
-                    }
-                self._validate_topic_quality(channel, candidate, validation_avoids)
+                    self._validate_topic_quality(channel, candidate, validation_avoids)
                 ai_score = (
                     {}
                     if channel.id == "ancient_history" and content_kind == "short"
@@ -6058,12 +6360,26 @@ class ShortsFactory:
                 avoid_titles.add(candidate.title.lower())
                 if candidate.subject:
                     avoid_titles.add(candidate.subject.lower())
+                consecutive_plan_failures = 0
                 if len(scored_candidates) >= candidate_pool_size:
                     break
             except ValueError as exc:
+                consecutive_plan_failures += 1
                 repaired = None
+                title_key = str(getattr(candidate, "title", "") or "").strip().lower()
+                if title_key:
+                    rejected_title_counts[title_key] = rejected_title_counts.get(title_key, 0) + 1
+                # Same weak title was burning 15-20 attempts on AI repair.
+                # Continuity packs are already curated — never send them to AI repair.
+                skip_repair = bool(
+                    title_key and rejected_title_counts.get(title_key, 0) >= 2
+                ) or str(getattr(candidate, "selected_title_pattern", "") or "") in {
+                    "continuity_evergreen_fallback",
+                    "deterministic_brain_fallback",
+                }
                 if (
-                    channel.id in {"brain_lens", "ancient_history"}
+                    not skip_repair
+                    and channel.id in {"brain_lens", "ancient_history"}
                     and content_kind == "short"
                     and self.script_writer._ai_enabled()
                 ):
@@ -6118,6 +6434,11 @@ class ShortsFactory:
                             f"AI provider repair failed: {repair_exc}",
                         )
                         repaired = None
+                elif skip_repair:
+                    self.logger.warning(
+                        channel.id,
+                        f"Skipping repeated AI repair for stuck title: {candidate.title}",
+                    )
                 self.logger.warning(channel.id, f"Topic rejected: {exc}")
                 avoid_titles.add(candidate.title.lower())
                 if candidate.subject:
@@ -6129,11 +6450,21 @@ class ShortsFactory:
                 )
                 if candidate_fingerprint:
                     avoid_titles.add(candidate_fingerprint.lower())
+                # Hard-ban Machu Picchu water-terrace loop that kept regenerating.
+                if "machu" in title_key or "terrace farming" in title_key:
+                    avoid_titles.update(
+                        {
+                            "machu picchu",
+                            "terrace farming at machu picchu",
+                            "how machu picchu's terraces controlled water and erosion",
+                        }
+                    )
 
         if (
             channel.id == "ancient_history"
             and content_kind == "short"
             and all_continuity_fallbacks
+            and len(scored_candidates) < candidate_pool_size
         ):
             existing_titles = {
                 str(item[2].title or "").strip().lower()
@@ -6141,6 +6472,8 @@ class ShortsFactory:
                 if len(item) >= 3
             }
             for fallback in all_continuity_fallbacks:
+                if len(scored_candidates) >= candidate_pool_size:
+                    break
                 if fallback.title.strip().lower() in existing_titles:
                     continue
                 validation_avoids = {
@@ -6470,6 +6803,7 @@ class ShortsFactory:
                     duration_bounds=(profile.min_duration_seconds, profile.max_duration_seconds),
                     logo_path=logo_path,
                     content_kind=content_kind,
+                    channel_id=channel.id,
                 )
             except (ShortCaptionPreflightError, LongCaptionPreflightError) as exc:
                 self._requeue_failed_topic(
@@ -6552,6 +6886,7 @@ class ShortsFactory:
                             duration_bounds=(profile.min_duration_seconds, profile.max_duration_seconds),
                             logo_path=logo_path,
                             content_kind=content_kind,
+                            channel_id=channel.id,
                         )
                         self._overlay_heygen_presenter(video_path, rendered_path, content_kind)
                         voice = "heygen_saved_character_voice"
@@ -6659,6 +6994,7 @@ class ShortsFactory:
             "video_encoder": str(getattr(self.video_builder, "last_video_encoder", "") or resolve_h264_encode_profile().name),
             "visual_asset_count": len(images),
             "thumbnail_quality_issues": thumbnail_quality_issues,
+            "claim_card_text": str(getattr(self.video_builder, "last_claim_card_text", "") or ""),
         })
         if selected_heygen_avatar:
             metadata["heygen_avatar"] = selected_heygen_avatar
@@ -6752,6 +7088,9 @@ class ShortsFactory:
         metadata["quality_decision"] = quality_review["decision"]
         metadata["quality_subscores"] = quality_review.get("subscores", {})
         write_json(run_dir / "metadata.json", metadata)
+        pinned = str(metadata.get("pinned_comment") or "").strip()
+        if pinned:
+            (run_dir / "pinned_comment.txt").write_text(pinned + "\n", encoding="utf-8")
         write_json(run_dir / "topic.json", asdict(topic))
         write_json(run_dir / "quality_review.json", quality_review)
 
@@ -6923,6 +7262,141 @@ class ShortsFactory:
             youtube_video_id=up_results.get("youtube_id"),
             facebook_video_id=up_results.get("facebook_id")
         )
+
+    def publish_ready_video(
+        self,
+        channel_id: str,
+        *,
+        video_path: str | Path,
+        metadata_path: str | Path | None = None,
+        run_dir: str | Path | None = None,
+        content_kind: str = "short",
+        force_public: bool = True,
+        title_hint: str | None = None,
+    ) -> dict:
+        """Upload an already-rendered local video (Ready Queue path).
+
+        Intentionally does not consult Facebook backlog gates — YouTube-ready
+        files must be publishable even when FB backlog is non-empty.
+        """
+        channel = self._channel(channel_id)
+        video_path = Path(video_path)
+        if not video_path.exists():
+            raise FileNotFoundError(f"Ready video missing: {video_path}")
+
+        run_dir_path = Path(run_dir) if run_dir else video_path.parent
+        meta_path = Path(metadata_path) if metadata_path else (run_dir_path / "metadata.json")
+        metadata = read_json(meta_path, {}) if meta_path.exists() else {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        if title_hint and not metadata.get("title"):
+            metadata["title"] = title_hint
+
+        quality = read_json(run_dir_path / "quality_review.json", {})
+        decision = str(
+            (quality.get("decision") if isinstance(quality, dict) else "")
+            or metadata.get("quality_decision")
+            or "pass"
+        ).strip().lower()
+        if decision and decision != "pass":
+            event = {
+                "channel": channel.id,
+                "run_dir": str(run_dir_path),
+                "title": metadata.get("title") or title_hint or video_path.stem,
+                "content_kind": content_kind,
+                "video_path": str(video_path),
+                "metadata_path": str(meta_path),
+                "upload_skipped": "quality_gate",
+                "quality_decision": decision,
+                "uploaded": False,
+                "source": "ready_queue",
+            }
+            self._log_state(event)
+            return {"ok": False, "upload_skipped": "quality_gate", "event": event}
+
+        upload_block = self._current_upload_block(channel.id)
+        if upload_block:
+            reason = upload_block.get("reason", "upload_block")
+            event = {
+                "channel": channel.id,
+                "run_dir": str(run_dir_path),
+                "title": metadata.get("title") or title_hint or video_path.stem,
+                "content_kind": content_kind,
+                "video_path": str(video_path),
+                "upload_blocked": reason,
+                "uploaded": False,
+                "source": "ready_queue",
+            }
+            self._log_state(event)
+            return {"ok": False, "upload_blocked": reason, "event": event}
+
+        if self._daily_upload_cap_reached(channel):
+            cap = int(channel.daily_upload_cap or 0)
+            event = {
+                "channel": channel.id,
+                "run_dir": str(run_dir_path),
+                "title": metadata.get("title") or title_hint or video_path.stem,
+                "content_kind": content_kind,
+                "video_path": str(video_path),
+                "upload_skipped": "daily_upload_cap",
+                "uploaded": False,
+                "source": "ready_queue",
+            }
+            self._log_state(event)
+            self.logger.warning(channel.id, f"Daily upload cap reached ({cap}); ready-queue publish skipped.")
+            return {"ok": False, "upload_skipped": "daily_upload_cap", "event": event}
+
+        youtube_id = None
+        youtube_error = None
+        if channel.youtube and channel.youtube.upload_enabled:
+            thumb = run_dir_path / "thumbnail.jpg"
+            if not thumb.exists():
+                thumb = None
+            try:
+                youtube_id = self.youtube.upload(
+                    channel=channel,
+                    video_path=video_path,
+                    metadata=metadata,
+                    privacy_status="public" if force_public else channel.youtube.privacy_status,
+                    thumbnail_path=thumb,
+                    is_short=(content_kind == "short"),
+                )
+            except UploadLimitExceededError as exc:
+                self._set_upload_block(channel.id, "youtube_upload_limit", str(exc), hours=24)
+                youtube_error = str(exc)
+                self.logger.error(channel.id, "YouTube daily upload limit reached during ready-queue publish", exc)
+            except UploadAuthError as exc:
+                youtube_error = str(exc)
+                self.logger.error(channel.id, "YouTube authorization failed during ready-queue publish", exc)
+            except Exception as exc:
+                youtube_error = str(exc)
+                self.logger.error(channel.id, "YouTube ready-queue upload failed", exc)
+        else:
+            youtube_error = "youtube_upload_disabled"
+
+        event = {
+            "channel": channel.id,
+            "run_dir": str(run_dir_path),
+            "title": metadata.get("title") or title_hint or video_path.stem,
+            "subject": metadata.get("subject"),
+            "content_kind": content_kind,
+            "video_path": str(video_path),
+            "metadata_path": str(meta_path),
+            "youtube_id": youtube_id,
+            "youtube_error": youtube_error,
+            "quality_decision": decision or "pass",
+            "uploaded": bool(youtube_id),
+            "source": "ready_queue",
+        }
+        self._log_state(event)
+        if youtube_id:
+            self.logger.success(channel.id, f"Ready-queue YouTube upload complete: {youtube_id}")
+        return {
+            "ok": bool(youtube_id),
+            "youtube_id": youtube_id,
+            "youtube_error": youtube_error,
+            "event": event,
+        }
 
     def replay_backlog_once(self, channel_id: str) -> bool:
         channel = self._channel(channel_id)

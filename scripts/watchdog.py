@@ -311,10 +311,19 @@ def main() -> int:
                     stale_continuity_checks = 0
 
             dashboard_pids = _matching_python_process(r"live_dashboard_server.py")
-            if not dashboard_pids and not _dashboard_port_open():
+            port_open = _dashboard_port_open()
+            if not port_open and not dashboard_pids:
                 _start_dashboard()
                 print(f"[{datetime.now():%H:%M:%S}] Dashboard restart requested.")
                 time.sleep(4)
+            elif port_open and len(dashboard_pids) > 1:
+                # Keep the newest dashboard PID; stop extras so POST APIs stay on one process.
+                extras = sorted(dashboard_pids)[:-1]
+                print(
+                    f"[{datetime.now():%H:%M:%S}] Extra dashboard PIDs {extras}; "
+                    "terminating duplicates."
+                )
+                _terminate_process_trees(extras)
         except Exception as exc:
             _write_watchdog_heartbeat(status="warning", note=type(exc).__name__)
             print(f"[{datetime.now():%H:%M:%S}] Watchdog warning: {exc}")

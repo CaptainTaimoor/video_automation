@@ -74,6 +74,16 @@ class ContentProfile:
 
 
 @dataclass
+class MonetizationConfig:
+    enabled: bool = True
+    long_form_playlist_url: str = ""
+    long_form_cta: str = ""
+    pinned_comment_template: str = ""
+    # Each item: {"label": str, "url_env": str} — URL resolved from .env at runtime.
+    affiliates: List[dict] = field(default_factory=list)
+
+
+@dataclass
 class ChannelConfig:
     id: str
     display_name: str
@@ -109,6 +119,7 @@ class ChannelConfig:
     viral_dna_channels: List[str] = field(default_factory=list)
     # Visual style for AI image generation (documentary, dark-tech, anime, etc.)
     visual_style: str = "documentary"
+    monetization: MonetizationConfig = field(default_factory=MonetizationConfig)
 
 
 @dataclass

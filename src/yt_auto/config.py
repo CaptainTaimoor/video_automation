@@ -12,6 +12,7 @@ from yt_auto.models import (
     ContentProfile,
     FacebookConfig,
     HeyGenConfig,
+    MonetizationConfig,
     PresenterConfig,
     ScriptWriterConfig,
     SubtitleConfig,
@@ -167,6 +168,22 @@ def load_config(path: Path) -> AppConfig:
                 access_token_env_var=str(fb_raw.get("access_token_env_var", "FB_PAGE_ACCESS_TOKEN")),
             )
 
+        money_raw = c.get("monetization", {}) or {}
+        monetization = MonetizationConfig(
+            enabled=bool(money_raw.get("enabled", True)),
+            long_form_playlist_url=str(money_raw.get("long_form_playlist_url", "") or "").strip(),
+            long_form_cta=str(money_raw.get("long_form_cta", "") or "").strip(),
+            pinned_comment_template=str(money_raw.get("pinned_comment_template", "") or "").strip(),
+            affiliates=[
+                {
+                    "label": str(item.get("label") or "Recommended").strip(),
+                    "url_env": str(item.get("url_env") or "").strip(),
+                }
+                for item in list(money_raw.get("affiliates") or [])
+                if isinstance(item, dict) and str(item.get("url_env") or "").strip()
+            ],
+        )
+
         channel = ChannelConfig(
             id=c["id"],
             display_name=c["display_name"],
@@ -260,6 +277,7 @@ def load_config(path: Path) -> AppConfig:
             ),
             viral_dna_channels=list(c.get("viral_dna_channels", [])),
             visual_style=str(c.get("visual_style", "documentary")),
+            monetization=monetization,
         )
         channels.append(channel)
 
