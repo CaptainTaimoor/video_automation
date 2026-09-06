@@ -1,0 +1,338 @@
+[
+  {
+    "path": "output\\ancient_history\\short\\2026-03-17\\20260317_084256\\short.mp4",
+    "duration_s": 29.61,
+    "luma_start_mid_end": [
+      32.0,
+      31.85,
+      null
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.4619,
+    "channel": "ancient_history",
+    "kind": "short",
+    "title": null,
+    "hook": "One moment changed everything in Sack of Rome (410).",
+    "first_beat": "The part of Sack of Rome (410) most people never hear is the part that matters.",
+    "last_beat": "Subscribe for more history videos about empires, archaeology, and ancient mysteries.",
+    "word_count": 80,
+    "wpm_est": 162.1,
+    "duration_reported": null,
+    "voice": null
+  },
+  {
+    "path": "output\\ancient_history\\short\\2026-03-17\\20260317_051216\\short.mp4",
+    "duration_s": 26.77,
+    "luma_start_mid_end": [
+      33.22,
+      76.64,
+      55.03
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.296,
+    "channel": "ancient_history",
+    "kind": "short",
+    "title": "The real story of Cadaver Synod",
+    "hook": "History left out the most gripping part of Cadaver Synod, so here it is.",
+    "first_beat": "Historians still argue about Cadaver Synod, and the reason is surprising.",
+    "last_beat": "Subscribe for more forgotten history and untold ancient stories.",
+    "word_count": 75,
+    "wpm_est": 168.1,
+    "duration_reported": 26.76,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\ancient_history\\short\\2026-03-17\\20260317_011216\\short.mp4",
+    "duration_s": 26.13,
+    "luma_start_mid_end": [
+      34.39,
+      32.17,
+      51.3
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.481,
+    "channel": "ancient_history",
+    "kind": "short",
+    "title": "The real story of Battle of Teutoburg Forest",
+    "hook": "This part of history is easy to miss: Battle of Teutoburg Forest.",
+    "first_beat": "Historians still argue about Battle of Teutoburg Forest, and the reason is surprising.",
+    "last_beat": "Subscribe for more forgotten history and untold ancient stories.",
+    "word_count": 73,
+    "wpm_est": 167.6,
+    "duration_reported": 26.11,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\ancient_history\\short\\2026-03-16\\20260316_224058\\short.mp4",
+    "duration_s": 29.23,
+    "luma_start_mid_end": [
+      34.31,
+      31.97,
+      70.89
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2122,
+    "channel": "ancient_history",
+    "kind": "short",
+    "title": "The real story of Bronze Age collapse",
+    "hook": "History left out the most gripping part of Bronze Age collapse, so here it is.",
+    "first_beat": "One moment changed everything in Bronze Age collapse.",
+    "last_beat": "Subscribe for more history videos about empires, archaeology, and ancient mysteries.",
+    "word_count": 77,
+    "wpm_est": 158.1,
+    "duration_reported": 29.23,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\ancient_history\\video\\2026-03-17\\20260317_071216\\video.mp4",
+    "duration_s": 50.7,
+    "luma_start_mid_end": [
+      33.3,
+      31.01,
+      80.5
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2455,
+    "channel": "ancient_history",
+    "kind": "video",
+    "title": "The real story of Rosetta Stone",
+    "hook": "This part of history is easy to miss: Rosetta Stone.",
+    "first_beat": "The part of Rosetta Stone most people never hear is the part that matters.",
+    "last_beat": "Subscribe for more forgotten history and untold ancient stories.",
+    "word_count": 144,
+    "wpm_est": 170.4,
+    "duration_reported": 50.7,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\ancient_history\\video\\2026-03-17\\20260317_031216\\video.mp4",
+    "duration_s": 49.5,
+    "luma_start_mid_end": [
+      32.93,
+      30.82,
+      61.63
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2473,
+    "channel": "ancient_history",
+    "kind": "video",
+    "title": "The real story of Fall of Constantinople",
+    "hook": "History left out the most gripping part of Fall of Constantinople, so here it is.",
+    "first_beat": "The part of Fall of Constantinople most people never hear is the part that matters.",
+    "last_beat": "Subscribe for more history videos about empires, archaeology, and ancient mysteries.",
+    "word_count": 133,
+    "wpm_est": 161.2,
+    "duration_reported": 49.48,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\ancient_history\\video\\2026-03-16\\20260316_194652\\video.mp4",
+    "duration_s": 39.57,
+    "luma_start_mid_end": [
+      32.89,
+      32.89,
+      49.34
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2096,
+    "channel": "ancient_history",
+    "kind": "video",
+    "title": "The real story of Battle of Teutoburg Forest",
+    "hook": "Stop scrolling: The real story of Battle of Teutoburg Forest",
+    "first_beat": "If you want to understand Battle of Teutoburg Forest, start with the part most people never hear.",
+    "last_beat": "Subscribe for more true stories from the ancient world.",
+    "word_count": 114,
+    "wpm_est": 172.9,
+    "duration_reported": 39.55,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\ancient_history\\video\\2026-03-16\\20260316_122812\\video.mp4",
+    "duration_s": 45.2,
+    "luma_start_mid_end": [
+      33.3,
+      29.05,
+      73.83
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2534,
+    "channel": "ancient_history",
+    "kind": "video",
+    "title": "The real story of Vindolanda tablets",
+    "hook": "Stop scrolling: The real story of Vindolanda tablets",
+    "first_beat": "The real story of Vindolanda tablets is more important than most people realize.",
+    "last_beat": "Subscribe for more true stories from the ancient world.",
+    "word_count": 122,
+    "wpm_est": 161.9,
+    "duration_reported": 45.19,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\short\\2026-03-17\\20260317_084255\\short.mp4",
+    "duration_s": 28.7,
+    "luma_start_mid_end": [
+      32.88,
+      37.91,
+      27.63
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.1754,
+    "channel": "brain_lens",
+    "kind": "short",
+    "title": "Why people act this way: Body Language",
+    "hook": "This tiny pattern changes decisions every day: Why people act this way: Body Language.",
+    "first_beat": "If this happens to you a lot, it has a name: body language.",
+    "last_beat": "Subscribe for more psychology facts and brain science made simple.",
+    "word_count": 75,
+    "wpm_est": 156.8,
+    "duration_reported": 28.69,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\short\\2026-03-17\\20260317_071216\\short.mp4",
+    "duration_s": 30.6,
+    "luma_start_mid_end": [
+      33.58,
+      33.26,
+      94.29
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2716,
+    "channel": "brain_lens",
+    "kind": "short",
+    "title": "The psychology behind Analysis Paralysis",
+    "hook": "Once you understand Analysis Paralysis, a lot of human behavior starts to make sense.",
+    "first_beat": "Your brain is not broken. This is a real pattern called analysis paralysis.",
+    "last_beat": "Subscribe for more psychology insights you can actually use in real life.",
+    "word_count": 79,
+    "wpm_est": 154.9,
+    "duration_reported": 30.6,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\short\\2026-03-17\\20260317_051216\\short.mp4",
+    "duration_s": 29.23,
+    "luma_start_mid_end": [
+      33.58,
+      31.11,
+      96.14
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2432,
+    "channel": "brain_lens",
+    "kind": "short",
+    "title": "The psychology behind Attachment Styles",
+    "hook": "A psychology pattern like Attachment Styles quietly shapes everyday behavior.",
+    "first_beat": "Your brain is not broken. This is a real pattern called attachment styles.",
+    "last_beat": "Subscribe for more psychology facts and brain science made simple.",
+    "word_count": 71,
+    "wpm_est": 145.7,
+    "duration_reported": 29.22,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\short\\2026-03-17\\20260317_031216\\short.mp4",
+    "duration_s": 30.4,
+    "luma_start_mid_end": [
+      33.58,
+      33.27,
+      120.67
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2552,
+    "channel": "brain_lens",
+    "kind": "short",
+    "title": "The psychology behind Analysis Paralysis",
+    "hook": "This tiny pattern changes decisions every day: Analysis Paralysis.",
+    "first_beat": "Your brain is not broken. This is a real pattern called analysis paralysis.",
+    "last_beat": "Subscribe for more psychology insights you can actually use in real life.",
+    "word_count": 79,
+    "wpm_est": 155.9,
+    "duration_reported": 30.39,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\video\\2026-03-16\\20260316_205058\\video.mp4",
+    "duration_s": 65.73,
+    "luma_start_mid_end": [
+      33.41,
+      84.33,
+      66.86
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2924,
+    "channel": "brain_lens",
+    "kind": "video",
+    "title": "The psychology behind Analysis Paralysis",
+    "hook": "Stop scrolling: The psychology behind Analysis Paralysis",
+    "first_beat": "Your brain is not broken. This is a real pattern called analysis paralysis.",
+    "last_beat": "Subscribe for more psychology facts and brain science made simple.",
+    "word_count": 175,
+    "wpm_est": 159.7,
+    "duration_reported": 65.73,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\video\\2026-03-16\\20260316_201542\\video.mp4",
+    "duration_s": 47.57,
+    "luma_start_mid_end": [
+      33.07,
+      32.83,
+      71.08
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.2018,
+    "channel": "brain_lens",
+    "kind": "video",
+    "title": "Why your mind gets stuck here: Analysis Paralysis",
+    "hook": "Stop scrolling: Why your mind gets stuck here: Analysis Paralysis",
+    "first_beat": "If you keep overthinking, this is usually the hidden reason: analysis paralysis.",
+    "last_beat": "Subscribe for more psychology facts and brain science made simple.",
+    "word_count": 115,
+    "wpm_est": 145.0,
+    "duration_reported": 47.56,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\video\\2026-03-16\\20260316_194652\\video.mp4",
+    "duration_s": 44.57,
+    "luma_start_mid_end": [
+      33.43,
+      63.57,
+      98.54
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.5149,
+    "channel": "brain_lens",
+    "kind": "video",
+    "title": "Why your mind gets stuck here: Brain Fog",
+    "hook": "Stop scrolling: Why your mind gets stuck here: Brain Fog",
+    "first_beat": "A lot of people struggle with brain fog without knowing there is a real psychology reason behind it.",
+    "last_beat": "Subscribe for more smart videos about behavior, memory, and the mind.",
+    "word_count": 123,
+    "wpm_est": 165.6,
+    "duration_reported": 44.54,
+    "voice": "piper-en_US-lessac-medium"
+  },
+  {
+    "path": "output\\brain_lens\\video\\2026-03-16\\20260316_110436\\video.mp4",
+    "duration_s": 46.43,
+    "luma_start_mid_end": [
+      33.47,
+      32.25,
+      122.31
+    ],
+    "audio_present": true,
+    "audio_peak_last4s": 0.369,
+    "channel": "brain_lens",
+    "kind": "video",
+    "title": "The psychology behind Comparison Trap",
+    "hook": "Stop scrolling: The psychology behind Comparison Trap",
+    "first_beat": "This psychology concept explains more of your daily behavior than you might think: comparison trap.",
+    "last_beat": "Subscribe for more psychology facts and brain science made simple.",
+    "word_count": 115,
+    "wpm_est": 148.6,
+    "duration_reported": 46.42,
+    "voice": "piper-en_US-lessac-medium"
+  }
+]

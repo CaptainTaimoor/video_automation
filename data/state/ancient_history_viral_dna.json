@@ -1,0 +1,53 @@
+{
+  "hook_patterns": [
+    "Open with a concrete battle/map outcome before explaining the cause",
+    "Ask a sharp historical question in the first line (Could X have been stopped?)",
+    "Lead with one archaeological object or ruin that proves a larger claim",
+    "Start with a first-hand reaction or primary-source shock detail",
+    "Name a place + year immediately so the viewer knows the stakes"
+  ],
+  "tone": "Documentary-confident. Specific names, dates, and places. Dramatic without clickbait spam. Evidence-first.",
+  "pacing": "50-59s shorts: hook in 0-2s, one clear claim, one visual beat change every 3-5s, payoff before end. Longs: chaptered story with primary-source texture.",
+  "structure": "Hook question/claim → map or artifact establish → rising stakes → evidence reveal → consequence/why it still matters",
+  "emotion_triggers": ["curiosity", "awe", "tension", "discovery"],
+  "forbidden": [
+    "let's travel back in time",
+    "welcome to our channel",
+    "shocking secret forbidden",
+    "don't forget to like and subscribe"
+  ],
+  "video_ideas": [
+    {"title": "Could this siege have been stopped?", "angle": "One decision that decided a fortress"},
+    {"title": "The ruin that proves the empire was already cracking", "angle": "Archaeology over legend"},
+    {"title": "Why this battle is still taught in war colleges", "angle": "Tactical ambush explained on a map"},
+    {"title": "5 pieces of evidence that reframe Pompeii", "angle": "Object-led listicle"},
+    {"title": "What Roman engineers left under the streets", "angle": "Hidden infrastructure story"},
+    {"title": "How far did Rome actually explore?", "angle": "Edge-of-empire primary sources"},
+    {"title": "The artifact trail behind Hadrian's Wall", "angle": "Material culture as plot"},
+    {"title": "Why wasn't this city rebuilt after disaster?", "angle": "Aftermath economics"}
+  ],
+  "script_instructions": "Prefer How/Why/Could question titles. Use maps, labeled leaders, and artifact close-ups. Keep Shorts near 50-55s when possible. End on consequence, not a soft summary.",
+  "visual_dna": {
+    "shorts": [
+      "Vertical 9:16 map with parchment texture and empire color blocks",
+      "Large serif labels for empires; small labels for cities",
+      "Portrait callout cards for key figures mid-video",
+      "Motion: slow push/pan on maps every few seconds",
+      "High contrast text; avoid cluttered lower-third spam"
+    ],
+    "longs": [
+      "Artifact-first establishing shots",
+      "Documentary stills with gentle Ken Burns",
+      "Evidence captions tied to narration claims"
+    ],
+    "thumbnail_style": "One strong artifact or map detail + short readable subject words; earthy scholarly palette"
+  },
+  "competitor_sources": [
+    "HistoryMarche",
+    "VoicesofthePast",
+    "Toldinstone",
+    "HistoryMatters"
+  ],
+  "source_channel": "competitor_analysis_2026-09-05",
+  "analyzed_at": "2026-09-05"
+}

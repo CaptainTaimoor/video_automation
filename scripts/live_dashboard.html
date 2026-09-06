@@ -1,0 +1,736 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dual-Channel Ops Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,650;9..144,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0c10;
+      --bg-2: #12161d;
+      --panel: rgba(18, 22, 29, .88);
+      --panel-strong: rgba(22, 27, 36, .94);
+      --line: rgba(232, 220, 196, .10);
+      --line-strong: rgba(232, 220, 196, .18);
+      --text: #f3efe6;
+      --muted: #9aa3b2;
+      --soft: #c8c2b4;
+      --good: #5ddea8;
+      --warn: #e8b84a;
+      --bad: #ef6f7e;
+      --amber: #d4a017;
+      --teal: #2dd4bf;
+      --film: #1a1f28;
+      --radius-xl: 22px;
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+      --font: "Outfit", "Segoe UI", sans-serif;
+      --display: "Fraunces", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: var(--bg); }
+    body {
+      min-height: 100%;
+      margin: 0;
+      color: var(--text);
+      font-family: var(--font);
+      background:
+        radial-gradient(ellipse at 12% -8%, rgba(212, 160, 23, .14), transparent 42%),
+        radial-gradient(ellipse at 88% 0%, rgba(45, 212, 191, .10), transparent 40%),
+        linear-gradient(165deg, #080a0e 0%, #0d1117 45%, #0a0c10 100%);
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .18;
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(255,255,255,.015) 2px,
+          rgba(255,255,255,.015) 3px
+        );
+      mask-image: linear-gradient(180deg, black, transparent 85%);
+    }
+
+    .shell { width: min(1480px, calc(100vw - 28px)); margin: 0 auto; padding: 22px 0 40px; position: relative; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .brand { min-width: 0; }
+    .eyebrow {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    h1 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 650;
+      letter-spacing: -.02em;
+      line-height: 1.05;
+    }
+    .sub { color: var(--muted); margin-top: 8px; font-size: 14px; line-height: 1.5; max-width: 54ch; }
+
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .pill, .chip, .status {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--soft);
+      background: rgba(255,255,255,.04);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .pill { padding: 9px 13px; display: inline-flex; align-items: center; gap: 8px; }
+    .chip { padding: 5px 9px; display: inline-flex; align-items: center; gap: 5px; }
+    .status { padding: 7px 11px; text-transform: none; }
+    .good { color: var(--good); background: rgba(93, 222, 168, .10); border-color: rgba(93, 222, 168, .28); }
+    .warn { color: var(--warn); background: rgba(232, 184, 74, .11); border-color: rgba(232, 184, 74, .30); }
+    .bad { color: var(--bad); background: rgba(239, 111, 126, .11); border-color: rgba(239, 111, 126, .30); }
+
+    .refresh-ring {
+      width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center;
+      background: conic-gradient(var(--amber) var(--pct), rgba(255,255,255,.10) 0);
+      color: white; font-size: 10px; font-weight: 800;
+      box-shadow: inset 0 0 0 3px rgba(10, 12, 16, .9);
+    }
+
+    .system-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,.025);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .system-strip strong { color: var(--soft); font-weight: 650; }
+    .system-strip .sep { opacity: .35; }
+
+    .grid { display: grid; gap: 14px; }
+    .kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 14px; }
+    .layout { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+    .bottom { grid-template-columns: 1.2fr .8fr; margin-top: 14px; }
+
+    .card, .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.035), transparent 40%),
+        var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+    .card {
+      padding: 16px 18px;
+      min-height: 118px;
+      border-top: 2px solid transparent;
+    }
+    .card.good { border-top-color: rgba(93, 222, 168, .55); }
+    .card.warn { border-top-color: rgba(232, 184, 74, .55); }
+    .card.bad { border-top-color: rgba(239, 111, 126, .55); }
+    .card.recommend { border-top-color: rgba(212, 160, 23, .65); }
+
+    .label {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      font-weight: 700;
+    }
+    .value {
+      font-family: var(--display);
+      font-size: clamp(22px, 2.6vw, 32px);
+      line-height: 1.1;
+      letter-spacing: -.02em;
+      font-weight: 650;
+      margin-top: 10px;
+    }
+    .hint { color: var(--soft); font-size: 12px; line-height: 1.4; margin-top: 8px; }
+    .recommend .value { font-family: var(--font); font-size: 15px; line-height: 1.35; font-weight: 650; }
+
+    .panel { --accent: var(--amber); }
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      border-top: 3px solid var(--accent);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent);
+    }
+    .titleline { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+    .orb {
+      width: 12px; height: 12px; margin-top: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+      flex: 0 0 auto;
+    }
+    h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+      font-weight: 650;
+    }
+    .micro { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.45; }
+    .inside { padding: 16px 20px 20px; }
+
+    .story {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 14px 15px;
+      background: rgba(255,255,255,.03);
+      margin-bottom: 14px;
+    }
+    .story.good { border-color: rgba(93, 222, 168, .25); }
+    .story.warn { border-color: rgba(232, 184, 74, .28); }
+    .story.bad { border-color: rgba(239, 111, 126, .28); }
+    .story-head {
+      font-family: var(--display);
+      font-size: 17px;
+      line-height: 1.25;
+      font-weight: 650;
+      letter-spacing: -.01em;
+    }
+    .story-detail { color: var(--soft); font-size: 13px; line-height: 1.45; margin-top: 6px; }
+
+    .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,255,255,.03);
+      padding: 12px;
+      min-height: 74px;
+    }
+    .metric b {
+      display: block;
+      font-family: var(--display);
+      font-size: 22px;
+      line-height: 1;
+      letter-spacing: -.02em;
+      font-weight: 650;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .10em;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+
+    .section {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin: 18px 0 9px;
+      color: var(--soft);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .11em;
+      font-weight: 700;
+    }
+    .section small { color: var(--muted); letter-spacing: 0; text-transform: none; font-size: 12px; font-weight: 500; }
+
+    .rows, .bars { display: grid; gap: 8px; }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,.028);
+      padding: 11px 12px;
+      min-width: 0;
+    }
+    .rtitle { min-width: 0; font-size: 13px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rmeta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; color: var(--muted); font-size: 11px; min-width: fit-content; }
+    .empty {
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius-md);
+      color: var(--muted);
+      padding: 13px;
+      font-size: 13px;
+      background: rgba(255,255,255,.015);
+    }
+
+    .upload-row { grid-template-columns: minmax(0, 1fr) minmax(170px, auto); }
+    .upload-title { font-weight: 650; color: var(--text); }
+    .upload-sub { color: var(--muted); margin-top: 4px; font-size: 12px; line-height: 1.35; }
+
+    .barrow { display: grid; grid-template-columns: minmax(0, 1fr) 68px; align-items: center; gap: 10px; }
+    .track { height: 8px; background: rgba(255,255,255,.07); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+    .fill {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, #fff), var(--accent));
+      transition: width .5s ease;
+    }
+    .num { text-align: right; color: var(--soft); font-size: 12px; font-weight: 700; }
+
+    .latest-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .latest-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,.028);
+      padding: 12px;
+    }
+    .latest-card .kind {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .11em;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .latest-card .name {
+      margin-top: 6px;
+      font-size: 13px;
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .upcoming-list .rtitle { white-space: normal; }
+
+    @media (max-width: 1120px) {
+      .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .layout, .bottom { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 820px) {
+      .shell { width: min(100vw - 18px, 1480px); padding-top: 14px; }
+      .hero { grid-template-columns: 1fr; }
+      .toolbar { justify-content: flex-start; }
+      .kpis, .metric-grid, .latest-grid { grid-template-columns: 1fr 1fr; }
+      .panel-head { flex-direction: column; }
+      .row, .upload-row { grid-template-columns: 1fr; }
+      .rtitle { white-space: normal; }
+      .rmeta { justify-content: flex-start; }
+    }
+    @media (max-width: 520px) {
+      .kpis, .metric-grid, .latest-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="brand">
+        <div class="eyebrow">Film control · Dual channel</div>
+        <h1>Ops Dashboard</h1>
+        <div class="sub">Plain-language status for Secrets of Time and Brain Lens — scheduler, upload gap, recovery, quality gates, and what to do next.</div>
+      </div>
+      <div class="toolbar">
+        <div id="schedulerPill" class="pill warn">Checking scheduler</div>
+        <div class="pill"><span id="ring" class="refresh-ring" style="--pct:0deg">20</span> refresh</div>
+        <div id="updatedPill" class="pill">Updated --</div>
+      </div>
+    </section>
+
+    <div id="systemStrip" class="system-strip">
+      <span>Encoder <strong>--</strong></span>
+      <span class="sep">·</span>
+      <span>Shorts <strong>50–59s</strong></span>
+      <span class="sep">·</span>
+      <span>Longs <strong>8–10 min</strong></span>
+    </div>
+
+    <section id="kpis" class="grid kpis"></section>
+    <section id="channels" class="grid layout"></section>
+
+    <section class="grid bottom">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Recent production runs</h2>
+            <div class="micro">Latest builds and upload outcomes across both channels.</div>
+          </div>
+          <span id="runCount" class="status good">0 rows</span>
+        </div>
+        <div class="inside"><div id="recentRuns" class="rows"></div></div>
+      </article>
+
+      <article class="panel" style="--accent:var(--teal)">
+        <div class="panel-head">
+          <div>
+            <h2>Live workers</h2>
+            <div class="micro">Active render, upload, and helper processes right now.</div>
+          </div>
+          <span id="workerCount" class="status good">0 active</span>
+        </div>
+        <div class="inside"><div id="workers" class="rows"></div></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const REFRESH_SECONDS = 20;
+    let refreshLeft = REFRESH_SECONDS;
+    const $ = id => document.getElementById(id);
+
+    function clean(value) {
+      return String(value ?? "-").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    }
+
+    function formatNumber(value) {
+      const number = Number(value || 0);
+      if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)}M`;
+      if (number >= 1_000) return `${(number / 1_000).toFixed(1)}K`;
+      return String(number);
+    }
+
+    function chip(label, tone = "") {
+      return `<span class="chip ${tone}">${clean(label)}</span>`;
+    }
+
+    function card(label, value, hint, extraClass = "") {
+      return `
+        <article class="card ${extraClass}">
+          <div class="label">${clean(label)}</div>
+          <div class="value">${clean(value)}</div>
+          <div class="hint">${clean(hint)}</div>
+        </article>`;
+    }
+
+    function metric(label, value) {
+      return `<div class="metric"><b>${clean(value)}</b><span>${clean(label)}</span></div>`;
+    }
+
+    function rows(items, empty = "Nothing waiting.") {
+      if (!items || !items.length) return `<div class="empty">${clean(empty)}</div>`;
+      return items.map(item => `
+        <div class="row">
+          <div class="rtitle">${clean(item.title || item.label || item.reason || item.name || "-")}</div>
+          <div class="rmeta">
+            ${item.kind ? chip(item.kind) : ""}
+            ${item.when ? chip(item.when) : ""}
+            ${item.count != null ? chip(item.count) : ""}
+            ${item.age ? chip(item.age) : ""}
+            ${item.error ? chip(item.error, "warn") : ""}
+          </div>
+        </div>`).join("");
+    }
+
+    function bars(items, key = "views") {
+      if (!items || !items.length) return `<div class="empty">No analytics yet.</div>`;
+      const max = Math.max(...items.map(item => Number(item[key] || 0)), 1);
+      return `<div class="bars">${items.slice(0, 6).map(item => {
+        const value = Number(item[key] || 0);
+        const width = Math.max(4, Math.round(value / max * 100));
+        return `
+          <div class="barrow">
+            <div>
+              <div class="rtitle">${clean(item.title || "Untitled")}</div>
+              <div class="track"><div class="fill" style="width:${width}%"></div></div>
+            </div>
+            <div class="num">${formatNumber(value)}</div>
+          </div>`;
+      }).join("")}</div>`;
+    }
+
+    function toneFromState(state) {
+      if (state === "running" || state === "healthy" || state === "good") return "good";
+      if (state === "stale" || state === "warn") return "warn";
+      return "bad";
+    }
+
+    function channelUploadGap(channel) {
+      const recoveryGap = Number(channel.recovery?.gap_hours);
+      if (Number.isFinite(recoveryGap) && recoveryGap >= 0) return recoveryGap;
+      const uploadGap = Number(channel.uploads?.last_upload?.gap_hours);
+      return Number.isFinite(uploadGap) ? uploadGap : 0;
+    }
+
+    function recommendation(data) {
+      const scheduler = data.scheduler || {};
+      const channels = data.channels || [];
+      const pending = channels.reduce((sum, channel) => sum + Number(channel.backlog?.pending || 0), 0);
+      const failed = channels.reduce((sum, channel) => sum + Number(channel.backlog?.failed || 0), 0);
+      const gateStreak = Math.max(0, ...channels.map(channel => Number(channel.quality_gates?.streak || 0)));
+      const uploadGap = Math.max(0, ...channels.map(channelUploadGap));
+      const recoveryFailure = channels.find(channel =>
+        ["recovery_failed", "scheduled_build_failed", "worker_finished_without_upload", "recovery_already_queued"]
+          .includes(channel.recovery?.status)
+      );
+
+      if (scheduler.state === "stopped") return "Start scheduler now. Uploads cannot happen while it is stopped.";
+      if (scheduler.state === "stale") return "Restart scheduler. Heartbeat is stale, so running status cannot be trusted.";
+      if (recoveryFailure) {
+        const story = recoveryFailure.story?.headline;
+        if (story) return story;
+        const category = recoveryFailure.recovery?.last_failure_category || "build failure";
+        const stage = recoveryFailure.recovery?.recovery_stage || 1;
+        return `Automatic recovery stage ${stage} is handling ${category} for ${recoveryFailure.name}.`;
+      }
+      if (failed) return `Fix ${failed} failed upload item(s) before increasing publishing speed.`;
+      if (gateStreak >= 2) return "Quality gate is catching weak builds. Let replacements run; do not force-upload held videos.";
+      if (pending) return `Process ${pending} pending backlog item(s), but skip anything held by quality gate.`;
+      if (uploadGap > 24) return "Upload gap is growing. Confirm auth and next schedule slot.";
+      return "Healthy. Scheduler is live, backlog is clear, and no urgent block is visible.";
+    }
+
+    function uploadHealth(channel) {
+      const uploads = channel.uploads || {};
+      const last = uploads.last_upload || {};
+      const build = uploads.last_build || {};
+      const gap = channelUploadGap(channel);
+      const tone = gap > 36 ? "bad" : gap > 18 ? "warn" : "good";
+      const threshold = channel.recovery?.threshold_hours ?? channel.daily_plan?.max_upload_gap_hours;
+      return `
+        <div class="row upload-row">
+          <div>
+            <div class="upload-title">${clean(last.title || "No upload found")}</div>
+            <div class="upload-sub">Last build: ${clean(build.title || "-")} · ${clean(build.age || "-")} · ${build.uploaded ? "uploaded" : "not uploaded"}</div>
+          </div>
+          <div class="rmeta">
+            ${chip(`${gap.toFixed(1)}h gap`, tone)}
+            ${threshold != null ? chip(`limit ${threshold}h`) : ""}
+            ${chip(last.age || "unknown", tone)}
+            ${chip(last.kind || "-")}
+            ${last.youtube_id ? chip(`YT ${last.youtube_id}`, "good") : chip("no id", "warn")}
+          </div>
+        </div>`;
+    }
+
+    function latestOutputs(channel) {
+      const latest = channel.latest || {};
+      const short = latest.short || {};
+      const long = latest.long || {};
+      const shortMb = short.size_mb ?? short.file?.size_mb;
+      const longMb = long.size_mb ?? long.file?.size_mb;
+      const shortMeta = [
+        short.status || "-",
+        shortMb != null ? `${shortMb} MB` : null,
+        short.encoder || null,
+        short.duration_seconds != null ? `${Math.round(short.duration_seconds)}s` : null,
+        short.updated || short.file?.updated || null,
+      ].filter(Boolean).join(" · ");
+      const longMeta = [
+        long.status || "-",
+        longMb != null ? `${longMb} MB` : null,
+        long.encoder || null,
+        long.duration_seconds != null ? `${Math.round(long.duration_seconds)}s` : null,
+        long.updated || long.file?.updated || null,
+      ].filter(Boolean).join(" · ");
+      return `
+        <div class="latest-grid">
+          <div class="latest-card">
+            <div class="kind">Latest short</div>
+            <div class="name">${clean(short.title || short.status || "-")}</div>
+            <div class="upload-sub">${clean(shortMeta)}</div>
+          </div>
+          <div class="latest-card">
+            <div class="kind">Latest long</div>
+            <div class="name">${clean(long.title || long.status || "-")}</div>
+            <div class="upload-sub">${clean(longMeta)}</div>
+          </div>
+        </div>`;
+    }
+
+    function upcomingList(items, empty) {
+      if (!items || !items.length) return `<div class="empty">${clean(empty)}</div>`;
+      return `<div class="rows upcoming-list">${items.map(item => `
+        <div class="row">
+          <div class="rtitle">${clean(item.label || item.id || "-")}</div>
+          <div class="rmeta">${chip(item.when || item.next_run_time || "-", "good")}</div>
+        </div>`).join("")}</div>`;
+    }
+
+    function channelCard(channel) {
+      const backlog = channel.backlog || {};
+      const performance = channel.performance || {};
+      const totals = performance.totals || {};
+      const content = performance.content || {};
+      const shorts = content.shorts || {};
+      const plan = channel.daily_plan || {};
+      const today = channel.today || {};
+      const gates = channel.quality_gates || {};
+      const recovery = channel.recovery || {};
+      const story = channel.story || {};
+      const severity = story.tone || channel.severity || "good";
+      const retention = Number(performance.retention || performance.analytics_summary?.average_view_percentage || 0).toFixed(1);
+      const nextRecovery = recovery.next_recovery_at
+        ? (channel.upcoming || []).find(j => String(j.id || "").includes("recovery"))?.when || recovery.next_recovery_at
+        : null;
+
+      return `
+        <article class="panel" style="--accent:${clean(channel.accent || "#d4a017")}">
+          <div class="panel-head">
+            <div class="titleline">
+              <span class="orb"></span>
+              <div>
+                <h2>${clean(channel.name || channel.id)}</h2>
+                <div class="micro">${clean(channel.tagline || plan.niche || "")}</div>
+                <div class="micro">${plan.shorts_per_day || 0} shorts/day · ${plan.longs_per_day || 0} longs/day · cap ${plan.daily_upload_cap || 0} · shorts ${clean(plan.short_duration || "50–59s")} · longs ${clean(plan.long_duration || "8–10 min")}</div>
+              </div>
+            </div>
+            <span class="status ${severity}">${clean(channel.action || "healthy")}</span>
+          </div>
+          <div class="inside">
+            <div class="story ${severity}">
+              <div class="story-head">${clean(story.headline || channel.action || "Status unknown")}</div>
+              <div class="story-detail">${clean(story.detail || "Waiting for live status.")}</div>
+            </div>
+
+            <div class="metric-grid">
+              ${metric("Built today", today.generated || 0)}
+              ${metric("Uploaded today", today.uploaded || 0)}
+              ${metric("Upload gap", `${channelUploadGap(channel).toFixed(1)}h`)}
+              ${metric("Pending", backlog.pending || 0)}
+            </div>
+
+            <div class="section"><span>Next scheduled jobs</span><small>${(channel.upcoming || []).length} upcoming</small></div>
+            ${upcomingList(channel.upcoming, "No upcoming jobs for this channel.")}
+
+            <div class="section"><span>Upload gap</span><small>${clean(channel.uploads?.last_upload?.age || "-")}</small></div>
+            ${uploadHealth(channel)}
+
+            <div class="section"><span>Quality gate</span><small>${gates.held_recent || 0} recent held · streak ${gates.streak || 0}</small></div>
+            ${rows((gates.top_reasons || []).map(reason => ({ title: reason.reason, count: reason.count })), "No recent quality gate reasons.")}
+
+            <div class="section"><span>Recovery</span><small>stage ${recovery.recovery_stage || 0} · failures ${recovery.consecutive_failures || 0}</small></div>
+            <div class="row">
+              <div>
+                <div class="rtitle">${clean((recovery.status || "healthy").replaceAll("_", " "))}</div>
+                <div class="upload-sub">${clean(recovery.last_failure_summary || "No active recovery failure.")}</div>
+              </div>
+              <div class="rmeta">
+                ${chip(recovery.last_failure_category || "clear", recovery.last_failure_category ? "warn" : "good")}
+                ${nextRecovery ? chip(`next ${nextRecovery}`) : ""}
+              </div>
+            </div>
+
+            <div class="section"><span>Latest short / long</span><small>files on disk</small></div>
+            ${latestOutputs(channel)}
+
+            <div class="section"><span>Backlog</span><small>${backlog.pending || 0} pending · ${backlog.failed || 0} failed · ${backlog.skipped_quality || 0} quality-held</small></div>
+            ${rows(backlog.pending_items, "Queue is clear.")}
+            ${(backlog.failed_items || []).length ? rows(backlog.failed_items.map(item => ({ title: item.title, error: item.error })), "No failed items.") : ""}
+
+            <div class="section"><span>Top videos</span><small>${formatNumber(shorts.views || totals.views || 0)} views · retention ${retention}%</small></div>
+            ${bars(performance.top_videos || shorts.top, "views")}
+          </div>
+        </article>`;
+    }
+
+    function render(data) {
+      const scheduler = data.scheduler || {};
+      const channels = data.channels || [];
+      const system = data.system || {};
+      const schedulerTone = toneFromState(scheduler.state);
+      const pending = channels.reduce((sum, channel) => sum + Number(channel.backlog?.pending || 0), 0);
+      const skipped = channels.reduce((sum, channel) => sum + Number(channel.backlog?.skipped_quality || 0), 0);
+      const posted = channels.reduce((sum, channel) => sum + Number(channel.backlog?.posted || 0), 0);
+      const views = channels.reduce((sum, channel) => sum + Number(channel.performance?.analytics_summary?.total_views || channel.performance?.totals?.views || 0), 0);
+      const uploadGap = Math.max(0, ...channels.map(channelUploadGap));
+
+      $("updatedPill").textContent = `Updated ${data.updated || "--"}`;
+      $("schedulerPill").className = `pill ${schedulerTone}`;
+      $("schedulerPill").textContent = scheduler.state === "running"
+        ? `Scheduler live · heartbeat ${scheduler.heartbeat_age_seconds ?? "?"}s`
+        : `Scheduler ${scheduler.state || "unknown"}`;
+
+      $("systemStrip").innerHTML = `
+        <span>Encoder <strong>${clean(system.encoder_pref || "auto")}</strong> <span style="opacity:.7">${clean(system.encoder_note || "")}</span></span>
+        <span class="sep">·</span>
+        <span>Shorts <strong>${clean(system.short_target || "50–59s")}</strong></span>
+        <span class="sep">·</span>
+        <span>Longs <strong>${clean(system.long_target || "8–10 min")}</strong></span>
+        <span class="sep">·</span>
+        <span>Next job <strong>${clean((scheduler.upcoming || [])[0]?.label || "—")}</strong> ${clean((scheduler.upcoming || [])[0]?.when || "")}</span>
+      `;
+
+      $("kpis").innerHTML = [
+        card("Scheduler", scheduler.state || "unknown", scheduler.heartbeat_note ? `${scheduler.heartbeat_note} · PIDs ${(scheduler.pids || []).join(", ") || "—"}` : "No heartbeat detail", schedulerTone),
+        card("Recommended action", recommendation(data), "What matters most right now", "recommend"),
+        card("Pending queue", formatNumber(pending), `${formatNumber(skipped)} quality-skipped items protected from upload`),
+        card("Upload gap", `${uploadGap.toFixed(1)}h`, uploadGap > 24 ? "Needs attention" : "Within acceptable range", uploadGap > 24 ? "warn" : "good"),
+        card("Tracked views", formatNumber(views), `${formatNumber(posted)} posted videos in backlog state`)
+      ].join("");
+
+      $("channels").innerHTML = channels.map(channelCard).join("");
+
+      const recent = channels.flatMap(channel => (channel.recent_runs || []).map(run => ({ ...run, channel: channel.name })));
+      const ordered = recent.slice(-20).reverse();
+      $("runCount").textContent = `${ordered.length} rows`;
+      $("recentRuns").innerHTML = ordered.length
+        ? ordered.map(run => `
+          <div class="row">
+            <div class="rtitle">${clean(run.channel)}: ${clean(run.title)}</div>
+            <div class="rmeta">
+              ${chip(run.kind || "video")}
+              ${chip(run.age || "-")}
+              ${chip(run.uploaded ? "uploaded" : (run.error || "not uploaded"), run.uploaded ? "good" : "warn")}
+            </div>
+          </div>`).join("")
+        : `<div class="empty">No recent runs found.</div>`;
+
+      const workers = data.workers || [];
+      $("workerCount").textContent = `${workers.length} active`;
+      $("workerCount").className = workers.length ? "status warn" : "status good";
+      $("workers").innerHTML = workers.length
+        ? workers.map(worker => `
+          <div class="row">
+            <div class="rtitle">${clean(worker.name)} PID ${clean(worker.pid)}</div>
+            <div class="rmeta">${chip(worker.is_scheduler ? "scheduler" : "worker", worker.is_scheduler ? "good" : "warn")}</div>
+          </div>`).join("")
+        : `<div class="empty">No active render/upload worker. Normal between jobs.</div>`;
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch("/api/status", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        render(await response.json());
+        refreshLeft = REFRESH_SECONDS;
+      } catch (error) {
+        $("schedulerPill").className = "pill bad";
+        $("schedulerPill").textContent = "Dashboard connection lost";
+      }
+    }
+
+    setInterval(() => {
+      refreshLeft = Math.max(0, refreshLeft - 1);
+      $("ring").textContent = refreshLeft;
+      $("ring").style.setProperty("--pct", `${((REFRESH_SECONDS - refreshLeft) / REFRESH_SECONDS) * 360}deg`);
+      if (refreshLeft <= 0) refresh();
+    }, 1000);
+
+    refresh();
+  </script>
+</body>
+</html>

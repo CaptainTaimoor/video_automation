@@ -1,0 +1,58 @@
+[
+  {
+    "channel": "brain_lens",
+    "kind": "short",
+    "ok": true,
+    "items": [
+      {
+        "index": 1,
+        "title": "The psychology behind First Impressions",
+        "subject": "First Impressions"
+      },
+      {
+        "index": 2,
+        "title": "The psychology behind Impostor Syndrome",
+        "subject": "Impostor Syndrome"
+      }
+    ]
+  },
+  {
+    "channel": "brain_lens",
+    "kind": "video",
+    "ok": true,
+    "items": [
+      {
+        "index": 1,
+        "title": "The psychology behind Sleep and Memory",
+        "subject": "Sleep and Memory"
+      },
+      {
+        "index": 2,
+        "title": "The psychology behind Parasocial Relationships",
+        "subject": "Parasocial Relationships"
+      }
+    ]
+  },
+  {
+    "channel": "ancient_history",
+    "kind": "short",
+    "ok": false,
+    "items": [
+      {
+        "index": 1,
+        "error": "no_unique_topic"
+      }
+    ]
+  },
+  {
+    "channel": "ancient_history",
+    "kind": "video",
+    "ok": false,
+    "items": [
+      {
+        "index": 1,
+        "error": "no_unique_topic"
+      }
+    ]
+  }
+]

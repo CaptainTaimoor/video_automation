@@ -1,0 +1,39 @@
+{
+  "channels": {
+    "ancient_history": {
+      "status": "recovery_scheduled",
+      "last_recovery_scheduled_at": "2026-09-06T13:26:40.876290+05:00",
+      "last_checked_at": "2026-09-06T13:26:40.876290+05:00",
+      "latest_successful_upload_at": "2026-09-05T20:25:32+05:00",
+      "gap_hours": 17.02,
+      "threshold_hours": 4.0,
+      "consecutive_failures": 1,
+      "recovery_stage": 2,
+      "last_failure_category": "visual_sources",
+      "last_failure_summary": "RuntimeError: Failed Secrets of Time visual preflight for every researched candidate: Visual quality gate failed: not enough usable visuals found.",
+      "last_failure_at": "2026-09-05T23:27:07.698524+05:00",
+      "last_failure_log": "E:\\yt_automation\\data\\state\\scheduler_jobs\\ancient_history_video_20260905_232310_205689.log",
+      "last_failure_content_kind": "video",
+      "effective_cooldown_minutes": 20,
+      "next_recovery_at": "2026-09-05T23:47:07.698027+05:00"
+    },
+    "brain_lens": {
+      "status": "recovery_scheduled",
+      "last_recovery_scheduled_at": "2026-09-06T13:26:40.876290+05:00",
+      "last_checked_at": "2026-09-06T13:26:40.876290+05:00",
+      "latest_successful_upload_at": "2026-09-05T21:51:42+05:00",
+      "gap_hours": 15.58,
+      "threshold_hours": 4.0,
+      "consecutive_failures": 0,
+      "recovery_stage": 1,
+      "last_failure_category": "",
+      "last_failure_summary": "",
+      "last_failure_at": "2026-09-05T08:29:02.383684+05:00",
+      "last_failure_log": "E:\\yt_automation\\data\\state\\scheduler_jobs\\brain_lens_short_20260905_082800_336360.log",
+      "effective_cooldown_minutes": 20,
+      "last_failure_content_kind": "short",
+      "next_recovery_at": "2026-09-05T08:59:02.383424+05:00"
+    }
+  },
+  "updated_at": "2026-09-06T13:26:41.376961+05:00"
+}

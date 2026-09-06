@@ -1,0 +1,764 @@
+{
+  "niches": {
+    "ancient": {
+      "channels": [
+        {
+          "handle": "HistoryMarche",
+          "avg_top_views": 1397053,
+          "max_views": 5287706,
+          "followers": 1320000,
+          "shorts_in_top10": 10,
+          "longs_in_top10": 0,
+          "avg_short_duration": 51,
+          "avg_long_duration": null,
+          "sample_titles": [
+            "What a perfect ambush looks like  Hannibal's masterclass at Trebia against the Roman army",
+            "Could the Muslim conquest of Spain been stopped? #historian #history #documentary",
+            "How did the Huns break the Roman army's shield wall? ",
+            "Was Rome close to disintegration after the defeat at Edessa in 260 AD? #history #rome #ancient",
+            "Did Manzikert break the Byzantine Empire?"
+          ],
+          "avg_title_words": 10.1
+        },
+        {
+          "handle": "VoicesofthePast",
+          "avg_top_views": 1368809,
+          "max_views": 3075739,
+          "followers": 1090000,
+          "shorts_in_top10": 0,
+          "longs_in_top10": 10,
+          "avg_short_duration": null,
+          "avg_long_duration": 2768,
+          "sample_titles": [
+            "How Far Did Rome Explore?",
+            "Confused Japanese Historians Describe Weird First Europeans",
+            "How Did Rome Begin?",
+            "5 Terrified Real Reactions To Seeing New Weapons For The First Time",
+            "5 First Hand Accounts of the Worst Military Disasters in History"
+          ],
+          "avg_title_words": 8.5
+        },
+        {
+          "handle": "HistoryMatters",
+          "avg_top_views": 1139361,
+          "max_views": 2338835,
+          "followers": 1920000,
+          "shorts_in_top10": 1,
+          "longs_in_top10": 9,
+          "avg_short_duration": 43,
+          "avg_long_duration": 522,
+          "sample_titles": [
+            "Why was Napoleon exiled to Elba?",
+            "Why did France get so much of Africa? (Short Animated Documentary)",
+            "Why didn't Germany stop expanding in 1939? (Short Animated Documentary)",
+            "Why didn't the US focus on Japan first in WW2? (Short Animated Documentary)",
+            "Why didn't the border states join the confederacy? (Short Animated Documentary)"
+          ],
+          "avg_title_words": 10.3
+        },
+        {
+          "handle": "Toldinstone",
+          "avg_top_views": 148508,
+          "max_views": 336201,
+          "followers": 648000,
+          "shorts_in_top10": 0,
+          "longs_in_top10": 10,
+          "avg_short_duration": null,
+          "avg_long_duration": 650,
+          "sample_titles": [
+            "5 Incredible Roman Ruins (that can't be excavated)",
+            "Romans and the Ruins of Older Civilizations",
+            "The Ancient Person We Know Most About",
+            "The Roman Gold Mine that Ate Mountains",
+            "Why Wasn't Pompeii Rebuilt After the Eruption?"
+          ],
+          "avg_title_words": 6.4
+        },
+        {
+          "handle": "WeirdHistory",
+          "avg_top_views": 82276,
+          "max_views": 252746,
+          "followers": 4730000,
+          "shorts_in_top10": 0,
+          "longs_in_top10": 10,
+          "avg_short_duration": null,
+          "avg_long_duration": 3310,
+          "sample_titles": [
+            "The Terrifying Final Days Of Grizzly Man | Last Days",
+            "The Strangest Fashion Trends Through History | Compilation",
+            "The Weirdest Medical Stories We Could Find | Compilation",
+            "The Weirdest Medieval Soldier Stories We Could Find | Compilation",
+            "The Weirdest Titanic Stories We Could Find | Compilation"
+          ],
+          "avg_title_words": 9.4
+        },
+        {
+          "handle": "EpicHistoryTV",
+          "avg_top_views": 67045,
+          "max_views": 107666,
+          "followers": 3160000,
+          "shorts_in_top10": 0,
+          "longs_in_top10": 10,
+          "avg_short_duration": null,
+          "avg_long_duration": 154,
+          "sample_titles": [
+            "Napoleon's Empire Didn't Fall on the Battlefield  It Fell in Paris",
+            "How Napoleon Lost at Waterloo: Neys Catastrophic Cavalry Charge",
+            "Big Bertha: Germanys Giant Gun That Terrorized Verdun",
+            "How Alexander the Great Fooled Darius at Gaugamela",
+            "The Army of Alexander the Great: The War Machine That Never Lost a Battle"
+          ],
+          "avg_title_words": 9
+        }
+      ],
+      "title_patterns": {
+        "question": 14,
+        "how": 5,
+        "number": 6,
+        "why": 7,
+        "colon": 4
+      },
+      "short_durations": [
+        60,
+        50,
+        60,
+        47,
+        26,
+        32,
+        59,
+        60,
+        60,
+        56,
+        43
+      ],
+      "long_durations": [
+        6278,
+        1804,
+        7644,
+        1489,
+        1958,
+        3063,
+        1290,
+        1306,
+        1381,
+        1469,
+        534,
+        537,
+        490,
+        532,
+        526,
+        540,
+        502,
+        513,
+        532,
+        708,
+        479,
+        607,
+        549,
+        1049,
+        628,
+        623,
+        623,
+        575,
+        662,
+        843,
+        4665,
+        4966,
+        5223,
+        4217,
+        931,
+        5684,
+        4909,
+        933,
+        737,
+        176,
+        164,
+        178,
+        168,
+        167,
+        141,
+        113,
+        98,
+        168,
+        175
+      ],
+      "top_hooks": [
+        {
+          "channel": "HistoryMarche",
+          "title": "What a perfect ambush looks like  Hannibal's masterclass at Trebia against the Roman army",
+          "views": 5287706,
+          "duration": 60,
+          "is_short": true
+        },
+        {
+          "channel": "VoicesofthePast",
+          "title": "How Far Did Rome Explore?",
+          "views": 3075739,
+          "duration": 6278,
+          "is_short": false
+        },
+        {
+          "channel": "VoicesofthePast",
+          "title": "Confused Japanese Historians Describe Weird First Europeans",
+          "views": 2763519,
+          "duration": 1804,
+          "is_short": false
+        },
+        {
+          "channel": "HistoryMatters",
+          "title": "Why was Napoleon exiled to Elba?",
+          "views": 2338835,
+          "duration": 43,
+          "is_short": true
+        },
+        {
+          "channel": "HistoryMarche",
+          "title": "Could the Muslim conquest of Spain been stopped? #historian #history #documentary",
+          "views": 2010278,
+          "duration": 50,
+          "is_short": true
+        },
+        {
+          "channel": "VoicesofthePast",
+          "title": "How Did Rome Begin?",
+          "views": 1501685,
+          "duration": 7644,
+          "is_short": false
+        },
+        {
+          "channel": "VoicesofthePast",
+          "title": "5 Terrified Real Reactions To Seeing New Weapons For The First Time",
+          "views": 1398125,
+          "duration": 1489,
+          "is_short": false
+        },
+        {
+          "channel": "HistoryMarche",
+          "title": "How did the Huns break the Roman army's shield wall? ",
+          "views": 1378257,
+          "duration": 60,
+          "is_short": true
+        },
+        {
+          "channel": "HistoryMatters",
+          "title": "Why did France get so much of Africa? (Short Animated Documentary)",
+          "views": 1344106,
+          "duration": 534,
+          "is_short": false
+        },
+        {
+          "channel": "HistoryMatters",
+          "title": "Why didn't Germany stop expanding in 1939? (Short Animated Documentary)",
+          "views": 1206362,
+          "duration": 537,
+          "is_short": false
+        },
+        {
+          "channel": "HistoryMatters",
+          "title": "Why didn't the US focus on Japan first in WW2? (Short Animated Documentary)",
+          "views": 1173066,
+          "duration": 490,
+          "is_short": false
+        },
+        {
+          "channel": "VoicesofthePast",
+          "title": "5 First Hand Accounts of the Worst Military Disasters in History",
+          "views": 1168304,
+          "duration": 1958,
+          "is_short": false
+        }
+      ],
+      "median_short_duration": 56,
+      "median_long_duration": 623
+    },
+    "brain": {
+      "channels": [
+        {
+          "handle": "charismaoncommand",
+          "avg_top_views": 2255519,
+          "max_views": 9770097,
+          "followers": 7110000,
+          "shorts_in_top10": 8,
+          "longs_in_top10": 2,
+          "avg_short_duration": 51,
+          "avg_long_duration": 1050,
+          "sample_titles": [
+            "How To Deal With Insults",
+            "How To Deal With Insults",
+            "How To Turn Awkwardness Into Confidence",
+            "3 Jokes That Make You Instantly Likable",
+            "Make Someone Regret Disrespecting You"
+          ],
+          "avg_title_words": 6.1
+        },
+        {
+          "handle": "JimmyonRelationships",
+          "avg_top_views": 203671,
+          "max_views": 327605,
+          "followers": 1480000,
+          "shorts_in_top10": 1,
+          "longs_in_top10": 9,
+          "avg_short_duration": 56,
+          "avg_long_duration": 79,
+          "sample_titles": [
+            "Husband Remote",
+            "How Toxic People use Covert Control",
+            "If Your Therapist Was Honest",
+            "Relationships Fail When THIS doesn't happen",
+            "The Honest Narcissist"
+          ],
+          "avg_title_words": 3.9
+        },
+        {
+          "handle": "HealthyGamerGG",
+          "avg_top_views": 124653,
+          "max_views": 237899,
+          "followers": 3450000,
+          "shorts_in_top10": 3,
+          "longs_in_top10": 7,
+          "avg_short_duration": 47,
+          "avg_long_duration": 80,
+          "sample_titles": [
+            "The Biggest Reason Why Anxiety is On The Rise",
+            "Why ADHD Can Hide a Mood Disorder",
+            "How People Who Need Constant Reassurance Get Better",
+            "Past Lives Are Real and There Will Never Be Proof",
+            "The Link Between Anxiety & Motivation"
+          ],
+          "avg_title_words": 7.2
+        },
+        {
+          "handle": "ImprovementPill",
+          "avg_top_views": 72921,
+          "max_views": 105550,
+          "followers": 3770000,
+          "shorts_in_top10": 10,
+          "longs_in_top10": 0,
+          "avg_short_duration": 57,
+          "avg_long_duration": null,
+          "sample_titles": [
+            "How You Can Max Out Parkinson's Law",
+            "This Is How You Can Fall Asleep Faster",
+            "A Glass Of Water - Short Inspirational Stories",
+            "What Are the Benefits of Metta Meditation?",
+            "How To Develop The Formula For Happiness | Ikigai"
+          ],
+          "avg_title_words": 7.7
+        },
+        {
+          "handle": "Psych2Go",
+          "avg_top_views": 61050,
+          "max_views": 71650,
+          "followers": 13100000,
+          "shorts_in_top10": 5,
+          "longs_in_top10": 5,
+          "avg_short_duration": 24,
+          "avg_long_duration": 86,
+          "sample_titles": [
+            "7 subtle flirting tips",
+            "4 Stages of Lust, Most People Stop At 2",
+            "Day in the Life of a Psych2Go Animator @rosielam",
+            "6 signs you have toxic friends",
+            "You're Not Lazy, It's Something DARKER"
+          ],
+          "avg_title_words": 7.4
+        },
+        {
+          "handle": "TheBehaviorPanel",
+          "avg_top_views": 41526,
+          "max_views": 89662,
+          "followers": 1170000,
+          "shorts_in_top10": 7,
+          "longs_in_top10": 3,
+          "avg_short_duration": 46,
+          "avg_long_duration": 95,
+          "sample_titles": [
+            "Three Expressions Meghan Couldnt Hide",
+            "Watch Lori Spot Weakness Instantly",
+            "This Behavior Is a MAJOR Red Flag",
+            "Watch How His Language Starts Falling Apart",
+            "Her Chilling Confession Shows No Emotion"
+          ],
+          "avg_title_words": 6
+        }
+      ],
+      "title_patterns": {
+        "how": 9,
+        "number": 5,
+        "why": 1,
+        "question": 1
+      },
+      "short_durations": [
+        45,
+        57,
+        60,
+        60,
+        52,
+        39,
+        40,
+        57,
+        56,
+        49,
+        58,
+        36,
+        56,
+        58,
+        59,
+        58,
+        59,
+        53,
+        59,
+        57,
+        59,
+        57,
+        26,
+        6,
+        23,
+        24,
+        43,
+        45,
+        59,
+        43,
+        51,
+        37,
+        42,
+        47
+      ],
+      "long_durations": [
+        990,
+        1111,
+        74,
+        77,
+        74,
+        71,
+        83,
+        88,
+        82,
+        84,
+        85,
+        79,
+        74,
+        61,
+        98,
+        82,
+        77,
+        93,
+        80,
+        97,
+        81,
+        88,
+        85,
+        77,
+        129,
+        80
+      ],
+      "top_hooks": [
+        {
+          "channel": "charismaoncommand",
+          "title": "How To Deal With Insults",
+          "views": 9770097,
+          "duration": 45,
+          "is_short": true
+        },
+        {
+          "channel": "charismaoncommand",
+          "title": "How To Deal With Insults",
+          "views": 5425859,
+          "duration": 57,
+          "is_short": true
+        },
+        {
+          "channel": "charismaoncommand",
+          "title": "How To Turn Awkwardness Into Confidence",
+          "views": 2251136,
+          "duration": 60,
+          "is_short": true
+        },
+        {
+          "channel": "charismaoncommand",
+          "title": "3 Jokes That Make You Instantly Likable",
+          "views": 1693872,
+          "duration": 60,
+          "is_short": true
+        },
+        {
+          "channel": "charismaoncommand",
+          "title": "Make Someone Regret Disrespecting You",
+          "views": 924284,
+          "duration": 52,
+          "is_short": true
+        },
+        {
+          "channel": "charismaoncommand",
+          "title": "This Joke Makes You Instantly Likable",
+          "views": 727257,
+          "duration": 39,
+          "is_short": true
+        },
+        {
+          "channel": "JimmyonRelationships",
+          "title": "Husband Remote",
+          "views": 327605,
+          "duration": 56,
+          "is_short": true
+        },
+        {
+          "channel": "JimmyonRelationships",
+          "title": "How Toxic People use Covert Control",
+          "views": 310417,
+          "duration": 74,
+          "is_short": false
+        },
+        {
+          "channel": "JimmyonRelationships",
+          "title": "If Your Therapist Was Honest",
+          "views": 255041,
+          "duration": 77,
+          "is_short": false
+        },
+        {
+          "channel": "HealthyGamerGG",
+          "title": "The Biggest Reason Why Anxiety is On The Rise",
+          "views": 237899,
+          "duration": 79,
+          "is_short": false
+        },
+        {
+          "channel": "JimmyonRelationships",
+          "title": "Relationships Fail When THIS doesn't happen",
+          "views": 228773,
+          "duration": 74,
+          "is_short": false
+        },
+        {
+          "channel": "JimmyonRelationships",
+          "title": "The Honest Narcissist",
+          "views": 203010,
+          "duration": 71,
+          "is_short": false
+        }
+      ],
+      "median_short_duration": 52,
+      "median_long_duration": 82
+    }
+  },
+  "vs_our_channels": {
+    "ancient_history": {
+      "our_total_views": 10395,
+      "our_retention_pct": 76.9,
+      "our_avg_view_duration": 27.2,
+      "our_engaged_view_rate": 0.455,
+      "our_best_hours": [
+        0,
+        15,
+        10,
+        19,
+        8
+      ],
+      "our_top_titles": [
+        "3 pieces of evidence that reframe Pompeii",
+        "The artifact trail behind Hadrian'S Wall",
+        "The artifact that changed how historians see Ashoka Edicts",
+        "3 pieces of evidence that reframe Lascaux Cave Paintings",
+        "3 artifacts that make Nazca Lines harder to dismiss"
+      ],
+      "competitor_leader": "HistoryMarche",
+      "competitor_leader_avg_views": 1397053,
+      "gap_vs_our_best_video": 1424.1
+    },
+    "brain_lens": {
+      "our_total_views": 1438,
+      "our_retention_pct": 31.9,
+      "our_avg_view_duration": 13.1,
+      "our_engaged_view_rate": 0.239,
+      "our_best_hours": [
+        10,
+        9,
+        5,
+        22,
+        2
+      ],
+      "our_top_titles": [
+        "The tiny signal that reveals flirting anxiety",
+        "Why you freeze before small decisions",
+        "The attention leak behind decision fatigue",
+        "Why one pause on a first date feels so important",
+        "Why love bombing feels so addictive"
+      ],
+      "competitor_leader": "charismaoncommand",
+      "competitor_leader_avg_views": 2255519,
+      "gap_vs_our_best_video": 11934.0
+    }
+  },
+  "visual_samples": [
+    {
+      "file": "samples/ancient/HistoryMarche/HqoAw_yfDHc.mp4",
+      "channel": "HistoryMarche",
+      "niche": "ancient",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "Could the Muslim conquest of Spain been stopped? #historian #history #documentary",
+      "view_count": 2010281,
+      "duration": 50,
+      "fps": 30
+    },
+    {
+      "file": "samples/ancient/HistoryMarche/TQlC9u7qZ_Q.mp4",
+      "channel": "HistoryMarche",
+      "niche": "ancient",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "How did the Huns break the Roman army's shield wall? 😮",
+      "view_count": 1378259,
+      "duration": 60,
+      "fps": 30
+    },
+    {
+      "file": "samples/ancient/HistoryMarche/uY-Iu-LJk1I.mp4",
+      "channel": "HistoryMarche",
+      "niche": "ancient",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "What a perfect ambush looks like 😮 Hannibal's masterclass at Trebia against the Roman army",
+      "view_count": 5287755,
+      "duration": 60,
+      "fps": 30
+    },
+    {
+      "file": "samples/ancient/HistoryMatters/kzrLRExlvkc.mp4",
+      "channel": "HistoryMatters",
+      "niche": "ancient",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "Why was Napoleon exiled to Elba?",
+      "view_count": 2338857,
+      "duration": 43,
+      "fps": 30
+    },
+    {
+      "file": "samples/brain/charismaoncommand/jZGcVDtKTSI.mp4",
+      "channel": "charismaoncommand",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "How To Deal With Insults",
+      "view_count": 5425861,
+      "duration": 57,
+      "fps": 30
+    },
+    {
+      "file": "samples/brain/charismaoncommand/s7bIwBjAnKY.mp4",
+      "channel": "charismaoncommand",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "How To Turn Awkwardness Into Confidence",
+      "view_count": 2251136,
+      "duration": 60,
+      "fps": 30
+    },
+    {
+      "file": "samples/brain/charismaoncommand/t_29o-TGIh0.mp4",
+      "channel": "charismaoncommand",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "How To Deal With Insults",
+      "view_count": 9770098,
+      "duration": 45,
+      "fps": 30
+    },
+    {
+      "file": "samples/brain/HealthyGamerGG/B2f-iIevZzI.mp4",
+      "channel": "HealthyGamerGG",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "The Scary Mistake That Most Therapists Make",
+      "view_count": 103027,
+      "duration": 58,
+      "fps": 30
+    },
+    {
+      "file": "samples/brain/HealthyGamerGG/BEpG_6KkDUA.mp4",
+      "channel": "HealthyGamerGG",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "How People Who Need Constant Reassurance Get Better",
+      "view_count": 152049,
+      "duration": 49,
+      "fps": 30
+    },
+    {
+      "file": "samples/brain/HealthyGamerGG/XDDAUfVqP1g.mp4",
+      "channel": "HealthyGamerGG",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "The Mindset That Keeps You a Victim",
+      "view_count": 45624,
+      "duration": 36,
+      "fps": 30
+    },
+    {
+      "file": "samples/brain/ImprovementPill/I_1Z6a8kVQM.mp4",
+      "channel": "ImprovementPill",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "This Is How You Can Fall Asleep Faster",
+      "view_count": 102813,
+      "duration": 58,
+      "fps": 25
+    },
+    {
+      "file": "samples/brain/ImprovementPill/l6b4x8VHn34.mp4",
+      "channel": "ImprovementPill",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "A Glass Of Water - Short Inspirational Stories",
+      "view_count": 98623,
+      "duration": 59,
+      "fps": 24
+    },
+    {
+      "file": "samples/brain/ImprovementPill/mdc4SUYKnXM.mp4",
+      "channel": "ImprovementPill",
+      "niche": "brain",
+      "width": 1080,
+      "height": 1920,
+      "vertical": true,
+      "title": "How You Can Max Out Parkinson's Law",
+      "view_count": 105550,
+      "duration": 56,
+      "fps": 24
+    },
+    {
+      "file": "samples/brain/JimmyonRelationships/92bVIneobjk.mp4",
+      "channel": "JimmyonRelationships",
+      "niche": "brain",
+      "width": 2160,
+      "height": 3840,
+      "vertical": true,
+      "title": "Husband Remote",
+      "view_count": 327605,
+      "duration": 56,
+      "fps": 24
+    }
+  ],
+  "frame_count": 14
+}

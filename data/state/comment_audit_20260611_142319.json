@@ -1,0 +1,493 @@
+{
+  "created_at": "2026-06-11T14:22:38",
+  "max_videos_per_channel": 30,
+  "max_comments_per_video": 30,
+  "channels": {
+    "ancient_history": {
+      "display_name": "Secrets of Time",
+      "videos_checked": 30,
+      "comments_checked": 7,
+      "category_counts": {
+        "audio_voice": 1,
+        "caption_text": 1,
+        "low_quality_ai": 2,
+        "factual_accuracy": 1,
+        "visual_mismatch": 1,
+        "positive": 1
+      },
+      "problem_videos": [
+        {
+          "video_id": "C3ZNUTUmbgs",
+          "title": "Carthage's Last Stand: Uncovering the Forgotten Artifacts of Hannibal's Lost Invasion Route",
+          "published_at": "2026-06-11T04:31:56Z",
+          "views": 149,
+          "likes": 5,
+          "comments": 2,
+          "fetched_comments": 2,
+          "comment_source": "yt-dlp_fallback",
+          "complaint_count": 4,
+          "category_counts": {
+            "audio_voice": 1,
+            "caption_text": 1,
+            "low_quality_ai": 1,
+            "factual_accuracy": 1
+          },
+          "sample_comments": [
+            {
+              "comment_id": "UgxiDKVu7gIcR1Xjgrd4AaABAg",
+              "video_id": "C3ZNUTUmbgs",
+              "author": "@DonaldAndersen-z2f",
+              "text": "C-a-r-thage lol...wtf",
+              "like_count": 0,
+              "published_at": 1781168580,
+              "updated_at": "",
+              "reply_count": 0,
+              "source": "yt-dlp",
+              "categories": [
+                "audio_voice",
+                "caption_text",
+                "low_quality_ai"
+              ]
+            },
+            {
+              "comment_id": "Ugzs1cd2rs0bbhY7pBp4AaABAg",
+              "video_id": "C3ZNUTUmbgs",
+              "author": "@sassyzelmat",
+              "text": "This is built by the Bereber Amazigh of Tunisia.",
+              "like_count": 0,
+              "published_at": 1781161200,
+              "updated_at": "",
+              "reply_count": 0,
+              "source": "yt-dlp",
+              "categories": [
+                "factual_accuracy"
+              ]
+            }
+          ]
+        },
+        {
+          "video_id": "Ba035gUNzoM",
+          "title": "3 hidden clues that explain Byzantine Greek Fire",
+          "published_at": "2026-06-09T04:36:44Z",
+          "views": 510,
+          "likes": 3,
+          "comments": 2,
+          "fetched_comments": 2,
+          "comment_source": "yt-dlp_fallback",
+          "complaint_count": 1,
+          "category_counts": {
+            "low_quality_ai": 1
+          },
+          "sample_comments": [
+            {
+              "comment_id": "Ugysv0BEW7xZVZ93dUV4AaABAg",
+              "video_id": "Ba035gUNzoM",
+              "author": "@ianmarsden6276",
+              "text": "Ahh the Bee Eye Zanteens!",
+              "like_count": 1,
+              "published_at": 1780963200,
+              "updated_at": "",
+              "reply_count": 0,
+              "source": "yt-dlp",
+              "categories": []
+            },
+            {
+              "comment_id": "Ugysv0BEW7xZVZ93dUV4AaABAg.AXpUzghpadIAXpkf-lG2C3",
+              "video_id": "Ba035gUNzoM",
+              "author": "@isfbuster6733",
+              "text": "Yeah pathetic ai",
+              "like_count": 0,
+              "published_at": 1781049600,
+              "updated_at": "",
+              "reply_count": 0,
+              "source": "yt-dlp",
+              "categories": [
+                "low_quality_ai"
+              ]
+            }
+          ]
+        },
+        {
+          "video_id": "Rb4z6VfVu3c",
+          "title": "Nasca Lines Decoded: Hidden Messages in the 2,000-Year-Old Geoglyphs Revealed",
+          "published_at": "2026-06-10T00:32:09Z",
+          "views": 506,
+          "likes": 12,
+          "comments": 1,
+          "fetched_comments": 1,
+          "comment_source": "yt-dlp_fallback",
+          "complaint_count": 1,
+          "category_counts": {
+            "visual_mismatch": 1,
+            "positive": 1
+          },
+          "sample_comments": [
+            {
+              "comment_id": "UgyvREEO1T4hE7E6jwV4AaABAg",
+              "video_id": "Rb4z6VfVu3c",
+              "author": "@scottsutherland7698",
+              "text": "Wouldn't it be amazing if a single image was even from the South American continent. I'm not asking images of actual Nazca lines, just from within 1000 miles.",
+              "like_count": 0,
+              "published_at": 1781049600,
+              "updated_at": "",
+              "reply_count": 0,
+              "source": "yt-dlp",
+              "categories": [
+                "visual_mismatch",
+                "positive"
+              ]
+            }
+          ]
+        },
+        {
+          "video_id": "Daeqw1XUVBk",
+          "title": "3 details about Library Of Alexandria that change the whole story",
+          "published_at": "2026-06-02T06:43:43Z",
+          "views": 762,
+          "likes": 5,
+          "comments": 1,
+          "fetched_comments": 1,
+          "comment_source": "yt-dlp_fallback",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": [
+            {
+              "comment_id": "UgygRkvOthPTGd5DC_F4AaABAg",
+              "video_id": "Daeqw1XUVBk",
+              "author": "@solarplexusification",
+              "text": "One of the greatest crime against humanity by Christians and Jews was the destruction of this library.",
+              "like_count": 0,
+              "published_at": 1780444800,
+              "updated_at": "",
+              "reply_count": 0,
+              "source": "yt-dlp",
+              "categories": []
+            }
+          ]
+        },
+        {
+          "video_id": "qBs9pOTemlw",
+          "title": "3 hidden clues that explain Petra",
+          "published_at": "2026-06-07T04:27:36Z",
+          "views": 72,
+          "likes": 0,
+          "comments": 1,
+          "fetched_comments": 1,
+          "comment_source": "yt-dlp_fallback",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": [
+            {
+              "comment_id": "Ugzf_SKCkbGWMIxpRu14AaABAg",
+              "video_id": "qBs9pOTemlw",
+              "author": "@omhrikos",
+              "text": "Greeks build it.",
+              "like_count": 0,
+              "published_at": 1780790400,
+              "updated_at": "",
+              "reply_count": 0,
+              "source": "yt-dlp",
+              "categories": []
+            }
+          ]
+        },
+        {
+          "video_id": "lPnLEv1j5fo",
+          "title": "Unraveling the Mysterious Collapse of 12 Ancient Empires Alongside the Lost City of Akrotiri",
+          "published_at": "2026-06-03T04:30:02Z",
+          "views": 785,
+          "likes": 4,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "mbicfdYCR4k",
+          "title": "Battle of Thermopylae: Uncovering the Hidden Map That Changed the Course of History",
+          "published_at": "2026-06-05T00:29:07Z",
+          "views": 705,
+          "likes": 10,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "1vplG1sAzA8",
+          "title": "Petra: Unearthing Rome's Lost Desert City",
+          "published_at": "2026-06-04T06:36:02Z",
+          "views": 666,
+          "likes": 8,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "wE-8nw-f7Ng",
+          "title": "Qin Shi Huang's Terracotta Army: Unearthing a Hidden Empire's Secrets",
+          "published_at": "2026-06-04T03:29:16Z",
+          "views": 649,
+          "likes": 4,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "it7J1sb0mU4",
+          "title": "Rosetta Stone: How it unlocked Ancient Egypt's secrets",
+          "published_at": "2026-06-02T04:35:56Z",
+          "views": 613,
+          "likes": 6,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        }
+      ],
+      "examples": {
+        "audio_voice": [
+          {
+            "video_id": "C3ZNUTUmbgs",
+            "title": "Carthage's Last Stand: Uncovering the Forgotten Artifacts of Hannibal's Lost Invasion Route",
+            "text": "C-a-r-thage lol...wtf",
+            "like_count": 0,
+            "published_at": 1781168580
+          }
+        ],
+        "caption_text": [
+          {
+            "video_id": "C3ZNUTUmbgs",
+            "title": "Carthage's Last Stand: Uncovering the Forgotten Artifacts of Hannibal's Lost Invasion Route",
+            "text": "C-a-r-thage lol...wtf",
+            "like_count": 0,
+            "published_at": 1781168580
+          }
+        ],
+        "low_quality_ai": [
+          {
+            "video_id": "C3ZNUTUmbgs",
+            "title": "Carthage's Last Stand: Uncovering the Forgotten Artifacts of Hannibal's Lost Invasion Route",
+            "text": "C-a-r-thage lol...wtf",
+            "like_count": 0,
+            "published_at": 1781168580
+          },
+          {
+            "video_id": "Ba035gUNzoM",
+            "title": "3 hidden clues that explain Byzantine Greek Fire",
+            "text": "Yeah pathetic ai",
+            "like_count": 0,
+            "published_at": 1781049600
+          }
+        ],
+        "factual_accuracy": [
+          {
+            "video_id": "C3ZNUTUmbgs",
+            "title": "Carthage's Last Stand: Uncovering the Forgotten Artifacts of Hannibal's Lost Invasion Route",
+            "text": "This is built by the Bereber Amazigh of Tunisia.",
+            "like_count": 0,
+            "published_at": 1781161200
+          }
+        ],
+        "visual_mismatch": [
+          {
+            "video_id": "Rb4z6VfVu3c",
+            "title": "Nasca Lines Decoded: Hidden Messages in the 2,000-Year-Old Geoglyphs Revealed",
+            "text": "Wouldn't it be amazing if a single image was even from the South American continent. I'm not asking images of actual Nazca lines, just from within 1000 miles.",
+            "like_count": 0,
+            "published_at": 1781049600
+          }
+        ],
+        "positive": [
+          {
+            "video_id": "Rb4z6VfVu3c",
+            "title": "Nasca Lines Decoded: Hidden Messages in the 2,000-Year-Old Geoglyphs Revealed",
+            "text": "Wouldn't it be amazing if a single image was even from the South American continent. I'm not asking images of actual Nazca lines, just from within 1000 miles.",
+            "like_count": 0,
+            "published_at": 1781049600
+          }
+        ]
+      },
+      "recommended_actions": [
+        "Slow voice slightly, add pronunciation overrides, and reject scripts with hard names unless pronunciation is known.",
+        "Keep captions to phrase chunks, never split named entities, and run text-lint before rendering.",
+        "Gate history scripts with a fact-name check and avoid ambiguous ancient names without source terms.",
+        "Tighten image queries around the exact subject, era, place, and object instead of generic stock scenes.",
+        "Increase script variety and reduce repeated formula titles/openers."
+      ]
+    },
+    "brain_lens": {
+      "display_name": "Brain Lens",
+      "videos_checked": 30,
+      "comments_checked": 0,
+      "category_counts": {},
+      "problem_videos": [
+        {
+          "video_id": "hO4XD_qpdlU",
+          "title": "How Analysis Paralysis quietly steals your attention",
+          "published_at": "2026-06-05T17:52:51Z",
+          "views": 220,
+          "likes": 0,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "ISNM2FnCi5M",
+          "title": "Anchoring Effect: How This Brain Trick Skews Your Choices",
+          "published_at": "2026-06-04T11:16:46Z",
+          "views": 208,
+          "likes": 0,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "a4vYr3dhT88",
+          "title": "Mirror Neurons: the brain trick shaping your next reaction",
+          "published_at": "2026-06-08T11:07:15Z",
+          "views": 176,
+          "likes": 0,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "b82C00g-z6Y",
+          "title": "How Body Language quietly steals your attention",
+          "published_at": "2026-06-04T13:58:21Z",
+          "views": 172,
+          "likes": 1,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "8ezZkYLUGWM",
+          "title": "The first clue Memory Distortion is bending your judgment",
+          "published_at": "2026-06-07T17:25:10Z",
+          "views": 143,
+          "likes": 0,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "hnCE31YJGXw",
+          "title": "3 signs Anchoring Effect is running your reaction",
+          "published_at": "2026-06-06T11:29:17Z",
+          "views": 106,
+          "likes": 1,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "1_zlJEK9Oyc",
+          "title": "How Anchoring Effect: How This Brain Trick Shapes Your Choices quietly steals your attention",
+          "published_at": "2026-06-05T11:18:38Z",
+          "views": 87,
+          "likes": 1,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "Sm0c90G_KbM",
+          "title": "3 signs Anxious Attachment is running your reaction",
+          "published_at": "2026-06-06T17:36:14Z",
+          "views": 86,
+          "likes": 0,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "63inrhLaFTo",
+          "title": "How Fear Conditioning quietly steals your attention",
+          "published_at": "2026-06-02T13:26:15Z",
+          "views": 66,
+          "likes": 1,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        },
+        {
+          "video_id": "0R3fQkxYCp4",
+          "title": "How Learned Helplessness quietly steals your attention",
+          "published_at": "2026-06-05T13:35:02Z",
+          "views": 63,
+          "likes": 0,
+          "comments": 0,
+          "fetched_comments": 0,
+          "comment_source": "skipped_no_public_comments",
+          "complaint_count": 0,
+          "category_counts": {},
+          "sample_comments": []
+        }
+      ],
+      "examples": {},
+      "recommended_actions": [
+        "No strong complaint cluster found; keep monitoring comments and optimize from retention/views."
+      ]
+    }
+  },
+  "summary": {
+    "videos_checked": 60,
+    "comments_checked": 7,
+    "category_counts": {
+      "audio_voice": 1,
+      "caption_text": 1,
+      "low_quality_ai": 2,
+      "factual_accuracy": 1,
+      "visual_mismatch": 1,
+      "positive": 1
+    },
+    "recommended_actions": [
+      "Slow voice slightly, add pronunciation overrides, and reject scripts with hard names unless pronunciation is known.",
+      "Keep captions to phrase chunks, never split named entities, and run text-lint before rendering.",
+      "Gate history scripts with a fact-name check and avoid ambiguous ancient names without source terms.",
+      "Tighten image queries around the exact subject, era, place, and object instead of generic stock scenes.",
+      "Increase script variety and reduce repeated formula titles/openers."
+    ]
+  }
+}
