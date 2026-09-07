@@ -38,6 +38,7 @@ assets/voices/piper/*.onnx
 
 # Runtime / ephemeral state (keep learning JSON tracked)
 data/state/*.lock
+data/state/*.tmp
 data/state/active_builds/
 data/state/scheduler_jobs/
 data/state/heygen_chrome_profile/
@@ -51,6 +52,13 @@ data/state/competitor_analysis/frames/
 data/state/competitor_analysis/thumbs/
 data/state/competitor_analysis/download.log
 data/state/competitor_analysis/download.err
+# Live ops churn — keep on disk, do not show as worktree noise
+data/day_packs/
+data/state/*_ready_queue.json
+data/state/*_performance_report.json
+data/state/experiments.jsonl
+data/state/upload_continuity_state.json
+data/state/used_topics.txt
 
 # Local QA / diagnostics archives
 .qa_archive/
