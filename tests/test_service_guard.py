@@ -18,6 +18,10 @@ class ServiceGuardTests(unittest.TestCase):
                 json.dumps({"pid": 4321}),
                 encoding="utf-8",
             )
+            (state_dir / "watchdog_heartbeat.json").write_text(
+                json.dumps({"updated_at": datetime.now().astimezone().isoformat()}),
+                encoding="utf-8",
+            )
             with (
                 patch.object(service_guard, "STATE", state_dir),
                 patch.object(service_guard, "_pid_is_running", return_value=True),
@@ -27,7 +31,31 @@ class ServiceGuardTests(unittest.TestCase):
 
             self.assertTrue(live)
             self.assertEqual(pids, [4321])
-            self.assertEqual(evidence, "lock_owner")
+            self.assertTrue(evidence.startswith("lock_owner:heartbeat:"))
+            process_scan.assert_not_called()
+
+    def test_live_lock_owner_with_stale_heartbeat_is_restarted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp)
+            (state_dir / "watchdog.lock").write_text(
+                json.dumps({"pid": 4321}),
+                encoding="utf-8",
+            )
+            with (
+                patch.object(service_guard, "STATE", state_dir),
+                patch.object(service_guard, "_pid_is_running", return_value=True),
+                patch.object(
+                    service_guard,
+                    "_watchdog_heartbeat_age_seconds",
+                    return_value=service_guard.WATCHDOG_HEARTBEAT_MAX_AGE_SECONDS + 1,
+                ),
+                patch.object(service_guard, "_watchdog_pids") as process_scan,
+            ):
+                live, pids, evidence = service_guard._watchdog_status()
+
+            self.assertFalse(live)
+            self.assertEqual(pids, [4321])
+            self.assertTrue(evidence.startswith("stale_heartbeat:"))
             process_scan.assert_not_called()
 
     def test_fresh_heartbeat_prevents_duplicate_restart_after_scan_failure(self) -> None:

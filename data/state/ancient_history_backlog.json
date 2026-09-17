@@ -1,0 +1,126 @@
+{
+  "channel": "ancient_history",
+  "items": [
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_233645",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_233645\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_233645\\metadata.json",
+      "title": "Discovered Run 20260905_233645",
+      "status": "skipped_quality",
+      "attempts": 0,
+      "youtube_id": null,
+      "facebook_id": null,
+      "error": "missing metadata"
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_202532",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_202532\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_202532\\metadata.json",
+      "title": "Justinianic Plague: What Ancient DNA Finally Confirmed",
+      "status": "posted",
+      "attempts": 0,
+      "youtube_id": "bjoRq-SG6wQ",
+      "facebook_id": null,
+      "error": null
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_175142",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_175142\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_175142\\metadata.json",
+      "title": "Axum's Giant Stelae: Royal Tombs Built Like Stone Palaces",
+      "status": "posted",
+      "attempts": 0,
+      "youtube_id": "XzBGprlN-lk",
+      "facebook_id": null,
+      "error": null
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_162845",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_162845\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_162845\\metadata.json",
+      "title": "Roman Concrete: The Mix That Let Harbors Harden Underwater",
+      "status": "posted",
+      "attempts": 0,
+      "youtube_id": "0c6qPsapFKk",
+      "facebook_id": null,
+      "error": null
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_102206",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_102206\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-09-05\\20260905_102206\\metadata.json",
+      "title": "Mohenjo-Daro's Drains: Engineering Hidden Under an Indus City",
+      "status": "posted",
+      "attempts": 0,
+      "youtube_id": "UFKlW4FvWcI",
+      "facebook_id": null,
+      "error": null
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_144509",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_144509\\video.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_144509\\metadata.json",
+      "title": "boudica revolt: What the Surviving Evidence Actually Reveals",
+      "status": "posted",
+      "attempts": 0,
+      "youtube_id": "1AcBC4aGLBk",
+      "facebook_id": null,
+      "error": null
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_124609",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_124609\\video.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_124609\\metadata.json",
+      "title": "boudica revolt: What the Surviving Evidence Actually Reveals",
+      "status": "skipped_quality",
+      "attempts": 0,
+      "youtube_id": null,
+      "facebook_id": null,
+      "error": "quality gate: hold"
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_092812",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_092812\\video.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_092812\\metadata.json",
+      "title": "boudica revolt: What the Surviving Evidence Actually Reveals",
+      "status": "skipped_quality",
+      "attempts": 0,
+      "youtube_id": null,
+      "facebook_id": null,
+      "error": "quality gate: hold"
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_064813",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_064813\\video.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-31\\20260831_064813\\metadata.json",
+      "title": "boudica revolt: What the Surviving Evidence Actually Reveals",
+      "status": "skipped_quality",
+      "attempts": 0,
+      "youtube_id": null,
+      "facebook_id": null,
+      "error": "quality gate: hold"
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-08-29\\20260829_131820",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-08-29\\20260829_131820\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-08-29\\20260829_131820\\metadata.json",
+      "title": "Discovered Run 20260829_131820",
+      "status": "skipped_quality",
+      "attempts": 0,
+      "youtube_id": null,
+      "facebook_id": null,
+      "error": "missing metadata"
+    },
+    {
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-29\\20260829_015330",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-29\\20260829_015330\\video.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-08-29\\20260829_015330\\metadata.json",
+      "title": "roman concrete: What the Surviving Evidence Actually Reveals",
+      "status": "posted",
+      "attempts": 0,
+      "youtube_id": "dtkpBuYigJw",
+      "facebook_id": null,
+      "error": null
+    }
+  ]
+}

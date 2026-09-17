@@ -1,0 +1,53 @@
+{
+  "hook_patterns": [
+    "Open with a personal mistake or social pain the viewer already feels",
+    "Use How/Why titles that promise a usable behavior change",
+    "Lead with a named social skill or red flag in the first sentence",
+    "Put a bold on-screen claim in the first 1 second",
+    "Challenge a common belief about confidence, dating, or attachment"
+  ],
+  "tone": "Direct, coach-like, respectful. Specific behavior language. No medical diagnosis or cure claims.",
+  "pacing": "Hook text in first second. Spoken claim by second 2. One idea per Short. Caption every phrase. Cut or visual change every 2-4 seconds.",
+  "structure": "Pain hook → one mechanism → one concrete behavior tip → reframe → soft CTA",
+  "emotion_triggers": ["recognition", "relief", "curiosity", "agency"],
+  "forbidden": [
+    "welcome to our channel",
+    "this one weird trick",
+    "diagnose/cure medical language",
+    "How to Read the Moment Without Guessing"
+  ],
+  "video_ideas": [
+    {"title": "How to deal with insults without looking weak", "angle": "Social composure skill"},
+    {"title": "Why constant reassurance keeps anxiety alive", "angle": "Attachment loop"},
+    {"title": "The tiny signal that reveals flirting anxiety", "angle": "Micro-behavior read"},
+    {"title": "How toxic people use covert control", "angle": "Pattern recognition"},
+    {"title": "Why one pause on a first date feels huge", "angle": "Uncertainty amplification"},
+    {"title": "How to turn awkwardness into confidence", "angle": "Reframe + behavior"},
+    {"title": "The scary mistake most advice-givers make", "angle": "Counterintuitive therapist insight"},
+    {"title": "How to stop second-guessing every text", "angle": "Decision anxiety"}
+  ],
+  "script_instructions": "Front-load the subject. Keep titles under ~70 chars when possible. Use How/Why. Burned-in captions must be large and high-contrast. Prefer one face or one clean illustration style, not mixed collage chaos.",
+  "visual_dna": {
+    "shorts": [
+      "Vertical talking-head or clean illustrated panel",
+      "Top title card in first second (bold claim)",
+      "Large outlined captions mid-frame",
+      "Warm practical lighting or flat high-contrast graphic backgrounds",
+      "Mic/studio cues optional; clarity > decoration"
+    ],
+    "longs": [
+      "Chaptered coaching structure",
+      "Example → principle → practice loop",
+      "Retain face continuity for trust"
+    ],
+    "thumbnail_style": "Face emotion or simple graphic + 3-5 word claim; high contrast"
+  },
+  "competitor_sources": [
+    "charismaoncommand",
+    "HealthyGamerGG",
+    "ImprovementPill",
+    "JimmyonRelationships"
+  ],
+  "source_channel": "competitor_analysis_2026-09-05",
+  "analyzed_at": "2026-09-05"
+}

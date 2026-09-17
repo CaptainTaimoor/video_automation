@@ -1,0 +1,133 @@
+{
+  "engine": "kokoro",
+  "items": [
+    {
+      "index": 0,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_000.wav",
+      "duration": 2.375,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Boudica rose after Roman abuse."
+    },
+    {
+      "index": 1,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_001.wav",
+      "duration": 2.25,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Iceni allies joined her revolt."
+    },
+    {
+      "index": 2,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_002.wav",
+      "duration": 2.15,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "They struck Camulodunum first."
+    },
+    {
+      "index": 3,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_003.wav",
+      "duration": 2.075,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "That colony had weak defenses."
+    },
+    {
+      "index": 4,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_004.wav",
+      "duration": 2.075,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Rebels burned its public buildings."
+    },
+    {
+      "index": 5,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_005.wav",
+      "duration": 2.225,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Londinium was then left exposed."
+    },
+    {
+      "index": 6,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_006.wav",
+      "duration": 1.825,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Rome chose to abandon it."
+    },
+    {
+      "index": 7,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_007.wav",
+      "duration": 2.05,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Rebels burned that town too."
+    },
+    {
+      "index": 8,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_008.wav",
+      "duration": 2.375,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Verulamium became their third target."
+    },
+    {
+      "index": 9,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_009.wav",
+      "duration": 2.1,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Burn layers still mark each attack."
+    },
+    {
+      "index": 10,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_010.wav",
+      "duration": 2.175,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Rome gathered troops under Paulinus."
+    },
+    {
+      "index": 11,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_011.wav",
+      "duration": 2.225,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "He chose narrow ground for battle."
+    },
+    {
+      "index": 12,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_012.wav",
+      "duration": 2.15,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "That ground blocked her larger force."
+    },
+    {
+      "index": 13,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_013.wav",
+      "duration": 1.825,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Roman ranks held their line."
+    },
+    {
+      "index": 14,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_014.wav",
+      "duration": 1.725,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "The revolt then collapsed."
+    },
+    {
+      "index": 15,
+      "path": "E:\\yt_automation\\data\\state\\qa_boudica_tts2\\beat_015.wav",
+      "duration": 2.075,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Roman rule had nearly broken."
+    }
+  ]
+}

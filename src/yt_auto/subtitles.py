@@ -679,9 +679,9 @@ class SubtitleComposer:
         floor = min(min_seconds, avg)
         if max_cps:
             char_counts = [self._character_count(text) for text in normalized]
-            # Leave headroom for millisecond SRT rounding. A cue planned at
-            # exactly 17.0 CPS can otherwise round back to 17.1 at QA time.
-            planning_cps = max(10.0, max_cps - 0.2)
+            # Aim at 16.5 when the hard ceiling is 17.0 so millisecond SRT
+            # rounding and borderline density stay under the upload gate.
+            planning_cps = max(10.0, min(max_cps - 0.2, 16.5) if max_cps >= 16.5 else max_cps - 0.2)
             required = [max(floor, count / planning_cps) for count in char_counts]
             required_total = sum(required)
             if required_total <= total_duration:

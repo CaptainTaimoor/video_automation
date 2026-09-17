@@ -1,29 +1,77 @@
-﻿# Python
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
 
-# Environments
+# Environments / local runtimes
 venv/
 .venv/
 .runtime/
+.agents/
 
-# Secrets
+# Secrets (never commit)
 .env
 secrets/tokens/
+secrets/**/*.json
 client_secrets.json
 client_secrets*.json
 client_secret*.json
 temp_*secret*.json
 fb_tokens*.json
-secrets/**/*.json
 
-# Generated outputs
+# Generated outputs / caches
 output/
-data/state/runs.jsonl
-
-# Media cache
+logs/
 *.mp4
 *.mp3
 *.wav
+*.log
+
+# Local-only large model weights
+gfpgan/weights/*.pth
+assets/voices/piper/*.onnx
+
+# Runtime / ephemeral state (keep learning JSON tracked)
+data/state/*.lock
+data/state/*.tmp
+data/state/active_builds/
+data/state/scheduler_jobs/
+data/state/heygen_chrome_profile/
+data/state/*_heartbeat.json
+data/state/service_guard.log
+data/state/runs.jsonl
+data/state/failed_topics.jsonl
+data/state/gh_auth_*.txt
+data/state/competitor_analysis/samples/
+data/state/competitor_analysis/frames/
+data/state/competitor_analysis/thumbs/
+data/state/competitor_analysis/download.log
+data/state/competitor_analysis/download.err
+# Live ops churn — keep on disk, do not show as worktree noise
+data/day_packs/
+data/state/*_ready_queue.json
+data/state/*_performance_report.json
+data/state/experiments.jsonl
+data/state/upload_continuity_state.json
+data/state/used_topics.txt
+
+# Local QA / diagnostics archives
+.qa_archive/
+.diagnostics/
+old_dashboard_launchers_archive/
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Setup downloads cache
+setup/_cache/

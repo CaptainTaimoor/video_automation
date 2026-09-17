@@ -49,6 +49,53 @@ class LongCaptionPreflightTests(unittest.TestCase):
 
         fallback_audio.assert_not_called()
 
+    def test_dense_short_caption_is_auto_repaired_below_hard_cps_gate(self) -> None:
+        builder = VideoBuilder(min_duration=30, max_duration=40)
+        composer = SubtitleComposer(max_words_per_caption=4)
+        raw_duration = 32.0
+        # Model the reported ~18.1 CPS Ancient Short density on one dense beat.
+        dense = "x" * round(raw_duration * 18.1)
+        beats = [SubtitleSegment(start=0.0, end=raw_duration, text=dense)]
+
+        duration, scaled_beats, captions, voice_tempo = builder._plan_short_caption_timeline(
+            beat_segments=beats,
+            raw_duration=raw_duration,
+            duration_bounds=(30.0, 40.0),
+            composer=composer,
+        )
+
+        self.assertGreater(duration, raw_duration)
+        self.assertLessEqual(duration, 40.0)
+        self.assertLess(voice_tempo, 1.0)
+        self.assertAlmostEqual(scaled_beats[-1].end, duration, places=5)
+        self.assertEqual([], composer.quality_issues(captions, cps_tolerance=0.05))
+        worst = max(
+            composer._character_count(item.text) / max(0.001, item.end - item.start)
+            for item in captions
+        )
+        self.assertLessEqual(worst, composer.max_cps + 0.05)
+
+    def test_caption_outliers_are_equalized_when_duration_is_already_capped(self) -> None:
+        builder = VideoBuilder(min_duration=32, max_duration=36)
+        composer = SubtitleComposer(max_words_per_caption=4)
+        raw_duration = 35.9
+        beats = [
+            SubtitleSegment(0.0, 2.0, "Drains still run today."),
+            SubtitleSegment(2.0, 3.1, "Baked brick streets survive."),
+            SubtitleSegment(3.1, raw_duration, "Wells remain specific evidence."),
+        ]
+
+        duration, _, captions, voice_tempo = builder._plan_short_caption_timeline(
+            beat_segments=beats,
+            raw_duration=raw_duration,
+            duration_bounds=(32.0, 36.0),
+            composer=composer,
+        )
+
+        self.assertLessEqual(duration, 36.0)
+        self.assertEqual([], composer.quality_issues(captions, cps_tolerance=0.05))
+        self.assertLessEqual(voice_tempo, 1.0)
+
     def test_dense_beat_is_stretched_without_slowing_sparse_beat(self) -> None:
         builder = VideoBuilder(min_duration=100, max_duration=210)
         composer = SubtitleComposer(max_words_per_caption=7)

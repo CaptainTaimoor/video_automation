@@ -1,0 +1,141 @@
+{
+  "engine": "kokoro",
+  "items": [
+    {
+      "index": 0,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_000.wav",
+      "duration": 2.375,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Lascaux paintings faced a new danger."
+    },
+    {
+      "index": 1,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_001.wav",
+      "duration": 2.075,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Teenagers found the cave first."
+    },
+    {
+      "index": 2,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_002.wav",
+      "duration": 2.125,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "That happened in 1940."
+    },
+    {
+      "index": 3,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_003.wav",
+      "duration": 2.225,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Cave curves gave horses volume."
+    },
+    {
+      "index": 4,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_004.wav",
+      "duration": 1.875,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Aurochs towered beside them."
+    },
+    {
+      "index": 5,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_005.wav",
+      "duration": 1.675,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Pigments kept colors vivid."
+    },
+    {
+      "index": 6,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_006.wav",
+      "duration": 1.9,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Rock contours shaped bodies."
+    },
+    {
+      "index": 7,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_007.wav",
+      "duration": 1.9,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Then mass tourism arrived."
+    },
+    {
+      "index": 8,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_008.wav",
+      "duration": 2.025,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Hot air entered the cave fast."
+    },
+    {
+      "index": 9,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_009.wav",
+      "duration": 2.2,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Carbon dioxide levels climbed."
+    },
+    {
+      "index": 10,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_010.wav",
+      "duration": 2.25,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Microbes threatened painted walls."
+    },
+    {
+      "index": 11,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_011.wav",
+      "duration": 2.775,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "France closed Lascaux in 1963."
+    },
+    {
+      "index": 12,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_012.wav",
+      "duration": 2.3,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "That decision protected the original."
+    },
+    {
+      "index": 13,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_013.wav",
+      "duration": 2.525,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Replicas later welcomed visitors."
+    },
+    {
+      "index": 14,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_014.wav",
+      "duration": 2.15,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "The cave stayed shut and guarded."
+    },
+    {
+      "index": 15,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_015.wav",
+      "duration": 2.325,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "The discovery quickly created a crisis."
+    },
+    {
+      "index": 16,
+      "path": "E:\\yt_automation\\data\\state\\qa_lascaux_tts\\beat_016.wav",
+      "duration": 2.1,
+      "voice": "bm_george",
+      "speed": 1.4,
+      "text": "Closing Lascaux saved the art."
+    }
+  ]
+}

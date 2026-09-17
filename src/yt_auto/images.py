@@ -235,7 +235,32 @@ class HybridMediaFetcher:
         pages = data.get("query", {}).get("pages", {})
         for page in pages.values():
             info = (page.get("imageinfo") or [{}])[0]
-            url = info.get("thumburl") or info.get("url")
+            thumb_url = str(info.get("thumburl") or "").strip()
+            original_url = str(info.get("url") or "").strip()
+            try:
+                thumb_w = int(info.get("thumbwidth") or 0)
+                thumb_h = int(info.get("thumbheight") or 0)
+            except (TypeError, ValueError):
+                thumb_w = thumb_h = 0
+            try:
+                orig_w = int(info.get("width") or 0)
+                orig_h = int(info.get("height") or 0)
+            except (TypeError, ValueError):
+                orig_w = orig_h = 0
+            thumb_short = min(thumb_w, thumb_h) if thumb_w and thumb_h else 0
+            orig_short = min(orig_w, orig_h) if orig_w and orig_h else 0
+            # Prefer the largest usable still. Tiny thumbs were starving Ancient
+            # visual preflight even when a larger original existed.
+            if thumb_url and thumb_short >= max(720, self.min_source_short_edge):
+                url = thumb_url
+                media_w, media_h = thumb_w, thumb_h
+            elif original_url and orig_short >= max(360, min(480, self.min_source_short_edge)):
+                url = original_url
+                media_w, media_h = orig_w, orig_h
+            else:
+                url = thumb_url or original_url
+                media_w = thumb_w or orig_w
+                media_h = thumb_h or orig_h
             media_path = urlparse(str(url or "")).path.lower()
             if not url or not media_path.endswith((".jpg", ".jpeg", ".png", ".webp")):
                 continue
@@ -250,8 +275,8 @@ class HybridMediaFetcher:
                         "asset_title": str(page.get("title", "")),
                         "asset_id": f"wikimedia:{page.get('pageid') or page.get('title', '')}",
                         "source_page": str(info.get("descriptionurl") or f"https://commons.wikimedia.org/wiki/{quote(str(page.get('title', '')), safe=':')}"),
-                        "media_width": str(info.get("thumbwidth") or info.get("width") or ""),
-                        "media_height": str(info.get("thumbheight") or info.get("height") or ""),
+                        "media_width": str(media_w or ""),
+                        "media_height": str(media_h or ""),
                         "original_media_width": str(info.get("width") or ""),
                         "original_media_height": str(info.get("height") or ""),
                     },
@@ -3051,8 +3076,10 @@ class HybridMediaFetcher:
             and path.suffix.lower() != ".mp4"
             and str(meta.get("source") or "").strip().lower() == "wikimedia"
             and self._has_source_page_provenance(meta)
-            and short_edge >= 480
-            and long_edge >= 640
+            # Commons often only has ~360-500px catalog stills for niche subjects.
+            # Prefer those attributed archives over generated fact cards.
+            and short_edge >= 360
+            and long_edge >= 480
         )
         if short_edge < self.min_source_short_edge and not verified_ancient_archive:
             return False, f"source short edge {short_edge}px below {self.min_source_short_edge}px"
@@ -3305,6 +3332,18 @@ class HybridMediaFetcher:
                     marker in asset
                     for marker in ("remain", "fragment", "fallen", "great obelisk", "remhai")
                 )
+            if any(
+                marker in asset
+                for marker in ("mohenjo", "harappa", "harappan", "indus")
+            ) and any(
+                marker in scene
+                for marker in (
+                    "drain", "underground", "street", "brick", "builder", "well", "water",
+                    "channel", "wastewater", "great bath", "bitumen", "palace", "tomb", "ruin",
+                    "seal", "script", "inscription", "symbol", "weight",
+                )
+            ):
+                return self._ancient_continuity_scene_score(scene_text, meta) > 0
             intent_groups = (
                 (("obelisk", "stele", "stela"), ("obelisk", "stele", "stela", "monument")),
                 (("tomb", "burial", "grave"), ("tomb", "tomba", "tombe", "burial", "grave", "mausoleum", "catacomb", "katakomb", "stele", "stela", "obelisk")),
@@ -3627,6 +3666,97 @@ class HybridMediaFetcher:
                 if len(candidates) >= limit:
                     return candidates
         return candidates
+
+    def _ancient_continuity_scene_score(
+        self,
+        scene_text: str,
+        meta: Dict[str, str],
+    ) -> int:
+        scene = re.sub(r"[^a-z0-9]+", " ", str(scene_text or "").lower()).strip()
+        url = str(meta.get("url") or "")
+        asset = self._asset_search_text(url, meta)
+        verified_subject = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            str(meta.get("verified_subject") or "").lower(),
+        ).strip()
+        subject_tokens = {token for token in verified_subject.split() if len(token) >= 4}
+        asset_title = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            str(meta.get("asset_title") or "").lower(),
+        ).strip()
+        title_descriptors = {
+            token
+            for token in asset_title.split()
+            if token not in subject_tokens
+            and token not in {"file", "jpg", "jpeg", "png", "webp", "the", "of"}
+        }
+        generic_site_asset = not title_descriptors
+
+        indus_context = f" {verified_subject} {asset} "
+        is_indus_asset = any(
+            marker in indus_context
+            for marker in (" mohenjo ", " harappa ", " harappan ", " indus ")
+        )
+        infrastructure_scene = any(
+            marker in scene
+            for marker in (
+                "drain", "underground", "street", "brick", "builder", "well", "water",
+                "channel", "wastewater", "great bath", "bitumen", "palace", "tomb", "ruin",
+            )
+        )
+        inscription_scene = any(
+            marker in scene
+            for marker in ("seal", "script", "inscription", "symbol", "weight")
+        )
+        if is_indus_asset and infrastructure_scene:
+            architecture_markers = (
+                "drain", "sewer", "channel", "street", "brick", "well", "water",
+                "great bath", "ruin", "archaeological", "excavat", "city view", "site view",
+            )
+            score = 25 if generic_site_asset else 0
+            score += 12 * sum(marker in asset for marker in architecture_markers)
+            if score <= 0 and any(
+                marker in asset
+                for marker in (
+                    "dancing girl", "seated figure", "seal", "bead", "unicorn", "tiger",
+                    "lion", "statue", "bronze",
+                )
+            ):
+                return 0
+            return score
+        if is_indus_asset and inscription_scene:
+            artifact_markers = (
+                "seal", "inscription", "script", "symbol", "unicorn", "tiger", "animal",
+            )
+            return 12 * sum(marker in asset for marker in artifact_markers)
+
+        ignored_tokens = {
+            "this", "that", "their", "there", "under", "inside", "without", "remains",
+            "reveals", "ancient", "history", "documentary", *subject_tokens,
+        }
+        scene_tokens = {
+            token for token in scene.split() if len(token) >= 4 and token not in ignored_tokens
+        }
+        asset_tokens = set(asset.split()) - ignored_tokens
+        return 4 * len(scene_tokens & asset_tokens)
+
+    def _pop_ancient_continuity_asset(
+        self,
+        continuity_cache: list[tuple[Path, dict]],
+        scene_text: str,
+    ) -> tuple[Path, dict] | None:
+        if not continuity_cache:
+            return None
+        ranked = [
+            (self._ancient_continuity_scene_score(scene_text, meta), index)
+            for index, (_, meta) in enumerate(continuity_cache)
+        ]
+        score, index = max(ranked, key=lambda item: (item[0], -item[1]))
+        if score <= 0:
+            return None
+        return continuity_cache.pop(index)
 
     def _download_candidate(
         self,
@@ -4279,25 +4409,30 @@ class HybridMediaFetcher:
                 and topic.content_kind == "short"
                 and continuity_cache
             ):
-                cached_path, cached_meta = continuity_cache.pop(0)
-                cached_out = raw_dir / f"raw_{idx:02d}_continuity_{slugify_text(topic.subject or topic.title, 24)}.jpg"
-                try:
-                    shutil.copy2(cached_path, cached_out)
-                    chosen = cached_out
-                    reused_meta = dict(cached_meta)
-                    reused_meta.update(
-                        {
-                            "file": cached_out.name,
-                            "scene_index": idx,
-                            "scene_text": text,
-                            "search_query": f"verified continuity archive reuse for {topic.subject or topic.title}",
-                            "reused_for_scene": True,
-                            "reused_from_run": str(cached_path.parent.parent.parent),
-                        }
-                    )
-                    manifest.append(reused_meta)
-                except OSError:
-                    chosen = None
+                cached_asset = self._pop_ancient_continuity_asset(
+                    continuity_cache,
+                    scene_intent_text,
+                )
+                if cached_asset is not None:
+                    cached_path, cached_meta = cached_asset
+                    cached_out = raw_dir / f"raw_{idx:02d}_continuity_{slugify_text(topic.subject or topic.title, 24)}.jpg"
+                    try:
+                        shutil.copy2(cached_path, cached_out)
+                        chosen = cached_out
+                        reused_meta = dict(cached_meta)
+                        reused_meta.update(
+                            {
+                                "file": cached_out.name,
+                                "scene_index": idx,
+                                "scene_text": text,
+                                "search_query": f"verified scene-matched continuity reuse for {text}",
+                                "reused_for_scene": True,
+                                "reused_from_run": str(cached_path.parent.parent.parent),
+                            }
+                        )
+                        manifest.append(reused_meta)
+                    except OSError:
+                        chosen = None
 
             # Phase 1: real-world assets first for a more professional Shorts look.
             if chosen is None and scene is not None and scene.preferred_image_url:
@@ -4413,25 +4548,30 @@ class HybridMediaFetcher:
                 and topic.content_kind == "short"
                 and continuity_cache
             ):
-                cached_path, cached_meta = continuity_cache.pop(0)
-                cached_out = raw_dir / f"raw_{idx:02d}_continuity_{slugify_text(topic.subject or topic.title, 24)}.jpg"
-                try:
-                    shutil.copy2(cached_path, cached_out)
-                    chosen = cached_out
-                    reused_meta = dict(cached_meta)
-                    reused_meta.update(
-                        {
-                            "file": cached_out.name,
-                            "scene_index": idx,
-                            "scene_text": text,
-                            "search_query": f"verified continuity archive reuse for {topic.subject or topic.title}",
-                            "reused_for_scene": True,
-                            "reused_from_run": str(cached_path.parent.parent.parent),
-                        }
-                    )
-                    manifest.append(reused_meta)
-                except OSError:
-                    chosen = None
+                cached_asset = self._pop_ancient_continuity_asset(
+                    continuity_cache,
+                    scene_intent_text,
+                )
+                if cached_asset is not None:
+                    cached_path, cached_meta = cached_asset
+                    cached_out = raw_dir / f"raw_{idx:02d}_continuity_{slugify_text(topic.subject or topic.title, 24)}.jpg"
+                    try:
+                        shutil.copy2(cached_path, cached_out)
+                        chosen = cached_out
+                        reused_meta = dict(cached_meta)
+                        reused_meta.update(
+                            {
+                                "file": cached_out.name,
+                                "scene_index": idx,
+                                "scene_text": text,
+                                "search_query": f"verified scene-matched continuity reuse for {text}",
+                                "reused_for_scene": True,
+                                "reused_from_run": str(cached_path.parent.parent.parent),
+                            }
+                        )
+                        manifest.append(reused_meta)
+                    except OSError:
+                        chosen = None
 
             if chosen is None and topic.content_kind == "video" and topic.niche_id == "brain_lens":
                 reusable_assets = self._brain_long_verified_reuse_pool(

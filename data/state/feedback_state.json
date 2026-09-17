@@ -1,0 +1,209 @@
+{
+  "channels": {
+    "ancient_history": {
+      "styles": {
+        "listicle": {
+          "score": 1.0115,
+          "n": 5
+        },
+        "story": {
+          "score": 1.0,
+          "n": 5
+        },
+        "motivational": {
+          "score": 1.0164,
+          "n": 10
+        }
+      },
+      "patterns": {
+        "base_original": {
+          "score": 1.0133,
+          "n": 20
+        }
+      },
+      "terms": {
+        "civilization": {
+          "score": 1.0209,
+          "n": 5
+        },
+        "empire": {
+          "score": 1.0172,
+          "n": 4
+        },
+        "national": {
+          "score": 1.0178,
+          "n": 10
+        },
+        "mystery": {
+          "score": 1.0172,
+          "n": 4
+        },
+        "historical": {
+          "score": 1.0029,
+          "n": 10
+        },
+        "magazine": {
+          "score": 1.0,
+          "n": 2
+        },
+        "cities": {
+          "score": 1.0,
+          "n": 4
+        },
+        "ancient": {
+          "score": 1.0117,
+          "n": 5
+        },
+        "world": {
+          "score": 1.0,
+          "n": 2
+        },
+        "factual": {
+          "score": 1.0,
+          "n": 5
+        },
+        "lost": {
+          "score": 1.0,
+          "n": 3
+        },
+        "what": {
+          "score": 1.0,
+          "n": 2
+        },
+        "city": {
+          "score": 1.0175,
+          "n": 4
+        },
+        "secrets": {
+          "score": 1.0,
+          "n": 3
+        },
+        "egypt": {
+          "score": 1.0,
+          "n": 6
+        },
+        "roman": {
+          "score": 1.0255,
+          "n": 3
+        },
+        "geographic": {
+          "score": 1.0202,
+          "n": 2
+        },
+        "mysteries": {
+          "score": 1.012,
+          "n": 3
+        },
+        "america": {
+          "score": 1.0,
+          "n": 3
+        }
+      }
+    },
+    "brain_lens": {
+      "styles": {
+        "explainer": {
+          "score": 1.0329,
+          "n": 10
+        },
+        "story": {
+          "score": 1.0062,
+          "n": 4
+        }
+      },
+      "patterns": {
+        "explainer_psychology": {
+          "score": 1.0,
+          "n": 3
+        },
+        "base_original": {
+          "score": 1.0152,
+          "n": 9
+        },
+        "brain_spicy_addictive": {
+          "score": 1.0204,
+          "n": 1
+        },
+        "brain_spicy_signal": {
+          "score": 1.0,
+          "n": 1
+        }
+      },
+      "terms": {
+        "facts": {
+          "score": 1.0,
+          "n": 2
+        },
+        "decisions": {
+          "score": 1.0,
+          "n": 2
+        },
+        "mind": {
+          "score": 1.0081,
+          "n": 4
+        },
+        "bias": {
+          "score": 1.0,
+          "n": 2
+        },
+        "verywell": {
+          "score": 1.0121,
+          "n": 5
+        },
+        "books": {
+          "score": 1.0121,
+          "n": 3
+        },
+        "cognitive": {
+          "score": 1.0,
+          "n": 3
+        },
+        "people": {
+          "score": 1.0121,
+          "n": 1
+        },
+        "your": {
+          "score": 1.0121,
+          "n": 1
+        },
+        "will": {
+          "score": 1.0,
+          "n": 1
+        },
+        "psychological": {
+          "score": 1.0,
+          "n": 1
+        },
+        "change": {
+          "score": 1.0,
+          "n": 1
+        },
+        "they": {
+          "score": 1.0082,
+          "n": 1
+        },
+        "media": {
+          "score": 1.0082,
+          "n": 1
+        },
+        "mediating": {
+          "score": 1.0335,
+          "n": 1
+        },
+        "research": {
+          "score": 1.0224,
+          "n": 2
+        },
+        "attachment": {
+          "score": 1.0137,
+          "n": 2
+        },
+        "today": {
+          "score": 1.0204,
+          "n": 1
+        }
+      }
+    }
+  },
+  "videos": {}
+}

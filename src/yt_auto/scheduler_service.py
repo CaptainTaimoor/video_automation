@@ -18,6 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from yt_auto.models import ChannelConfig
 from yt_auto.pipeline import ShortsFactory
+from yt_auto import ready_queue as rq
 from yt_auto.utils import now_in_tz, read_json, write_json
 
 
@@ -43,6 +44,9 @@ class ScheduleService:
             "unknown",
         }
     )
+    # i5-4300U / 12GB RAM: never run more than two MoviePy/FFmpeg builds at once.
+    MAX_CONCURRENT_BUILDS = 2
+    MIN_FREE_RAM_MB = 1800
 
     def __init__(self, factory: ShortsFactory) -> None:
         self.factory = factory
@@ -52,7 +56,35 @@ class ScheduleService:
             channel.id: threading.Lock()
             for channel in factory.config.channels
         }
+        self._build_semaphore = threading.Semaphore(self.MAX_CONCURRENT_BUILDS)
         self._continuity_state_lock = threading.RLock()
+
+    def _available_ram_mb(self) -> float | None:
+        try:
+            import psutil
+        except Exception:
+            return None
+        try:
+            return float(psutil.virtual_memory().available) / (1024.0 * 1024.0)
+        except Exception:
+            return None
+
+    def _wait_for_build_capacity(self, channel_id: str, content_kind: str) -> None:
+        """Block until a concurrent-build slot is free and RAM looks safe enough."""
+        while True:
+            acquired = self._build_semaphore.acquire(blocking=True, timeout=5.0)
+            if not acquired:
+                continue
+            available_mb = self._available_ram_mb()
+            if available_mb is None or available_mb >= self.MIN_FREE_RAM_MB:
+                return
+            self._build_semaphore.release()
+            self.factory.logger.warning(
+                channel_id,
+                f"Deferring {content_kind} build: only {available_mb:.0f}MB free RAM "
+                f"(need >={self.MIN_FREE_RAM_MB}MB with max {self.MAX_CONCURRENT_BUILDS} concurrent builds).",
+            )
+            sleep(8.0)
 
     def _heartbeat_path(self) -> Path:
         return self.factory.config.app.state_dir / "scheduler_heartbeat.json"
@@ -367,6 +399,26 @@ class ScheduleService:
                     )
 
     def _execute_build_subprocess(
+        self,
+        channel: ChannelConfig,
+        upload: bool,
+        content_kind: str,
+        trigger_source: str = "scheduled",
+        recovery_stage: int = 0,
+    ) -> BuildExecutionResult:
+        self._wait_for_build_capacity(channel.id, content_kind)
+        try:
+            return self._execute_build_subprocess_unlocked(
+                channel=channel,
+                upload=upload,
+                content_kind=content_kind,
+                trigger_source=trigger_source,
+                recovery_stage=recovery_stage,
+            )
+        finally:
+            self._build_semaphore.release()
+
+    def _execute_build_subprocess_unlocked(
         self,
         channel: ChannelConfig,
         upload: bool,
@@ -707,6 +759,8 @@ class ScheduleService:
         now = now_in_tz(self.factory.config.app.timezone)
         state = self._load_continuity_state()
         state_channels = state.get("channels", {})
+        root = Path(__file__).resolve().parents[2]
+        ready_on = rq.is_ready_queue_enabled(root)
         for channel_id in channel_ids:
             channel = self.factory._channel(channel_id)
             threshold_hours = max(1.0, float(channel.max_upload_gap_hours or 4.0))
@@ -789,6 +843,47 @@ class ScheduleService:
                 self._update_continuity_state(channel_id, status="recovery_already_queued", **common_state)
                 continue
 
+            # Prefer uploading a pre-rendered Ready Queue Short before emergency rebuild.
+            if ready_on:
+                ready_item = rq.pick_ready_for_upload(
+                    self.factory.config.app.state_dir,
+                    channel_id,
+                    "short",
+                    allow_skip_slot_wait=True,
+                )
+                if ready_item:
+                    self.factory.logger.warning(
+                        channel_id,
+                        "Upload gap detected; publishing ready-queue Short "
+                        f"{ready_item.get('id')} instead of emergency rebuild.",
+                    )
+                    rq.update_item(
+                        self.factory.config.app.state_dir,
+                        str(ready_item["id"]),
+                        force_flags={"skip_slot_wait": True, "force_next": True},
+                    )
+                    self.scheduler.add_job(
+                        self._publish_ready_queue_item,
+                        trigger=DateTrigger(run_date=now, timezone=ZoneInfo(self.factory.config.app.timezone)),
+                        id=recovery_job_id,
+                        replace_existing=False,
+                        kwargs={
+                            "channel_id": channel_id,
+                            "item_id": str(ready_item["id"]),
+                            "trigger_source": "upload_gap_ready_queue",
+                        },
+                        misfire_grace_time=600,
+                    )
+                    self._update_continuity_state(
+                        channel_id,
+                        status="recovery_scheduled_ready_queue",
+                        last_recovery_scheduled_at=now.isoformat(),
+                        recovery_stage=1,
+                        effective_cooldown_minutes=effective_cooldown_minutes,
+                        **common_state,
+                    )
+                    continue
+
             self.factory.logger.warning(
                 channel_id,
                 "Upload continuity gap detected "
@@ -870,6 +965,296 @@ class ScheduleService:
                 )
             self._restore_failed_recovery_jobs(scheduled_channels, upload=True)
 
+        # Ready Queue jobs (no-op when flag OFF).
+        channel_ids = [channel.id for channel in (scheduled_channels or self.factory.config.channels)]
+        day_pack_id = "ready_queue_day_pack"
+        if not self.scheduler.get_job(day_pack_id):
+            self.scheduler.add_job(
+                self._run_day_pack_builder,
+                trigger=CronTrigger(hour=5, minute=30, timezone=ZoneInfo(self.factory.config.app.timezone)),
+                id=day_pack_id,
+                replace_existing=True,
+                kwargs={"channel_ids": channel_ids},
+                misfire_grace_time=3600,
+            )
+        worker_id = "ready_queue_worker"
+        if not self.scheduler.get_job(worker_id):
+            self.scheduler.add_job(
+                self._run_ready_queue_worker,
+                trigger=IntervalTrigger(minutes=4, timezone=ZoneInfo(self.factory.config.app.timezone)),
+                id=worker_id,
+                replace_existing=True,
+                kwargs={"channel_ids": channel_ids},
+                next_run_time=now_in_tz(self.factory.config.app.timezone) + timedelta(seconds=45),
+                max_instances=1,
+                coalesce=True,
+                misfire_grace_time=300,
+            )
+        nightly_id = "nightly_performance_report"
+        if not self.scheduler.get_job(nightly_id):
+            self.scheduler.add_job(
+                self._run_nightly_performance_report,
+                trigger=CronTrigger(hour=3, minute=15, timezone=ZoneInfo(self.factory.config.app.timezone)),
+                id=nightly_id,
+                replace_existing=True,
+                kwargs={"channel_ids": channel_ids},
+                misfire_grace_time=3600,
+            )
+        pack_cleanup_id = "ready_queue_pack_cleanup"
+        if not self.scheduler.get_job(pack_cleanup_id):
+            self.scheduler.add_job(
+                self._run_pack_cleanup,
+                trigger=CronTrigger(hour=4, minute=10, timezone=ZoneInfo(self.factory.config.app.timezone)),
+                id=pack_cleanup_id,
+                replace_existing=True,
+                misfire_grace_time=3600,
+            )
+
+    def _run_day_pack_builder(self, channel_ids: list[str] | None = None) -> None:
+        root = Path(__file__).resolve().parents[2]
+        if not rq.is_ready_queue_enabled(root):
+            self._write_heartbeat("running", "ready_queue:day_pack:skipped_off")
+            return
+        ids = channel_ids or [c.id for c in self.factory.config.channels]
+        tz = self.factory.config.app.timezone
+        self._write_heartbeat("running", "ready_queue:day_pack:start")
+        for channel_id in ids:
+            channel = self.factory._channel(channel_id)
+            plan = rq.build_day_pack(
+                state_dir=self.factory.config.app.state_dir,
+                root=root,
+                channel=channel,
+                timezone_name=tz,
+            )
+            self.factory.logger.info(
+                channel_id,
+                f"Day pack ready for {plan.get('day')}: "
+                f"{plan.get('created_count', 0)} new items, {len(plan.get('slots') or [])} slots.",
+            )
+        self._write_heartbeat("running", "ready_queue:day_pack:done")
+
+    def _run_ready_queue_worker(self, channel_ids: list[str] | None = None) -> None:
+        root = Path(__file__).resolve().parents[2]
+        if not rq.is_ready_queue_enabled(root):
+            return
+        ids = channel_ids or [c.id for c in self.factory.config.channels]
+        # Ensure today's packs exist.
+        for channel_id in ids:
+            pack_dir = rq.day_pack_dir(
+                root,
+                channel_id,
+                now_in_tz(self.factory.config.app.timezone).strftime("%Y-%m-%d"),
+            )
+            if not (pack_dir / "plan.json").exists():
+                rq.build_day_pack(
+                    state_dir=self.factory.config.app.state_dir,
+                    root=root,
+                    channel=self.factory._channel(channel_id),
+                    timezone_name=self.factory.config.app.timezone,
+                )
+
+        item = rq.pick_next_to_render(
+            self.factory.config.app.state_dir,
+            ids,
+            timezone_name=self.factory.config.app.timezone,
+        )
+        if not item:
+            return
+
+        channel_id = str(item.get("channel") or "")
+        content_kind = str(item.get("content_kind") or "short")
+        item_id = str(item.get("id") or "")
+        build_lock = self._channel_build_locks.setdefault(channel_id, threading.Lock())
+        if not build_lock.acquire(blocking=False):
+            self.factory.logger.info(channel_id, "Ready-queue render deferred; channel build busy.")
+            return
+
+        self._write_heartbeat("running", f"ready_queue:render:{channel_id}:{content_kind}")
+        started = now_in_tz(self.factory.config.app.timezone)
+        try:
+            rq.mark_rendering(self.factory.config.app.state_dir, item_id)
+            channel = self.factory._channel(channel_id)
+            result = self._execute_build_subprocess(
+                channel,
+                upload=False,
+                content_kind=content_kind,
+                trigger_source="ready_queue_render",
+            )
+            output_root = Path(self.factory.config.app.output_root)
+            if not output_root.is_absolute():
+                output_root = root / output_root
+            artifacts = rq.find_latest_build_artifacts(
+                output_root=output_root,
+                channel_id=channel_id,
+                content_kind=content_kind,
+                started_after=started,
+            )
+            if result.success and artifacts:
+                rq.attach_render_result(
+                    self.factory.config.app.state_dir,
+                    item_id,
+                    run_dir=artifacts.get("run_dir"),
+                    video_path=artifacts.get("video_path"),
+                    title=artifacts.get("title"),
+                    quality_decision=artifacts.get("quality_decision"),
+                    topic_fingerprint=artifacts.get("topic_fingerprint"),
+                )
+                self.factory.logger.success(
+                    channel_id,
+                    f"Ready-queue item {item_id} rendered → {artifacts.get('title')}",
+                )
+            else:
+                summary = result.failure_summary or "ready-queue render failed"
+                rq.attach_render_result(
+                    self.factory.config.app.state_dir,
+                    item_id,
+                    run_dir=(artifacts or {}).get("run_dir"),
+                    video_path=(artifacts or {}).get("video_path"),
+                    title=(artifacts or {}).get("title"),
+                    quality_decision=(artifacts or {}).get("quality_decision"),
+                    error=summary,
+                    topic_fingerprint=(artifacts or {}).get("topic_fingerprint"),
+                )
+                self.factory.logger.warning(channel_id, f"Ready-queue render failed for {item_id}: {summary}")
+        finally:
+            build_lock.release()
+            self._write_heartbeat("running", f"ready_queue:render:{channel_id}:done")
+
+    def _publish_ready_queue_item(
+        self,
+        channel_id: str,
+        item_id: str,
+        trigger_source: str = "ready_queue_publish",
+    ) -> bool:
+        state_dir = self.factory.config.app.state_dir
+        item = rq.get_item(state_dir, item_id)
+        if not item:
+            self.factory.logger.warning(channel_id, f"Ready-queue item {item_id} not found.")
+            return False
+        if str(item.get("status") or "") == "held_quality":
+            self.factory.logger.warning(channel_id, f"Ready-queue item {item_id} is quality-held; not uploading.")
+            return False
+        video_path = Path(str(item.get("video_path") or ""))
+        if not video_path.exists():
+            rq.update_item(state_dir, item_id, status="failed", error="video_path missing at publish")
+            return False
+
+        build_lock = self._channel_build_locks.setdefault(channel_id, threading.Lock())
+        if not build_lock.acquire(blocking=False):
+            self.factory.logger.info(channel_id, "Ready-queue publish deferred; channel busy.")
+            return False
+
+        previous_upload = self._latest_successful_upload_at(channel_id)
+        self._write_heartbeat("running", f"ready_queue:publish:{channel_id}:{item_id}")
+        try:
+            rq.update_item(state_dir, item_id, status="queued_upload")
+            result = self.factory.publish_ready_video(
+                channel_id,
+                video_path=video_path,
+                run_dir=item.get("run_dir"),
+                content_kind=str(item.get("content_kind") or "short"),
+                force_public=True,
+                title_hint=item.get("title"),
+            )
+            if result.get("ok"):
+                rq.mark_uploaded(state_dir, item_id, youtube_id=result.get("youtube_id"))
+                latest = self._latest_successful_upload_at(channel_id)
+                self._update_continuity_state(
+                    channel_id,
+                    status="healthy",
+                    consecutive_failures=0,
+                    recovery_stage=0,
+                    last_failure_category="",
+                    last_failure_summary="",
+                    latest_successful_upload_at=latest.isoformat() if latest else None,
+                    gap_hours=0.0,
+                )
+                self.factory.logger.success(
+                    channel_id,
+                    f"Ready-queue publish ({trigger_source}) uploaded {item.get('title') or item_id}",
+                )
+                return True
+
+            err = (
+                result.get("youtube_error")
+                or result.get("upload_skipped")
+                or result.get("upload_blocked")
+                or "publish_failed"
+            )
+            if result.get("upload_skipped") == "quality_gate":
+                rq.update_item(state_dir, item_id, status="held_quality", error=str(err))
+            else:
+                rq.mark_uploaded(state_dir, item_id, error=str(err))
+            self.factory.logger.warning(channel_id, f"Ready-queue publish failed: {err}")
+            if previous_upload is not None:
+                pass
+            return False
+        finally:
+            build_lock.release()
+            self._write_heartbeat("running", f"ready_queue:publish:{channel_id}:done")
+
+    def _try_publish_from_ready_queue(
+        self,
+        channel_id: str,
+        content_kind: str,
+        *,
+        target_slot: str | None = None,
+        allow_skip_slot_wait: bool = False,
+    ) -> bool | None:
+        """Return True/False if a ready item was attempted; None if none available."""
+        root = Path(__file__).resolve().parents[2]
+        if not rq.is_ready_queue_enabled(root):
+            return None
+        today = now_in_tz(self.factory.config.app.timezone).strftime("%Y-%m-%d")
+        item = rq.pick_ready_for_upload(
+            self.factory.config.app.state_dir,
+            channel_id,
+            content_kind,
+            target_slot=target_slot,
+            target_date=today,
+            allow_skip_slot_wait=allow_skip_slot_wait,
+        )
+        if not item:
+            return None
+        self.factory.logger.info(
+            channel_id,
+            f"Ready Queue ON: publishing pre-rendered {content_kind} "
+            f"{item.get('id')} ({item.get('title') or 'untitled'}) instead of classic build.",
+        )
+        return self._publish_ready_queue_item(
+            channel_id,
+            str(item["id"]),
+            trigger_source="slot_publish",
+        )
+
+    def _run_nightly_performance_report(self, channel_ids: list[str] | None = None) -> None:
+        root = Path(__file__).resolve().parents[2]
+        ids = channel_ids or [c.id for c in self.factory.config.channels]
+        self._write_heartbeat("running", "nightly_performance_report:start")
+        for channel_id in ids:
+            try:
+                command = [
+                    sys.executable,
+                    str(root / "run.py"),
+                    "performance-report",
+                    "--channel",
+                    channel_id,
+                ]
+                subprocess.run(command, cwd=str(root), timeout=900, check=False)
+            except Exception as exc:
+                self.factory.logger.warning(channel_id, f"Nightly performance-report failed: {exc}")
+        self._write_heartbeat("running", "nightly_performance_report:done")
+
+    def _run_pack_cleanup(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        removed = rq.cleanup_old_packs(
+            root,
+            keep_days=2,
+            timezone_name=self.factory.config.app.timezone,
+        )
+        if removed:
+            self.factory.logger.info("SYSTEM", f"Ready-queue pack cleanup removed {removed} old day folders.")
+
     def _run_backlog_job(self, channel_id: str, upload: bool) -> None:
         self._write_heartbeat("running", f"backlog:{channel_id}:start")
         self.factory.logger.info(channel_id, "Checking backlog (staggered)...")
@@ -885,6 +1270,7 @@ class ScheduleService:
         content_kind: str = "short",
         trigger_source: str = "scheduled",
         recovery_stage: int = 0,
+        target_slot: str | None = None,
     ) -> bool:
         build_lock = self._channel_build_locks.setdefault(channel_id, threading.Lock())
         if not build_lock.acquire(blocking=False):
@@ -911,6 +1297,34 @@ class ScheduleService:
                 self.factory.logger.info(channel_id, f"Skipping new generation: uploads blocked by {reason} until {until}.")
                 self._write_heartbeat("running", f"build:{channel_id}:{content_kind}:blocked")
                 return False
+
+            # Ready Queue slot publish: prefer pre-rendered file (bypass FB backlog gate).
+            if upload and trigger_source in {"scheduled", "slot_publish"}:
+                # Release lock before publish helper re-acquires it.
+                build_lock.release()
+                ready_result: bool | None = None
+                try:
+                    ready_result = self._try_publish_from_ready_queue(
+                        channel_id,
+                        content_kind,
+                        target_slot=target_slot,
+                        allow_skip_slot_wait=False,
+                    )
+                finally:
+                    if not build_lock.acquire(blocking=False):
+                        self.factory.logger.info(
+                            channel_id,
+                            "Ready-queue publish finished but channel lock busy; skipping classic fallback.",
+                        )
+                        return bool(ready_result)
+                if ready_result is not None:
+                    if ready_result:
+                        self.factory.logger.success(channel_id, "Slot publish via Ready Queue completed.")
+                        return True
+                    self.factory.logger.warning(
+                        channel_id,
+                        "Ready Queue publish failed; falling back to classic build.",
+                    )
 
             if upload:
                 self.factory.replay_backlog_once(channel_id)
@@ -1059,7 +1473,8 @@ class ScheduleService:
             return result.success
         finally:
             self._write_heartbeat("running", f"build:{channel_id}:{content_kind}:done")
-            build_lock.release()
+            if build_lock.locked():
+                build_lock.release()
 
     def register_jobs(self, upload: bool | None = None, channels: list[str] | None = None, mode: str = "interval") -> None:
         if upload is None:
@@ -1085,6 +1500,7 @@ class ScheduleService:
                             "upload": upload,
                             "content_kind": content_kind,
                             "trigger_source": "scheduled",
+                            "target_slot": hhmm,
                         },
                         max_instances=1,
                         coalesce=True,

@@ -1,0 +1,335 @@
+{
+  "fetched_at": "2026-07-03T18:59:33.037814+00:00",
+  "videos": [
+    {
+      "video_id": "GKJYeMuODpY",
+      "title": "Antikythera Mechanism: Ancient Greek Supercomputer Uncovered",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-28\\20260628_052552",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-28\\20260628_052552\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-28\\20260628_052552\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=GKJYeMuODpY&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "KrfBcjVPCEk",
+      "title": "Delphi's Prophecies: How They Shaped Ancient Empires",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-25\\20260625_045859",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-25\\20260625_045859\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-25\\20260625_045859\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=KrfBcjVPCEk&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "osskVWhc1q4",
+      "title": "3 hidden clues that explain Battle Of Thermopylae",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-24\\20260624_090446",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-24\\20260624_090446\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-24\\20260624_090446\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=osskVWhc1q4&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "IxnPd3Rxui4",
+      "title": "3 hidden clues that explain Library Of Alexandria",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-24\\20260624_050500",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-24\\20260624_050500\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-24\\20260624_050500\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=IxnPd3Rxui4&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "pSJ-esKeLTs",
+      "title": "3 hidden clues that explain Oracle Of Delphi",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_110930",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_110930\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_110930\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=pSJ-esKeLTs&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "eh45GcDFcEQ",
+      "title": "The hidden cost of Dead Sea Scrolls",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_084522",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_084522\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_084522\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=eh45GcDFcEQ&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "DFQLbJb_k5M",
+      "title": "The hidden cost of Code Of Hammurabi",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_042253",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_042253\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-23\\20260623_042253\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=DFQLbJb_k5M&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "Xr8RqAf10Zo",
+      "title": "Rosetta Stone: How This Ancient Key Unlocked Egypt's Secrets",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\video\\2026-06-22\\20260622_133405",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-06-22\\20260622_133405\\video.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-06-22\\20260622_133405\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=Xr8RqAf10Zo&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "f6zm3wufQVM",
+      "title": "3 hidden clues that explain Fall Of Constantinople",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_104226",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_104226\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_104226\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=f6zm3wufQVM&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "lpkVhDx0MoE",
+      "title": "Vindolanda Tablets: Roman Soldiers' Secrets Revealed by Archaeology",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_081239",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_081239\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_081239\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=lpkVhDx0MoE&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "MbCpMG3Y0Mw",
+      "title": "3 hidden clues that explain Justinianic Plague",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_043235",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_043235\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-22\\20260622_043235\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=MbCpMG3Y0Mw&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "0K6yj34himk",
+      "title": "Petra's Lost Treasury: Unearthing Nabataean Secrets",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\video\\2026-06-21\\20260621_133249",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-06-21\\20260621_133249\\video.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\video\\2026-06-21\\20260621_133249\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=0K6yj34himk&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "PDcwTG5HOHo",
+      "title": "Minoan Eruption: Did it Destroy an Empire and Birth Legends?",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_102451",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_102451\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_102451\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=PDcwTG5HOHo&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "NWpQh42oCjs",
+      "title": "The hidden cost of Cadaver Synod",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_082420",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_082420\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_082420\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=NWpQh42oCjs&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "hByTnhD1hh4",
+      "title": "The Architect Who Changed the Ancient World Forever",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_041636",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_041636\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-21\\20260621_041636\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=hByTnhD1hh4&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "q6QmbduOyY8",
+      "title": "The moment Battle Of Teutoburg Forest became impossible to ignore",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_112439",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_112439\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_112439\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=q6QmbduOyY8&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "DVgYjmWuUSQ",
+      "title": "Rome's Worst Nightmare: Teutoburg Forest Ambush Explained",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_091217",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_091217\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_091217\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=DVgYjmWuUSQ&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "4AYNd_GQq2c",
+      "title": "Rome's Worst Defeat: Teutoburg Forest's Lost Legions",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_051026",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_051026\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-20\\20260620_051026\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=4AYNd_GQq2c&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "iD5cFiPCBxQ",
+      "title": "Rome's Lost Legion: Teutoburg Forest's Devastating Ambush",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-19\\20260619_091249",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-19\\20260619_091249\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-19\\20260619_091249\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=iD5cFiPCBxQ&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "GgJV6jHypoE",
+      "title": "3 hidden clues that explain Rome's Worst Defeat",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-19\\20260619_051319",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-19\\20260619_051319\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-19\\20260619_051319\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=GgJV6jHypoE&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "1wTj38xYOEk",
+      "title": "Antikythera Mechanism: The Overlooked Clue Rewrites History",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_112237",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_112237\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_112237\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=1wTj38xYOEk&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "nB7YniCmn1g",
+      "title": "Nazca Lines: Ancient Sky Gods or Alien Architects?",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_091422",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_091422\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_091422\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=nB7YniCmn1g&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "l9-5Wa2s65E",
+      "title": "Byzantine Greek Fire: The Lost Empire's Secret Weapon",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_051551",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_051551\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-18\\20260618_051551\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=l9-5Wa2s65E&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "tvYvaBV904I",
+      "title": "3 details about Sack Of Rome (410) that change the whole story",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-17\\20260617_092004",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-17\\20260617_092004\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-17\\20260617_092004\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=tvYvaBV904I&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "JeX9furo45U",
+      "title": "Rome's 410 Sack: The Shocking Truth",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-17\\20260617_051443",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-17\\20260617_051443\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-17\\20260617_051443\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=JeX9furo45U&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "XOMMi8ljqqM",
+      "title": "Rome Sacked 410 AD: Barbarians' Shocking Loot Reveals Empire's Fall",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-16\\20260616_091340",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-16\\20260616_091340\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-16\\20260616_091340\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=XOMMi8ljqqM&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "wHuAT7LJUb8",
+      "title": "Rome's Fall 410 AD: Visigoths Plunder the Eternal City",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-16\\20260616_050540",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-16\\20260616_050540\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-16\\20260616_050540\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=wHuAT7LJUb8&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "b0cGgRAqd3E",
+      "title": "Code of Hammurabi: Ancient Laws That Shaped Empires",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-15\\20260615_091603",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-15\\20260615_091603\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-15\\20260615_091603\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=b0cGgRAqd3E&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "GoJJHPrgx1Y",
+      "title": "Nazca Lines: Ancient Desert Art or Alien Landing Strip?",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-14\\20260614_051322",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-14\\20260614_051322\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-14\\20260614_051322\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=GoJJHPrgx1Y&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    },
+    {
+      "video_id": "HHlJ8DlnLDc",
+      "title": "The moment Sea Peoples became impossible to ignore",
+      "run_dir": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-13\\20260613_112920",
+      "video_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-13\\20260613_112920\\short.mp4",
+      "metadata_path": "E:\\yt_automation\\output\\ancient_history\\short\\2026-06-13\\20260613_112920\\metadata.json",
+      "details": {
+        "error": "HttpError: <HttpError 403 when requesting https://youtube.googleapis.com/youtube/v3/commentThreads?part=snippet%2Creplies&videoId=HHlJ8DlnLDc&maxResults=50&order=time&textFormat=plainText&alt=json returned \"Request had insufficient authentication scopes.\". Details: \"[{'message': 'Insufficient Permission', 'domain': 'global', 'reason': 'insufficientPermissions'}]\">"
+      },
+      "comments": []
+    }
+  ]
+}

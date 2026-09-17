@@ -32,6 +32,7 @@ from moviepy.editor import (
 
 from yt_auto.subtitles import SubtitleComposer
 from yt_auto.media_validation import MediaValidationReport, validate_final_mp4
+from yt_auto.hw_encode import moviepy_codec_name, resolve_h264_encode_profile, selected_encoder_note
 
 
 class LongCaptionPreflightError(RuntimeError):
@@ -76,6 +77,10 @@ class VideoBuilder:
     MIN_LONG_NARRATION_WPM = 138.0
     MAX_LONG_NARRATION_WPM = 165.0
     LONG_CAPTION_TARGET_CPS_OFFSET = 0.02
+    # Short captions repair toward 16.5 CPS before the hard 17.0 abort so SRT
+    # rounding and borderline density do not burn an otherwise usable Short.
+    SHORT_CAPTION_TARGET_CPS = 16.5
+    MAX_SHORT_NARRATION_STRETCH = 1.08
     # These clip starts were measured with the same top-background freeze scan
     # used for final approval. They avoid a static establishing section while
     # retaining the source's relevant action. Unknown assets keep the normal
@@ -98,6 +103,53 @@ class VideoBuilder:
         self.subtitle_enabled = subtitle_enabled
         self.subtitle_composer = SubtitleComposer(max_words_per_caption=subtitle_max_words)
         self.last_music_path: Path | None = None
+        self.last_video_encoder: str = ""
+        self.last_claim_card_text: str = ""
+
+    def _short_claim_card_text(self, title_text: str, channel_id: str | None) -> str:
+        """Compress a Short title into a top-of-frame claim for the first second."""
+        cleaned = re.sub(r"\s+", " ", (title_text or "").replace("—", " ").replace("–", " ")).strip()
+        if not cleaned or channel_id != "brain_lens":
+            return ""
+        lowered = cleaned.lower()
+        presets = (
+            ("late repl", "ONE REPLY PROVES NOTHING"),
+            ("micro flirt", "MICRO FLIRTING OR FRIENDLINESS?"),
+            ("almost relationship", "ALMOST RELATIONSHIPS: THE LOOP"),
+            ("future fak", "FUTURE FAKING: THE TRAP"),
+            ("friends with benefits", "FRIENDS WITH BENEFITS?"),
+            ("mixed signal", "MIXED SIGNALS LOOP"),
+            ("love bomb", "LOVE BOMBING TRAP"),
+            ("texting anx", "STOP REREADING TEXTS"),
+        )
+        for marker, claim in presets:
+            if marker in lowered:
+                return claim
+        words = re.findall(r"[A-Za-z0-9']+", cleaned)
+        stop = {"the", "a", "an", "to", "of", "and", "or", "that", "this", "with", "your", "you"}
+        keep = [w for w in words if w.lower() not in stop] or words
+        keep = keep[:6]
+        if len(keep) < 2:
+            return ""
+        return " ".join(keep).upper()
+
+    def _h264_encode_argv(
+        self,
+        *,
+        ffmpeg_path: str | None = None,
+        preset: str = "veryfast",
+        crf: str | int = 21,
+        threads: str | int = 2,
+        force: str | None = None,
+    ) -> list[str]:
+        profile = resolve_h264_encode_profile(ffmpeg_path, force=force)
+        # Keep the last *preferred* encoder for metadata, even if one stage
+        # forces CPU for filter-complex compatibility.
+        if force is None:
+            self.last_video_encoder = profile.name
+        elif not self.last_video_encoder:
+            self.last_video_encoder = resolve_h264_encode_profile(ffmpeg_path).name
+        return profile.argv(preset=preset, crf=crf, threads=threads)
 
     def _fit_vertical(self, clip: ImageClip | VideoFileClip) -> ImageClip | VideoFileClip:
         target_w, target_h = self.target_size
@@ -621,13 +673,25 @@ class VideoBuilder:
                 rendered.append(word)
         return " ".join(rendered)
 
-    def _write_ass_captions(self, segments: list, out_path: Path) -> None:
+    def _write_ass_captions(
+        self,
+        segments: list,
+        out_path: Path,
+        claim_card_text: str = "",
+    ) -> None:
         target_w, target_h = self.target_size
         landscape = target_w > target_h
         font_size = max(42, int(target_h * 0.052)) if landscape else max(44, int(target_w * 0.082))
         margin_v = max(64, int(target_h * 0.075)) if landscape else max(220, int(target_h * 0.235))
         margin_h = max(90, int(target_w * 0.065)) if landscape else 70
         outline = 4 if landscape else 8
+        claim_font = max(40, int(target_w * 0.055)) if not landscape else max(36, int(target_h * 0.045))
+        claim_margin_v = max(72, int(target_h * 0.06)) if not landscape else max(48, int(target_h * 0.05))
+        claim_outline = 6 if not landscape else 4
+        claim_style = (
+            f"Style: ClaimCard,Montserrat,{claim_font},&H00FFFFFF,&H00FFFFFF,&H00000000,&H90050A16,"
+            f"-1,0,0,0,100,100,0,0,3,{claim_outline},0,8,{margin_h},{margin_h},{claim_margin_v},1\n"
+        )
         header = (
             "[Script Info]\n"
             "ScriptType: v4.00+\n"
@@ -640,11 +704,21 @@ class VideoBuilder:
             "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, "
             "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
             f"Style: Caption,Montserrat,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H30050A16,"
-            f"-1,0,0,0,100,100,0,0,3,{outline},0,2,{margin_h},{margin_h},{margin_v},1\n\n"
+            f"-1,0,0,0,100,100,0,0,3,{outline},0,2,{margin_h},{margin_h},{margin_v},1\n"
+            f"{claim_style}"
+            "\n"
             "[Events]\n"
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
         )
         events = []
+        claim = re.sub(r"[{}\\]", "", (claim_card_text or "").strip())
+        if claim:
+            safe_claim = claim.replace("\n", " ")
+            events.append(
+                "Dialogue: 1,0:00:00.00,0:00:01.15,ClaimCard,,0,0,0,,"
+                f"{{\\fad(40,80)}}{safe_claim}"
+            )
+            self.last_claim_card_text = claim
         for segment in segments:
             clean_text = str(getattr(segment, "text", "") or "").strip()
             if not clean_text:
@@ -851,14 +925,12 @@ class VideoBuilder:
             "-an",
             "-vf",
             video_filter,
-            "-c:v",
-            "libx264",
-            "-preset",
-            segment_preset,
-            "-crf",
-            segment_crf,
-            "-threads",
-            "2",
+            *self._h264_encode_argv(
+                ffmpeg_path=ffmpeg_path,
+                preset=segment_preset,
+                crf=segment_crf,
+                threads=2,
+            ),
             "-pix_fmt",
             "yuv420p",
             "-color_range",
@@ -889,6 +961,50 @@ class VideoBuilder:
             ) from exc
         if result.returncode != 0:
             diagnostic = result.stderr.decode("utf-8", errors="ignore")[-1600:].strip()
+            # GPU encoders can fail on odd pixel formats; retry once on CPU.
+            if self.last_video_encoder and self.last_video_encoder != "libx264":
+                cpu_profile = resolve_h264_encode_profile(ffmpeg_path, force="libx264")
+                cpu_command = [
+                    ffmpeg_path,
+                    "-y",
+                    *input_args,
+                    "-t",
+                    f"{duration:.3f}",
+                    "-an",
+                    "-vf",
+                    video_filter,
+                    *cpu_profile.argv(preset=segment_preset, crf=segment_crf, threads=2),
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-color_range",
+                    "tv",
+                    "-colorspace",
+                    "bt709",
+                    "-color_primaries",
+                    "bt709",
+                    "-color_trc",
+                    "bt709",
+                    "-r",
+                    "30",
+                    "-fps_mode",
+                    "cfr",
+                    str(out_path),
+                ]
+                retry = subprocess.run(
+                    cpu_command,
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=180,
+                )
+                if retry.returncode == 0:
+                    self.last_video_encoder = "libx264"
+                    return
+                diagnostic = (
+                    diagnostic
+                    + " | cpu_fallback: "
+                    + retry.stderr.decode("utf-8", errors="ignore")[-800:].strip()
+                )
             raise RuntimeError(
                 f"fast visual segment render failed for {source_path.name} "
                 f"(ffmpeg exit {result.returncode}): {diagnostic}"
@@ -997,14 +1113,16 @@ class VideoBuilder:
             "-an",
             "-t",
             f"{duration:.3f}",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "21",
-            "-threads",
-            "2",
+            *self._h264_encode_argv(
+                ffmpeg_path=ffmpeg_path,
+                preset="veryfast",
+                crf=21,
+                threads=2,
+                # Final concat/ASS/logo graphs are unreliable on older Intel QSV
+                # drivers (Invalid FrameType). Keep GPU on segment encodes; use
+                # CPU here for a stable finish.
+                force="libx264",
+            ),
             "-pix_fmt",
             "yuv420p",
             "-color_range",
@@ -1262,6 +1380,220 @@ class VideoBuilder:
         report.raise_for_failure()
         return report
 
+    def _cps_issues_only(self, issues: list[str]) -> bool:
+        return bool(issues) and all(" reads at " in issue for issue in issues)
+
+    def _reflow_short_caption_chunks(
+        self,
+        beat_segments: list,
+        *,
+        target_cps: float,
+    ) -> list:
+        """Retry caption composition with a wider word budget when cues are dense.
+
+        Clears both CPS density and structural mid-phrase defects when a 6-word
+        budget can produce cleaner phrase boundaries than the 4-word default.
+        """
+        composer = self.subtitle_composer
+        captions = composer.caption_segments_from_scene_segments(beat_segments)
+        issues = composer.quality_issues(captions, cps_tolerance=0.0)
+        if not issues:
+            return captions
+        if composer.max_words < 6:
+            wider = SubtitleComposer(
+                max_words_per_caption=6,
+                max_chars_per_second=target_cps,
+            )
+            wider_captions = wider.caption_segments_from_scene_segments(beat_segments)
+            wider_issues = wider.quality_issues(wider_captions, cps_tolerance=0.0)
+            if not wider_issues:
+                return wider_captions
+            if len(wider_issues) < len(issues):
+                return wider_captions
+            # Prefer the wider track when only mid-phrase starts remain and the
+            # original track has more total defects.
+            wider_structural = [i for i in wider_issues if " reads at " not in i]
+            original_structural = [i for i in issues if " reads at " not in i]
+            if len(wider_structural) < len(original_structural):
+                return wider_captions
+        return captions
+
+    def _equalize_short_caption_timing(
+        self,
+        captions: list,
+        *,
+        total_duration: float,
+        target_cps: float,
+        composer: SubtitleComposer,
+    ) -> list:
+        """Rebuild cue times by character count so dense outliers share the budget."""
+        texts = [str(item.text or "").strip() for item in captions if str(item.text or "").strip()]
+        if len(texts) < 2 or total_duration <= 0:
+            return captions
+        rebuilt = composer._timeline(
+            texts,
+            total_duration,
+            min_seconds=min(0.75, total_duration / max(1, len(texts))),
+            max_cps=target_cps,
+        )
+        return rebuilt or captions
+
+    def _plan_short_caption_timeline(
+        self,
+        *,
+        beat_segments: list,
+        raw_duration: float,
+        duration_bounds: tuple[float, float],
+        composer: SubtitleComposer | None = None,
+    ) -> tuple[float, list, list, float]:
+        """Compose short captions; auto-repair CPS density before aborting.
+
+        Returns ``(duration, scaled_beats, captions, voice_tempo)``. Stretch is
+        bounded and only applied when reflow alone cannot clear the 16.5 CPS
+        repair gate. Structural caption defects still fail closed after a
+        wider-budget reflow attempt.
+        """
+        composer = composer or self.subtitle_composer
+        min_duration, max_duration = (float(value) for value in duration_bounds)
+        if raw_duration <= 0:
+            raise ShortCaptionPreflightError("short narration has no measurable duration")
+        if not beat_segments:
+            raise ShortCaptionPreflightError("no narration beat timeline was generated for the short")
+
+        target_cps = max(10.0, min(float(composer.max_cps), self.SHORT_CAPTION_TARGET_CPS))
+        captions = self._reflow_short_caption_chunks(beat_segments, target_cps=target_cps)
+        issues = composer.quality_issues(captions, cps_tolerance=0.0)
+        # If 4-word composer still reports structural issues on a 6-word track,
+        # re-check with the same max_words as the successful reflow.
+        structural = [issue for issue in issues if " reads at " not in issue]
+        allow_continuations = False
+        if structural and composer.max_words < 6:
+            wider = SubtitleComposer(
+                max_words_per_caption=6,
+                max_chars_per_second=target_cps,
+            )
+            wider_captions = wider.caption_segments_from_scene_segments(beat_segments)
+            # Evaluate with a 6-word composer so hard_word_limit matches the track.
+            wider_issues = wider.quality_issues(wider_captions, cps_tolerance=0.0)
+            if not wider_issues or len([i for i in wider_issues if " reads at " not in i]) < len(structural):
+                captions = wider_captions
+                issues = wider_issues
+                composer = wider
+                structural = [issue for issue in issues if " reads at " not in issue]
+        if structural:
+            # Long-form already allows readable clause continuations. After a
+            # wider-budget reflow, permit the same for shorts when the only
+            # remaining defects are mid-phrase starts (not flash fragments or
+            # dangling incomplete tails).
+            midphrase_only = all(
+                "begins in the middle of a phrase" in issue for issue in structural
+            )
+            if midphrase_only:
+                continued = composer.quality_issues(
+                    captions,
+                    cps_tolerance=0.0,
+                    allow_clause_continuations=True,
+                )
+                continued_structural = [
+                    issue for issue in continued if " reads at " not in issue
+                ]
+                if not continued_structural:
+                    structural = []
+                    issues = continued
+                    allow_continuations = True
+        if structural:
+            raise ShortCaptionPreflightError(
+                "short caption preflight failed before visual encoding: "
+                + "; ".join(structural[:5])
+            )
+
+        duration = min(max_duration, max(min_duration, raw_duration))
+        voice_tempo = 1.0
+        scaled_beats = list(beat_segments)
+        narration_words = sum(
+            len(re.findall(r"[A-Za-z0-9']+", str(getattr(segment, "text", "") or "")))
+            for segment in beat_segments
+        )
+        if narration_words > 0:
+            # Keep stretch from dropping below the production 135 WPM gate.
+            pacing_ceiling = narration_words * 60.0 / 135.0
+            if pacing_ceiling >= min_duration:
+                max_duration = min(max_duration, pacing_ceiling)
+                duration = min(duration, max_duration)
+
+        def worst_cps(items: list) -> float:
+            peak = 0.0
+            for caption in items:
+                caption_duration = max(0.001, float(caption.end) - float(caption.start))
+                peak = max(
+                    peak,
+                    composer._character_count(caption.text) / caption_duration,
+                )
+            return peak
+
+        cps_issues = [issue for issue in issues if " reads at " in issue]
+        if cps_issues:
+            required_scale = max(1.0, worst_cps(captions) / target_cps)
+            requested_duration = raw_duration * required_scale
+            if requested_duration > max_duration + 0.001:
+                requested_duration = max_duration
+                required_scale = requested_duration / max(0.001, raw_duration)
+            required_scale = min(required_scale, self.MAX_SHORT_NARRATION_STRETCH)
+            if required_scale > 1.0001:
+                scaled_beats = []
+                output_cursor = 0.0
+                for segment in beat_segments:
+                    raw_beat = max(0.001, float(segment.end) - float(segment.start))
+                    output_end = output_cursor + (raw_beat * required_scale)
+                    scaled_beats.append(replace(segment, start=output_cursor, end=output_end))
+                    output_cursor = output_end
+                duration = min(max_duration, output_cursor)
+                captions = composer.caption_segments_from_scene_segments(scaled_beats)
+                voice_tempo = raw_duration / max(0.001, duration)
+                # Prefer keeping >=135 WPM. Remaining CPS pressure is handled by
+                # equalize/reflow below; aborting here caused endless retries on
+                # otherwise usable continuity Shorts.
+
+        captions = self._equalize_short_caption_timing(
+            captions,
+            total_duration=duration,
+            target_cps=target_cps,
+            composer=composer,
+        )
+        equalized_issues = composer.quality_issues(
+            captions,
+            cps_tolerance=0.05,
+            allow_clause_continuations=allow_continuations,
+        )
+        if any(" reads at " not in issue for issue in equalized_issues) and not cps_issues:
+            captions = composer.caption_segments_from_scene_segments(scaled_beats)
+        final_issues = composer.quality_issues(
+            captions,
+            cps_tolerance=0.05,
+            allow_clause_continuations=allow_continuations,
+        )
+        cps_remaining = [issue for issue in final_issues if " reads at " in issue]
+        structural_remaining = [issue for issue in final_issues if " reads at " not in issue]
+        if cps_remaining and not structural_remaining:
+            captions = self._reflow_short_caption_chunks(scaled_beats, target_cps=target_cps)
+            captions = self._equalize_short_caption_timing(
+                captions,
+                total_duration=duration,
+                target_cps=target_cps,
+                composer=composer,
+            )
+            final_issues = composer.quality_issues(
+                captions,
+                cps_tolerance=0.05,
+                allow_clause_continuations=allow_continuations,
+            )
+        if final_issues:
+            raise ShortCaptionPreflightError(
+                "short caption preflight failed before visual encoding: "
+                + "; ".join(final_issues[:5])
+            )
+        return duration, scaled_beats, captions, voice_tempo
+
     def _build_short_fast_ffmpeg(
         self,
         image_paths: List[Path],
@@ -1276,29 +1608,52 @@ class VideoBuilder:
         duration_bounds: tuple[int, int],
         logo_path: Path | None,
         music_dir: Path,
+        channel_id: str | None = None,
     ) -> float:
         import imageio_ffmpeg
 
+        self.last_claim_card_text = ""
         raw_narration = AudioFileClip(str(narration_path))
         try:
             min_duration, max_duration = duration_bounds
-            duration = min(max_duration, max(1.0, raw_narration.duration))
+            raw_duration = float(raw_narration.duration)
             story_beats = self._story_beats(
                 title_text=title_text,
                 narration_text=narration_text,
                 visual_captions=visual_captions,
                 narration_beats=narration_beats,
             )
+            provisional_duration = min(max_duration, max(1.0, raw_duration))
             if scene_durations:
                 beat_segments = self.subtitle_composer.scene_segments_from_durations(
                     story_beats or narration_text,
                     scene_durations,
-                    total_duration=duration,
+                    total_duration=provisional_duration,
                 )
             else:
-                beat_segments = self.subtitle_composer.scene_segments(story_beats or narration_text, duration)
+                beat_segments = self.subtitle_composer.scene_segments(
+                    story_beats or narration_text,
+                    provisional_duration,
+                )
             if not beat_segments:
-                beat_segments = self.subtitle_composer.scene_segments(title_text or "Story", duration)
+                beat_segments = self.subtitle_composer.scene_segments(
+                    title_text or "Story",
+                    provisional_duration,
+                )
+
+            voice_tempo = 1.0
+            subtitle_segments: list = []
+            if self.subtitle_enabled and subtitles_path is not None and narration_text.strip():
+                duration, beat_segments, subtitle_segments, voice_tempo = (
+                    self._plan_short_caption_timeline(
+                        beat_segments=beat_segments,
+                        raw_duration=raw_duration,
+                        duration_bounds=(float(min_duration), float(max_duration)),
+                    )
+                )
+                self.subtitle_composer.write_srt(subtitles_path, subtitle_segments)
+            else:
+                duration = provisional_duration
 
             fast_segments, scene_images, beat_indices = self._beat_aligned_visual_plan(
                 image_paths=image_paths,
@@ -1307,20 +1662,6 @@ class VideoBuilder:
                 duration=duration,
             )
             self._write_visual_timeline(out_path, fast_segments, scene_images, beat_indices)
-
-            subtitle_segments = []
-            if self.subtitle_enabled and subtitles_path is not None and narration_text.strip():
-                subtitle_segments = self.subtitle_composer.caption_segments_from_scene_segments(beat_segments)
-                caption_issues = self.subtitle_composer.quality_issues(
-                    subtitle_segments,
-                    cps_tolerance=0.05,
-                )
-                if caption_issues:
-                    raise ShortCaptionPreflightError(
-                        "short caption preflight failed before visual encoding: "
-                        + "; ".join(caption_issues[:5])
-                    )
-                self.subtitle_composer.write_srt(subtitles_path, subtitle_segments)
 
             out_path.parent.mkdir(parents=True, exist_ok=True)
             temp_dir = Path(tempfile.mkdtemp(prefix="fast_short_", dir=str(out_path.parent)))
@@ -1350,8 +1691,19 @@ class VideoBuilder:
                         handle.write(f"file '{segment_path.as_posix()}'\n")
 
                 ass_path = temp_dir / "captions.ass"
+                claim_card = self._short_claim_card_text(title_text, channel_id)
+                if channel_id == "brain_lens" and not claim_card:
+                    raise ShortCaptionPreflightError(
+                        "Brain Lens Short requires a first-second claim card from the title"
+                    )
                 if self.subtitle_enabled and subtitle_segments:
-                    self._write_ass_captions(subtitle_segments[:28], ass_path)
+                    self._write_ass_captions(
+                        subtitle_segments[:28],
+                        ass_path,
+                        claim_card_text=claim_card,
+                    )
+                elif claim_card:
+                    self._write_ass_captions([], ass_path, claim_card_text=claim_card)
 
                 ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
                 diagnostic_path = out_path.with_suffix(".ffmpeg.log")
@@ -1385,6 +1737,7 @@ class VideoBuilder:
                     music_volume=0.105,
                     diagnostic_path=diagnostic_path,
                     timeout=300,
+                    voice_tempo=voice_tempo,
                 )
                 self._mux_and_validate_fast_render(
                     ffmpeg_path=ffmpeg_path,
@@ -1827,10 +2180,12 @@ class VideoBuilder:
         content_kind: str = "short",
         presenter_avatar_path: Path | None = None,
         presenter_layout_mode: str = "rotating_avatar_broll",
+        channel_id: str | None = None,
     ) -> float:
         if target_size:
             self.target_size = target_size
         self.last_music_path = None
+        self.last_claim_card_text = ""
         if not image_paths:
             raise RuntimeError('No images available to build video')
 
@@ -1850,6 +2205,7 @@ class VideoBuilder:
                     duration_bounds=(min_duration, max_duration),
                     logo_path=logo_path,
                     music_dir=music_dir,
+                    channel_id=channel_id,
                 )
             except ShortCaptionPreflightError:
                 # A different renderer cannot repair a structurally broken or
@@ -1942,6 +2298,7 @@ class VideoBuilder:
 
         # ── Step 3: subtitles use ORIGINAL beat_segments (synced to audio) ──
         subtitle_segments = []
+        voice_tempo = 1.0
         if self.subtitle_enabled and subtitles_path is not None and narration_text.strip():
             if content_kind == "video":
                 subtitle_segments = [
@@ -1954,15 +2311,30 @@ class VideoBuilder:
                     if self._section_caption_text(segment.text, content_kind)
                 ]
             else:
-                subtitle_segments = self.subtitle_composer.caption_segments_from_scene_segments(beat_segments)
-                caption_issues = self.subtitle_composer.quality_issues(
-                    subtitle_segments,
-                    cps_tolerance=0.05,
+                duration, beat_segments, subtitle_segments, voice_tempo = (
+                    self._plan_short_caption_timeline(
+                        beat_segments=beat_segments,
+                        raw_duration=spoken_duration,
+                        duration_bounds=(float(min_duration), float(max_duration)),
+                    )
                 )
-                if caption_issues:
-                    raise ShortCaptionPreflightError(
-                        "short caption preflight failed before visual encoding: "
-                        + "; ".join(caption_issues[:5])
+                if abs(voice_tempo - 1.0) > 0.001:
+                    from moviepy.audio.fx.all import audio_speedx
+
+                    narration = audio_speedx(narration, voice_tempo)
+                    spoken_duration = float(duration)
+                    narration = narration.set_duration(duration)
+                    fast_visual_segments, scene_images, beat_indices = self._beat_aligned_visual_plan(
+                        image_paths=image_paths,
+                        beat_segments=beat_segments,
+                        story_beats=story_beats,
+                        duration=duration,
+                    )
+                    self._write_visual_timeline(
+                        out_path,
+                        fast_visual_segments,
+                        scene_images,
+                        beat_indices,
                     )
             self.subtitle_composer.write_srt(subtitles_path, subtitle_segments)
 
@@ -2044,6 +2416,37 @@ class VideoBuilder:
                     print(f"Caption failure: {e}")
                     continue
 
+        claim_card = self._short_claim_card_text(title_text, channel_id)
+        if content_kind == "short" and channel_id == "brain_lens" and not claim_card:
+            raise ShortCaptionPreflightError(
+                "Brain Lens Short requires a first-second claim card from the title"
+            )
+        if claim_card:
+            try:
+                claim_array = self._render_word_caption(
+                    claim_card,
+                    highlight=False,
+                    width=min(980, self.target_size[0] - 60),
+                )
+                claim_overlay = ImageClip(
+                    claim_array if isinstance(claim_array, np.ndarray) else np.array(claim_array),
+                    transparent=True,
+                )
+                claim_overlay = (
+                    claim_overlay
+                    .set_start(0.0)
+                    .set_duration(1.15)
+                    .set_position(("center", max(48, int(self.target_size[1] * 0.06))))
+                )
+                composite_sources.append(claim_overlay)
+                self.last_claim_card_text = claim_card
+            except Exception as exc:
+                print(f"Claim card overlay skipped: {exc}")
+                if channel_id == "brain_lens" and content_kind == "short":
+                    raise ShortCaptionPreflightError(
+                        f"Brain Lens claim card render failed: {exc}"
+                    ) from exc
+
         final_video = CompositeVideoClip(composite_sources, size=self.target_size) if len(composite_sources) > 1 else video
         final_video = final_video.set_duration(duration)
 
@@ -2060,17 +2463,39 @@ class VideoBuilder:
 
         final = final_video.set_audio(audio)
         temp_audio = str(out_path.with_suffix(".temp_audio.m4a"))
-        final.write_videofile(
-            str(out_path),
-            fps=30,
-            codec='libx264',
-            audio_codec='aac',
-            preset='veryfast',
-            threads=2,
-            temp_audiofile=temp_audio,
-            remove_temp=False,
-            logger=None,
-        )
+        encode_profile = resolve_h264_encode_profile()
+        self.last_video_encoder = encode_profile.name
+        write_kwargs = {
+            "fps": 30,
+            "codec": moviepy_codec_name(encode_profile),
+            "audio_codec": "aac",
+            "threads": 2,
+            "temp_audiofile": temp_audio,
+            "remove_temp": False,
+            "logger": None,
+        }
+        # MoviePy only documents libx264 preset/CRF style options.
+        if encode_profile.name == "libx264":
+            write_kwargs["preset"] = "veryfast"
+        try:
+            final.write_videofile(str(out_path), **write_kwargs)
+        except Exception:
+            # If a GPU codec fails mid-write, fall back to CPU once.
+            if encode_profile.name != "libx264":
+                self.last_video_encoder = "libx264"
+                final.write_videofile(
+                    str(out_path),
+                    fps=30,
+                    codec="libx264",
+                    audio_codec="aac",
+                    preset="veryfast",
+                    threads=2,
+                    temp_audiofile=temp_audio,
+                    remove_temp=False,
+                    logger=None,
+                )
+            else:
+                raise
 
         final.close()
         try:

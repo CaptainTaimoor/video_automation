@@ -74,6 +74,16 @@ class ContentProfile:
 
 
 @dataclass
+class MonetizationConfig:
+    enabled: bool = True
+    long_form_playlist_url: str = ""
+    long_form_cta: str = ""
+    pinned_comment_template: str = ""
+    # Each item: {"label": str, "url_env": str} — URL resolved from .env at runtime.
+    affiliates: List[dict] = field(default_factory=list)
+
+
+@dataclass
 class ChannelConfig:
     id: str
     display_name: str
@@ -109,6 +119,7 @@ class ChannelConfig:
     viral_dna_channels: List[str] = field(default_factory=list)
     # Visual style for AI image generation (documentary, dark-tech, anime, etc.)
     visual_style: str = "documentary"
+    monetization: MonetizationConfig = field(default_factory=MonetizationConfig)
 
 
 @dataclass
@@ -126,10 +137,20 @@ class ScriptWriterConfig:
     openai_compatible_model: str = ""
     openai_compatible_api_key_env: str = "AI_GATEWAY_API_KEY"
     openai_compatible_allowed_hosts: List[str] = field(
-        default_factory=lambda: ["router.huggingface.co"]
+        default_factory=lambda: [
+            "router.huggingface.co",
+            "api.groq.com",
+            "api.mistral.ai",
+        ]
     )
     openai_compatible_timeout_seconds: int = 90
     openai_compatible_disable_thinking: bool = False
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_url: str = "https://api.groq.com/openai/v1"
+    groq_api_key_env: str = "GROQ_API_KEY"
+    mistral_model: str = "mistral-small-latest"
+    mistral_url: str = "https://api.mistral.ai/v1"
+    mistral_api_key_env: str = "MISTRAL_API_KEY"
 
 
 @dataclass

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 import re
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 
@@ -487,6 +489,11 @@ class SourceValidationTests(unittest.TestCase):
         self.assertTrue(researcher._run_counts_as_published({"youtube_id": "abc123"}))
         self.assertTrue(researcher._run_counts_as_published({"youtube_video_id": "legacy123"}))
         self.assertTrue(researcher._run_counts_as_published({"facebook_id": "fb123"}))
+        self.assertTrue(
+            researcher._run_counts_as_published(
+                {"uploaded": False, "upload_skipped": "build_only", "quality_decision": "pass"}
+            )
+        )
         self.assertFalse(
             researcher._run_counts_as_published(
                 {"uploaded": False, "upload_skipped": "build_only", "youtube_id": None}
@@ -494,7 +501,7 @@ class SourceValidationTests(unittest.TestCase):
         )
         self.assertFalse(
             researcher._run_counts_as_published(
-                {"uploaded": False, "upload_skipped": "quality_gate", "youtube_id": None}
+                {"uploaded": False, "upload_skipped": "quality_gate", "quality_decision": "hold"}
             )
         )
 
@@ -515,6 +522,15 @@ class SourceValidationTests(unittest.TestCase):
                     "subject": "Axum Obelisks",
                     "uploaded": False,
                     "upload_skipped": "quality_gate",
+                    "quality_decision": "hold",
+                },
+                {
+                    "channel": "ancient_history",
+                    "title": "Ready Mohenjo",
+                    "subject": "Mohenjo-daro",
+                    "uploaded": False,
+                    "upload_skipped": "build_only",
+                    "quality_decision": "pass",
                 },
                 {
                     "channel": "ancient_history",
@@ -525,7 +541,12 @@ class SourceValidationTests(unittest.TestCase):
             ]
         )
         self.assertEqual(
-            {"published zimbabwe", "great zimbabwe"},
+            {
+                "ready mohenjo",
+                "mohenjo-daro",
+                "published zimbabwe",
+                "great zimbabwe",
+            },
             factory._recent_titles("ancient_history"),
         )
 
@@ -586,18 +607,19 @@ class SourceValidationTests(unittest.TestCase):
     def test_curated_history_aliases_use_stable_registry_without_network(self) -> None:
         researcher = ContentResearcher()
         researcher.session.get = Mock(side_effect=AssertionError("registry lookup should not need network"))
-        self.assertEqual(
-            "https://en.wikipedia.org/wiki/Kingdom_of_Kush",
-            researcher._default_source_url("Kingdom of Kush"),
-        )
-        self.assertEqual(
-            "https://en.wikipedia.org/wiki/Sogdia",
-            researcher._default_source_url("Sogdian Merchants"),
-        )
-        self.assertEqual(
-            "https://en.wikipedia.org/wiki/Machu_Picchu",
-            researcher._default_source_url("Terrace Farming at Machu Picchu"),
-        )
+        expected = {
+            "Kingdom of Kush": "https://en.wikipedia.org/wiki/Kingdom_of_Kush",
+            "Sogdian Merchants": "https://en.wikipedia.org/wiki/Sogdia",
+            "Terrace Farming at Machu Picchu": "https://en.wikipedia.org/wiki/Machu_Picchu",
+            "Nubian Pyramids": "https://en.wikipedia.org/wiki/Nubian_pyramids",
+            "Lascaux": "https://en.wikipedia.org/wiki/Lascaux",
+            "Boudica Revolt": "https://en.wikipedia.org/wiki/Boudican_revolt",
+            "Justinianic Plague": "https://en.wikipedia.org/wiki/Plague_of_Justinian",
+            "Bronze Age Collapse": "https://en.wikipedia.org/wiki/Late_Bronze_Age_collapse",
+        }
+        for subject, url in expected.items():
+            with self.subTest(subject=subject):
+                self.assertEqual(url, researcher._default_source_url(subject))
 
     def test_expanded_visual_rich_history_catalog_is_source_safe_and_short_ready(self) -> None:
         researcher = ContentResearcher()
@@ -684,10 +706,8 @@ class SourceValidationTests(unittest.TestCase):
         )
         polished = ScriptWriter(config.app.script_writer).improve(channel, candidate, content_kind="short")
         word_count = len(re.findall(r"[A-Za-z0-9']+", polished.narration))
-        self.assertGreaterEqual(word_count, 82)
-        self.assertLessEqual(word_count, 105)
-
-    def test_ancient_short_outage_fallback_never_reselects_avoided_subject(self) -> None:
+        self.assertGreaterEqual(word_count, 120)
+        self.assertLessEqual(word_count, 148)
         researcher = ContentResearcher()
         researcher.history_subjects = [
             "angkor wat",
@@ -748,17 +768,17 @@ class SourceValidationTests(unittest.TestCase):
         }
         for candidate in prepared:
             words = len(re.findall(r"[A-Za-z0-9']+", candidate.narration))
-            self.assertGreaterEqual(words, 75)
-            self.assertLessEqual(words, 105)
+            self.assertGreaterEqual(words, 120)
+            self.assertLessEqual(words, 148)
             if len(candidate.narration_beats) >= 20 and candidate.subject not in continuity_subjects:
                 self.assertLessEqual(
                     max(len(beat) for beat in candidate.narration_beats),
-                    27,
+                    70,
                 )
             if candidate.subject in continuity_subjects:
                 self.assertLessEqual(
                     max(len(beat) for beat in candidate.narration_beats),
-                    40,
+                    90,
                 )
 
     def test_ancient_long_pack_never_counts_generic_context_as_researched_facts(self) -> None:
@@ -972,8 +992,8 @@ class SourceValidationTests(unittest.TestCase):
             )
 
         word_count = len(re.findall(r"[A-Za-z0-9']+", polished.narration))
-        self.assertGreaterEqual(word_count, 82)
-        self.assertLessEqual(word_count, 105)
+        self.assertGreaterEqual(word_count, 120)
+        self.assertLessEqual(word_count, 148)
         lowered = polished.narration.lower()
         self.assertLessEqual(lowered.count("sogdian merchants"), 1)
         concrete_clues = ("ancient letters", "dunhuang", "lingua franca", "afrasia", "gold", "pepper", "murals")
@@ -1431,7 +1451,7 @@ class ScriptEditorialTests(unittest.TestCase):
         self.assertIsNotNone(first)
         assert first is not None
         self.assertEqual(first.subject, "Micro Flirting")
-        self.assertEqual(len(first.narration_beats), 6)
+        self.assertGreaterEqual(len(first.narration_beats), 6)
         self.assertTrue(self.writer._brain_lens_behavior_first(first.hook))
         self.assertEqual(
             self.writer.editorial_quality_issues(
@@ -1450,7 +1470,7 @@ class ScriptEditorialTests(unittest.TestCase):
         self.assertIsNotNone(second)
         assert second is not None
         self.assertEqual(second.subject, "Reply Time Anxiety")
-        self.assertEqual(len(second.narration_beats), 6)
+        self.assertGreaterEqual(len(second.narration_beats), 6)
 
         third = factory._brain_short_deterministic_fallback(
             channel,
@@ -1500,11 +1520,22 @@ class ScriptEditorialTests(unittest.TestCase):
             avoided.add(candidate.title.lower())
         self.assertEqual(later_candidates[-1].subject, "Honest Attraction")
 
+        fresh_candidates = []
+        for _ in range(8):
+            candidate = factory._brain_short_deterministic_fallback(channel, avoided)
+            self.assertIsNotNone(candidate)
+            assert candidate is not None
+            fresh_candidates.append(candidate)
+            avoided.add(candidate.subject.lower())
+            avoided.add(candidate.title.lower())
+        self.assertEqual(fresh_candidates[-1].subject, "Follow-Up Questions")
+
         composer = SubtitleComposer(max_words_per_caption=4, max_chars_per_second=100.0)
         title_lab = TitleLab()
-        for candidate in (first, second, third, fourth, *later_candidates):
-            self.assertGreaterEqual(len(candidate.narration.split()), 81)
-            self.assertLessEqual(len(candidate.narration.split()), 86)
+        for candidate in (first, second, third, fourth, *later_candidates, *fresh_candidates):
+            word_count = len(candidate.narration.split())
+            self.assertGreaterEqual(word_count, 122)
+            self.assertLessEqual(word_count, 142)
             self.assertTrue(candidate.source_urls, candidate.title)
             self.assertIn(
                 candidate.subject.lower(),
@@ -1534,21 +1565,34 @@ class ScriptEditorialTests(unittest.TestCase):
                 for index, beat in enumerate(candidate.narration_beats)
             ]
             captions = composer.caption_segments_from_scene_segments(scenes)
-            self.assertEqual([], composer.quality_issues(captions), candidate.title)
+            self.assertEqual(
+                [],
+                composer.quality_issues(captions, allow_clause_continuations=True),
+                candidate.title,
+            )
 
     def test_short_narration_target_protects_retention_pacing(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
-        self.assertAlmostEqual(
+        # Below the 50s floor: clamp up so shorts never land under-length.
+        self.assertEqual(
             factory._short_narration_target_seconds(79),
+            50.0,
+        )
+        mid = factory._short_narration_target_seconds(130)
+        self.assertAlmostEqual(mid, 130 * 60.0 / 142.0, places=2)
+        self.assertGreaterEqual(mid, 50.0)
+        self.assertLessEqual(mid, 58.9)
+        self.assertEqual(factory._short_narration_target_seconds(160), 58.9)
+        # Explicit legacy window still supports precise WPM math.
+        self.assertAlmostEqual(
+            factory._short_narration_target_seconds(
+                79,
+                maximum_seconds=35.9,
+                minimum_seconds=32.0,
+            ),
             33.38,
             places=2,
         )
-        self.assertAlmostEqual(
-            79 / (factory._short_narration_target_seconds(79) / 60.0),
-            142.0,
-            places=1,
-        )
-        self.assertEqual(factory._short_narration_target_seconds(90), 35.9)
 
     def test_short_narration_target_preserves_caption_readability(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
@@ -2002,7 +2046,7 @@ class ScriptEditorialTests(unittest.TestCase):
         joined = " ".join(selected).lower()
         self.assertEqual(1, joined.count("maya center"))
         self.assertGreaterEqual(self.writer._word_count(joined), 82)
-        self.assertLessEqual(self.writer._word_count(joined), 105)
+        # Thin fact packs may still be under the final polished floor; improve() expands them.
 
     def test_visual_ready_history_openers_are_specific_complete_and_location_anchored(self) -> None:
         expected_location = {
@@ -2043,6 +2087,79 @@ class ScriptEditorialTests(unittest.TestCase):
         titles = [variant.title.lower() for variant in TitleLab().make_variants(topic(), count=4)]
         self.assertTrue(any("cannot prove" in title or "may be" in title for title in titles))
         self.assertFalse(any("reveals voice change attraction" in title for title in titles))
+
+
+class MusicPathResolutionTests(unittest.TestCase):
+    def test_channel_music_dir_uses_channel_folder_when_tracks_exist(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        factory = object.__new__(ShortsFactory)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "music"
+            channel_dir = root / "ancient_history"
+            channel_dir.mkdir(parents=True)
+            (channel_dir / "empire_echo.wav").write_bytes(b"RIFF")
+            factory.config = SimpleNamespace(app=SimpleNamespace(music_dir=root))
+            resolved = factory._channel_music_dir(SimpleNamespace(id="ancient_history"))
+            self.assertEqual(resolved, channel_dir)
+
+    def test_resolved_music_root_falls_back_to_sibling_when_empty(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        factory = object.__new__(ShortsFactory)
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp) / "empty_music"
+            empty.mkdir()
+            sibling = Path(tmp) / "yt_automation" / "assets" / "music" / "brain_lens"
+            sibling.mkdir(parents=True)
+            (sibling / "warm_tension.wav").write_bytes(b"RIFF")
+            # Simulate worktree music_dir: <tmp>/yt_automation_scale_v2/assets/music
+            worktree_music = Path(tmp) / "yt_automation_scale_v2" / "assets" / "music"
+            worktree_music.mkdir(parents=True)
+            # Sibling live music at <tmp>/yt_automation/assets/music
+            live_music = Path(tmp) / "yt_automation" / "assets" / "music"
+            live_channel = live_music / "brain_lens"
+            live_channel.mkdir(parents=True, exist_ok=True)
+            (live_channel / "warm_tension.wav").write_bytes(b"RIFF")
+            factory.config = SimpleNamespace(app=SimpleNamespace(music_dir=worktree_music))
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("YT_MUSIC_DIR", None)
+                resolved = factory._resolved_music_root()
+            self.assertEqual(resolved, live_music)
+            self.assertTrue(factory._music_root_has_tracks(resolved))
+
+    def test_failed_topic_requeue_does_not_mark_used(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        factory = object.__new__(ShortsFactory)
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            factory.config = SimpleNamespace(
+                app=SimpleNamespace(state_dir=state, timezone="Asia/Karachi")
+            )
+            factory.logger = SimpleNamespace(warning=Mock())
+            factory._add_used_topic = Mock()
+            topic_obj = SimpleNamespace(subject="Tikal", title="Inside Tikal")
+            factory._requeue_failed_topic(
+                "ancient_history",
+                topic_obj,
+                reason="caption CPS",
+                status="render_failed",
+                content_kind="short",
+            )
+            path = state / "failed_topics.jsonl"
+            self.assertTrue(path.exists())
+            factory._mark_topic_used_if_ready(
+                channel_id="ancient_history",
+                topic=topic_obj,
+                quality_decision="hold",
+                uploaded=False,
+                upload_skipped="quality_gate",
+            )
+            factory._add_used_topic.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,635 @@
+[
+  {
+    "channel": "brain_lens",
+    "kind": "short",
+    "count": 10,
+    "duplicate_count": 4,
+    "duplicates": [
+      {
+        "index": 2,
+        "title": "Why your mind gets stuck here: Analysis Paralysis",
+        "subject": "Analysis Paralysis",
+        "overlap": [
+          "analysis paralysis",
+          "the psychology behind analysis paralysis",
+          "why your brain does this: analysis paralysis"
+        ]
+      },
+      {
+        "index": 4,
+        "title": "Why people act this way: Attachment Styles",
+        "subject": "Attachment Styles",
+        "overlap": [
+          "attachment styles",
+          "the psychology behind attachment styles",
+          "why your brain does this: attachment styles"
+        ]
+      },
+      {
+        "index": 7,
+        "title": "The psychology behind Attachment Styles",
+        "subject": "Attachment Styles",
+        "overlap": [
+          "attachment styles",
+          "the behavior pattern behind attachment styles",
+          "the psychology behind attachment styles",
+          "why your brain does this: attachment styles"
+        ]
+      },
+      {
+        "index": 10,
+        "title": "The psychology behind Anchoring Effect",
+        "subject": "Anchoring Effect",
+        "overlap": [
+          "anchoring effect",
+          "the behavior pattern behind anchoring effect",
+          "the psychology behind anchoring effect",
+          "why your brain does this: anchoring effect"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "index": 1,
+        "kind": "short",
+        "title": "The psychology behind Analysis Paralysis",
+        "subject": "Analysis Paralysis",
+        "hook": "Your brain is not broken. This is Analysis Paralysis.",
+        "title_variants": [
+          "The psychology behind Analysis Paralysis",
+          "Why your brain does this: Analysis Paralysis",
+          "The behavior pattern behind Analysis Paralysis"
+        ]
+      },
+      {
+        "index": 2,
+        "kind": "short",
+        "title": "Why your mind gets stuck here: Analysis Paralysis",
+        "subject": "Analysis Paralysis",
+        "hook": "Once you understand Why your mind gets stuck here: Analysis Paralysis, a lot of human behavior starts to make sense.",
+        "title_variants": [
+          "Why your mind gets stuck here: Analysis Paralysis",
+          "The psychology behind Analysis Paralysis",
+          "Why your brain does this: Analysis Paralysis"
+        ]
+      },
+      {
+        "index": 3,
+        "kind": "short",
+        "title": "The psychology behind Attachment Styles",
+        "subject": "Attachment Styles",
+        "hook": "If you have ever felt stuck, this is probably why: Attachment Styles.",
+        "title_variants": [
+          "The psychology behind Attachment Styles",
+          "Why your brain does this: Attachment Styles",
+          "The behavior pattern behind Attachment Styles"
+        ]
+      },
+      {
+        "index": 4,
+        "kind": "short",
+        "title": "Why people act this way: Attachment Styles",
+        "subject": "Attachment Styles",
+        "hook": "If you have ever felt stuck, this is probably why: Why people act this way: Attachment Styles.",
+        "title_variants": [
+          "Why people act this way: Attachment Styles",
+          "The psychology behind Attachment Styles",
+          "Why your brain does this: Attachment Styles"
+        ]
+      },
+      {
+        "index": 5,
+        "kind": "short",
+        "title": "The psychology behind Anchoring Effect",
+        "subject": "Anchoring Effect",
+        "hook": "Once you understand Anchoring Effect, a lot of human behavior starts to make sense.",
+        "title_variants": [
+          "The psychology behind Anchoring Effect",
+          "Why your brain does this: Anchoring Effect",
+          "The behavior pattern behind Anchoring Effect"
+        ]
+      },
+      {
+        "index": 6,
+        "kind": "short",
+        "title": "The psychology behind Burnout",
+        "subject": "Burnout",
+        "hook": "A psychology pattern like Burnout quietly shapes everyday behavior.",
+        "title_variants": [
+          "The psychology behind Burnout",
+          "Why your brain does this: Burnout",
+          "The behavior pattern behind Burnout"
+        ]
+      },
+      {
+        "index": 7,
+        "kind": "short",
+        "title": "The psychology behind Attachment Styles",
+        "subject": "Attachment Styles",
+        "hook": "This tiny pattern changes decisions every day: Attachment Styles.",
+        "title_variants": [
+          "The psychology behind Attachment Styles",
+          "Why your brain does this: Attachment Styles",
+          "The behavior pattern behind Attachment Styles"
+        ]
+      },
+      {
+        "index": 8,
+        "kind": "short",
+        "title": "The psychology behind Attention Span",
+        "subject": "Attention Span",
+        "hook": "Once you understand Attention Span, a lot of human behavior starts to make sense.",
+        "title_variants": [
+          "The psychology behind Attention Span",
+          "Why your brain does this: Attention Span",
+          "The behavior pattern behind Attention Span"
+        ]
+      },
+      {
+        "index": 9,
+        "kind": "short",
+        "title": "The psychology behind Body Language",
+        "subject": "Body Language",
+        "hook": "This tiny pattern changes decisions every day: Body Language.",
+        "title_variants": [
+          "The psychology behind Body Language",
+          "Why your brain does this: Body Language",
+          "The behavior pattern behind Body Language"
+        ]
+      },
+      {
+        "index": 10,
+        "kind": "short",
+        "title": "The psychology behind Anchoring Effect",
+        "subject": "Anchoring Effect",
+        "hook": "Once you understand Anchoring Effect, a lot of human behavior starts to make sense.",
+        "title_variants": [
+          "The psychology behind Anchoring Effect",
+          "Why your brain does this: Anchoring Effect",
+          "The behavior pattern behind Anchoring Effect"
+        ]
+      }
+    ]
+  },
+  {
+    "channel": "brain_lens",
+    "kind": "video",
+    "count": 10,
+    "duplicate_count": 3,
+    "duplicates": [
+      {
+        "index": 5,
+        "title": "The psychology behind Analysis Paralysis",
+        "subject": "Analysis Paralysis",
+        "overlap": [
+          "analysis paralysis",
+          "the behavior pattern behind analysis paralysis",
+          "the psychology behind analysis paralysis",
+          "why your brain does this: analysis paralysis"
+        ]
+      },
+      {
+        "index": 8,
+        "title": "The psychology behind Brain Fog",
+        "subject": "Brain Fog",
+        "overlap": [
+          "brain fog",
+          "the behavior pattern behind brain fog",
+          "the psychology behind brain fog",
+          "why your brain does this: brain fog"
+        ]
+      },
+      {
+        "index": 10,
+        "title": "The psychology behind Attention Span",
+        "subject": "Attention Span",
+        "overlap": [
+          "attention span",
+          "the behavior pattern behind attention span",
+          "the psychology behind attention span",
+          "why your brain does this: attention span"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "index": 1,
+        "kind": "video",
+        "title": "The psychology behind Anchoring Effect",
+        "subject": "Anchoring Effect",
+        "hook": "If you have ever felt stuck, this is probably why: Anchoring Effect.",
+        "title_variants": [
+          "The psychology behind Anchoring Effect",
+          "Why your brain does this: Anchoring Effect",
+          "The behavior pattern behind Anchoring Effect"
+        ]
+      },
+      {
+        "index": 2,
+        "kind": "video",
+        "title": "The psychology behind Analysis Paralysis",
+        "subject": "Analysis Paralysis",
+        "hook": "Your brain is not broken. This is Analysis Paralysis.",
+        "title_variants": [
+          "The psychology behind Analysis Paralysis",
+          "Why your brain does this: Analysis Paralysis",
+          "The behavior pattern behind Analysis Paralysis"
+        ]
+      },
+      {
+        "index": 3,
+        "kind": "video",
+        "title": "Why people act this way: Attachment Styles",
+        "subject": "Attachment Styles",
+        "hook": "If you have ever felt stuck, this is probably why: Why people act this way: Attachment Styles.",
+        "title_variants": [
+          "Why people act this way: Attachment Styles",
+          "The psychology behind Attachment Styles",
+          "Why your brain does this: Attachment Styles"
+        ]
+      },
+      {
+        "index": 4,
+        "kind": "video",
+        "title": "The psychology behind Attention Span",
+        "subject": "Attention Span",
+        "hook": "Once you understand Attention Span, a lot of human behavior starts to make sense.",
+        "title_variants": [
+          "The psychology behind Attention Span",
+          "Why your brain does this: Attention Span",
+          "The behavior pattern behind Attention Span"
+        ]
+      },
+      {
+        "index": 5,
+        "kind": "video",
+        "title": "The psychology behind Analysis Paralysis",
+        "subject": "Analysis Paralysis",
+        "hook": "This tiny pattern changes decisions every day: Analysis Paralysis.",
+        "title_variants": [
+          "The psychology behind Analysis Paralysis",
+          "Why your brain does this: Analysis Paralysis",
+          "The behavior pattern behind Analysis Paralysis"
+        ]
+      },
+      {
+        "index": 6,
+        "kind": "video",
+        "title": "The psychology behind Burnout",
+        "subject": "Burnout",
+        "hook": "If you have ever felt stuck, this is probably why: Burnout.",
+        "title_variants": [
+          "The psychology behind Burnout",
+          "Why your brain does this: Burnout",
+          "The behavior pattern behind Burnout"
+        ]
+      },
+      {
+        "index": 7,
+        "kind": "video",
+        "title": "The psychology behind Brain Fog",
+        "subject": "Brain Fog",
+        "hook": "A psychology pattern like Brain Fog quietly shapes everyday behavior.",
+        "title_variants": [
+          "The psychology behind Brain Fog",
+          "Why your brain does this: Brain Fog",
+          "The behavior pattern behind Brain Fog"
+        ]
+      },
+      {
+        "index": 8,
+        "kind": "video",
+        "title": "The psychology behind Brain Fog",
+        "subject": "Brain Fog",
+        "hook": "If you have ever felt stuck, this is probably why: Brain Fog.",
+        "title_variants": [
+          "The psychology behind Brain Fog",
+          "Why your brain does this: Brain Fog",
+          "The behavior pattern behind Brain Fog"
+        ]
+      },
+      {
+        "index": 9,
+        "kind": "video",
+        "title": "The psychology behind Choice Overload",
+        "subject": "Choice Overload",
+        "hook": "This tiny pattern changes decisions every day: Choice Overload.",
+        "title_variants": [
+          "The psychology behind Choice Overload",
+          "Why your brain does this: Choice Overload",
+          "The behavior pattern behind Choice Overload"
+        ]
+      },
+      {
+        "index": 10,
+        "kind": "video",
+        "title": "The psychology behind Attention Span",
+        "subject": "Attention Span",
+        "hook": "This tiny pattern changes decisions every day: Attention Span.",
+        "title_variants": [
+          "The psychology behind Attention Span",
+          "Why your brain does this: Attention Span",
+          "The behavior pattern behind Attention Span"
+        ]
+      }
+    ]
+  },
+  {
+    "channel": "ancient_history",
+    "kind": "short",
+    "count": 10,
+    "duplicate_count": 1,
+    "duplicates": [
+      {
+        "index": 3,
+        "title": "The real story of Tomb of Qin Shi Huang",
+        "subject": "Tomb of Qin Shi Huang",
+        "overlap": [
+          "the lesson inside tomb of qin shi huang",
+          "the real story of tomb of qin shi huang",
+          "tomb of qin shi huang",
+          "what tomb of qin shi huang reveals about survival"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "index": 1,
+        "kind": "short",
+        "title": "The real story of Fall of Constantinople",
+        "subject": "Fall of Constantinople",
+        "hook": "This part of history is easy to miss: Fall of Constantinople.",
+        "title_variants": [
+          "The real story of Fall of Constantinople",
+          "The true story of Fall of Constantinople",
+          "What really happened in Fall of Constantinople"
+        ]
+      },
+      {
+        "index": 2,
+        "kind": "short",
+        "title": "The real story of Tomb of Qin Shi Huang",
+        "subject": "Tomb of Qin Shi Huang",
+        "hook": "History left out the most gripping part of Tomb of Qin Shi Huang, so here it is.",
+        "title_variants": [
+          "The real story of Tomb of Qin Shi Huang",
+          "The lesson inside Tomb of Qin Shi Huang",
+          "What Tomb of Qin Shi Huang reveals about survival"
+        ]
+      },
+      {
+        "index": 3,
+        "kind": "short",
+        "title": "The real story of Tomb of Qin Shi Huang",
+        "subject": "Tomb of Qin Shi Huang",
+        "hook": "Historians still argue about Tomb of Qin Shi Huang, and here is why.",
+        "title_variants": [
+          "The real story of Tomb of Qin Shi Huang",
+          "The lesson inside Tomb of Qin Shi Huang",
+          "What Tomb of Qin Shi Huang reveals about survival"
+        ]
+      },
+      {
+        "index": 4,
+        "kind": "short",
+        "title": "The real story of Code of Hammurabi",
+        "subject": "Code of Hammurabi",
+        "hook": "One moment changed everything in Code of Hammurabi.",
+        "title_variants": [
+          "The real story of Code of Hammurabi",
+          "The lesson inside Code of Hammurabi",
+          "What Code of Hammurabi reveals about survival"
+        ]
+      },
+      {
+        "index": 5,
+        "kind": "short",
+        "title": "The real story of Battle of Teutoburg Forest",
+        "subject": "Battle of Teutoburg Forest",
+        "hook": "This is the ancient story most people never hear about Battle of Teutoburg Forest.",
+        "title_variants": [
+          "The real story of Battle of Teutoburg Forest",
+          "The lesson inside Battle of Teutoburg Forest",
+          "What Battle of Teutoburg Forest reveals about survival"
+        ]
+      },
+      {
+        "index": 6,
+        "kind": "short",
+        "title": "The real story of Petra",
+        "subject": "Petra",
+        "hook": "This is the ancient story most people never hear about Petra.",
+        "title_variants": [
+          "The real story of Petra",
+          "The true story of Petra",
+          "What really happened in Petra"
+        ]
+      },
+      {
+        "index": 7,
+        "kind": "short",
+        "title": "The real story of Battle of Thermopylae",
+        "subject": "Battle of Thermopylae",
+        "hook": "History left out the most gripping part of Battle of Thermopylae, so here it is.",
+        "title_variants": [
+          "The real story of Battle of Thermopylae",
+          "The true story of Battle of Thermopylae",
+          "What really happened in Battle of Thermopylae"
+        ]
+      },
+      {
+        "index": 8,
+        "kind": "short",
+        "title": "The real story of Antikythera mechanism",
+        "subject": "Antikythera mechanism",
+        "hook": "History left out the most gripping part of Antikythera mechanism, so here it is.",
+        "title_variants": [
+          "The real story of Antikythera mechanism",
+          "The true story of Antikythera mechanism",
+          "What really happened in Antikythera mechanism"
+        ]
+      },
+      {
+        "index": 9,
+        "kind": "short",
+        "title": "The real story of Terracotta Army",
+        "subject": "Terracotta Army",
+        "hook": "One moment changed everything in Terracotta Army.",
+        "title_variants": [
+          "The real story of Terracotta Army",
+          "The lesson inside Terracotta Army",
+          "What Terracotta Army reveals about survival"
+        ]
+      },
+      {
+        "index": 10,
+        "kind": "short",
+        "title": "The real story of Cadaver Synod",
+        "subject": "Cadaver Synod",
+        "hook": "This is the ancient story most people never hear about Cadaver Synod.",
+        "title_variants": [
+          "The real story of Cadaver Synod",
+          "3 facts that explain Cadaver Synod",
+          "3 details that changed Cadaver Synod"
+        ]
+      }
+    ]
+  },
+  {
+    "channel": "ancient_history",
+    "kind": "video",
+    "count": 10,
+    "duplicate_count": 3,
+    "duplicates": [
+      {
+        "index": 8,
+        "title": "The real story of Oracle of Delphi",
+        "subject": "Oracle of Delphi",
+        "overlap": [
+          "oracle of delphi",
+          "the real story of oracle of delphi"
+        ]
+      },
+      {
+        "index": 9,
+        "title": "The real story of Battle of Teutoburg Forest",
+        "subject": "Battle of Teutoburg Forest",
+        "overlap": [
+          "battle of teutoburg forest",
+          "the real story of battle of teutoburg forest"
+        ]
+      },
+      {
+        "index": 10,
+        "title": "The real story of Oracle of Delphi",
+        "subject": "Oracle of Delphi",
+        "overlap": [
+          "oracle of delphi",
+          "the real story of oracle of delphi"
+        ]
+      }
+    ],
+    "items": [
+      {
+        "index": 1,
+        "kind": "video",
+        "title": "The real story of Sack of Rome (410)",
+        "subject": "Sack of Rome (410)",
+        "hook": "This part of history is easy to miss: Sack of Rome (410).",
+        "title_variants": [
+          "The real story of Sack of Rome (410)",
+          "The true story of Sack of Rome (410)",
+          "What really happened in Sack of Rome (410)"
+        ]
+      },
+      {
+        "index": 2,
+        "kind": "video",
+        "title": "The real story of Antikythera mechanism",
+        "subject": "Antikythera mechanism",
+        "hook": "This part of history is easy to miss: Antikythera mechanism.",
+        "title_variants": [
+          "The real story of Antikythera mechanism",
+          "The lesson inside Antikythera mechanism",
+          "What Antikythera mechanism reveals about survival"
+        ]
+      },
+      {
+        "index": 3,
+        "kind": "video",
+        "title": "The real story of Carthage",
+        "subject": "Carthage",
+        "hook": "One moment changed everything in Carthage.",
+        "title_variants": [
+          "The real story of Carthage",
+          "The true story of Carthage",
+          "What really happened in Carthage"
+        ]
+      },
+      {
+        "index": 4,
+        "kind": "video",
+        "title": "The real story of Tomb of Qin Shi Huang",
+        "subject": "Tomb of Qin Shi Huang",
+        "hook": "This part of history is easy to miss: Tomb of Qin Shi Huang.",
+        "title_variants": [
+          "The real story of Tomb of Qin Shi Huang",
+          "The lesson inside Tomb of Qin Shi Huang",
+          "What Tomb of Qin Shi Huang reveals about survival"
+        ]
+      },
+      {
+        "index": 5,
+        "kind": "video",
+        "title": "The real story of Code of Hammurabi",
+        "subject": "Code of Hammurabi",
+        "hook": "This part of history is easy to miss: Code of Hammurabi.",
+        "title_variants": [
+          "The real story of Code of Hammurabi",
+          "3 facts that explain Code of Hammurabi",
+          "3 details that changed Code of Hammurabi"
+        ]
+      },
+      {
+        "index": 6,
+        "kind": "video",
+        "title": "The real story of Oracle of Delphi",
+        "subject": "Oracle of Delphi",
+        "hook": "Historians still argue about Oracle of Delphi, and here is why.",
+        "title_variants": [
+          "The real story of Oracle of Delphi",
+          "3 facts that explain Oracle of Delphi",
+          "3 details that changed Oracle of Delphi"
+        ]
+      },
+      {
+        "index": 7,
+        "kind": "video",
+        "title": "The real story of Battle of Teutoburg Forest",
+        "subject": "Battle of Teutoburg Forest",
+        "hook": "One moment changed everything in Battle of Teutoburg Forest.",
+        "title_variants": [
+          "The real story of Battle of Teutoburg Forest",
+          "The lesson inside Battle of Teutoburg Forest",
+          "What Battle of Teutoburg Forest reveals about survival"
+        ]
+      },
+      {
+        "index": 8,
+        "kind": "video",
+        "title": "The real story of Oracle of Delphi",
+        "subject": "Oracle of Delphi",
+        "hook": "Historians still argue about Oracle of Delphi, and here is why.",
+        "title_variants": [
+          "The real story of Oracle of Delphi",
+          "The true story of Oracle of Delphi",
+          "What really happened in Oracle of Delphi"
+        ]
+      },
+      {
+        "index": 9,
+        "kind": "video",
+        "title": "The real story of Battle of Teutoburg Forest",
+        "subject": "Battle of Teutoburg Forest",
+        "hook": "Historians still argue about Battle of Teutoburg Forest, and here is why.",
+        "title_variants": [
+          "The real story of Battle of Teutoburg Forest",
+          "The true story of Battle of Teutoburg Forest",
+          "What really happened in Battle of Teutoburg Forest"
+        ]
+      },
+      {
+        "index": 10,
+        "kind": "video",
+        "title": "The real story of Oracle of Delphi",
+        "subject": "Oracle of Delphi",
+        "hook": "One moment changed everything in Oracle of Delphi.",
+        "title_variants": [
+          "The real story of Oracle of Delphi",
+          "The lesson inside Oracle of Delphi",
+          "What Oracle of Delphi reveals about survival"
+        ]
+      }
+    ]
+  }
+]

@@ -12,6 +12,7 @@ from yt_auto.models import (
     ContentProfile,
     FacebookConfig,
     HeyGenConfig,
+    MonetizationConfig,
     PresenterConfig,
     ScriptWriterConfig,
     SubtitleConfig,
@@ -36,7 +37,7 @@ def load_config(path: Path) -> AppConfig:
     script_writer_raw = app_raw.get("script_writer", {})
     openai_allowed_hosts_raw = script_writer_raw.get(
         "openai_compatible_allowed_hosts",
-        ["router.huggingface.co"],
+        ["router.huggingface.co", "api.groq.com", "api.mistral.ai"],
     )
     if openai_allowed_hosts_raw is None:
         openai_allowed_hosts_raw = []
@@ -44,7 +45,7 @@ def load_config(path: Path) -> AppConfig:
         openai_allowed_hosts_raw = [openai_allowed_hosts_raw]
     script_writer = ScriptWriterConfig(
         provider=str(script_writer_raw.get("provider", "template")),
-        ollama_model=str(script_writer_raw.get("ollama_model", "llama3.2:3b")),
+        ollama_model=str(script_writer_raw.get("ollama_model", "qwen2.5:7b")),
         ollama_url=str(script_writer_raw.get("ollama_url", "http://localhost:11434/api/generate")),
         timeout_seconds=min(
             120,
@@ -82,6 +83,12 @@ def load_config(path: Path) -> AppConfig:
         openai_compatible_disable_thinking=bool(
             script_writer_raw.get("openai_compatible_disable_thinking", False)
         ),
+        groq_model=str(script_writer_raw.get("groq_model", "openai/gpt-oss-120b")),
+        groq_url=str(script_writer_raw.get("groq_url", "https://api.groq.com/openai/v1")),
+        groq_api_key_env=str(script_writer_raw.get("groq_api_key_env", "GROQ_API_KEY")),
+        mistral_model=str(script_writer_raw.get("mistral_model", "mistral-small-latest")),
+        mistral_url=str(script_writer_raw.get("mistral_url", "https://api.mistral.ai/v1")),
+        mistral_api_key_env=str(script_writer_raw.get("mistral_api_key_env", "MISTRAL_API_KEY")),
     )
 
     subtitles_raw = app_raw.get("subtitles", {})
@@ -160,6 +167,22 @@ def load_config(path: Path) -> AppConfig:
                 page_id=str(fb_raw.get("page_id", "")),
                 access_token_env_var=str(fb_raw.get("access_token_env_var", "FB_PAGE_ACCESS_TOKEN")),
             )
+
+        money_raw = c.get("monetization", {}) or {}
+        monetization = MonetizationConfig(
+            enabled=bool(money_raw.get("enabled", True)),
+            long_form_playlist_url=str(money_raw.get("long_form_playlist_url", "") or "").strip(),
+            long_form_cta=str(money_raw.get("long_form_cta", "") or "").strip(),
+            pinned_comment_template=str(money_raw.get("pinned_comment_template", "") or "").strip(),
+            affiliates=[
+                {
+                    "label": str(item.get("label") or "Recommended").strip(),
+                    "url_env": str(item.get("url_env") or "").strip(),
+                }
+                for item in list(money_raw.get("affiliates") or [])
+                if isinstance(item, dict) and str(item.get("url_env") or "").strip()
+            ],
+        )
 
         channel = ChannelConfig(
             id=c["id"],
@@ -254,6 +277,7 @@ def load_config(path: Path) -> AppConfig:
             ),
             viral_dna_channels=list(c.get("viral_dna_channels", [])),
             visual_style=str(c.get("visual_style", "documentary")),
+            monetization=monetization,
         )
         channels.append(channel)
 

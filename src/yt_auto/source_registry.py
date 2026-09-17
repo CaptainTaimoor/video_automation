@@ -8,6 +8,7 @@ from __future__ import annotations
 VERIFIED_CONTEXT_URLS = {
     "Attachment theory": "https://en.wikipedia.org/wiki/Attachment_theory",
     "Breadcrumbing": "https://en.wikipedia.org/wiki/Breadcrumbing",
+    "Boudican revolt": "https://en.wikipedia.org/wiki/Boudican_revolt",
     "Computer-mediated communication": "https://en.wikipedia.org/wiki/Computer-mediated_communication",
     "Consent": "https://en.wikipedia.org/wiki/Consent",
     "Ghosting (behavior)": "https://en.wikipedia.org/wiki/Ghosting_(behavior)",
@@ -18,6 +19,7 @@ VERIFIED_CONTEXT_URLS = {
     "Love bombing": "https://en.wikipedia.org/wiki/Love_bombing",
     "Operant conditioning": "https://en.wikipedia.org/wiki/Operant_conditioning",
     "Overchoice": "https://en.wikipedia.org/wiki/Overchoice",
+    "Plague of Justinian": "https://en.wikipedia.org/wiki/Plague_of_Justinian",
     "Cadaver Synod": "https://en.wikipedia.org/wiki/Cadaver_Synod",
     "Göbekli Tepe": "https://en.wikipedia.org/wiki/G%C3%B6bekli_Tepe",
     "Kingdom of Kush": "https://en.wikipedia.org/wiki/Kingdom_of_Kush",

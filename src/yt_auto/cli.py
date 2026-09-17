@@ -10,15 +10,13 @@ from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-from yt_auto.pipeline import ShortsFactory
+from yt_auto.pipeline import ShortsFactory, _load_optional_dotenv
 from yt_auto.scheduler_service import ScheduleService
 from yt_auto.utils import ensure_dir
 
 
 def _config_path() -> Path:
-    load_dotenv()
+    _load_optional_dotenv()
     env_path = os.getenv("YT_AUTOMATION_CONFIG", "config/settings.yaml")
     return Path(env_path)
 

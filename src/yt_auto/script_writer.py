@@ -17,9 +17,13 @@ from yt_auto.network_policy import validate_ollama_generate_url
 
 
 class ScriptWriter:
-    _ANCIENT_SHORT_MIN_WORDS = 82
-    _ANCIENT_SHORT_MAX_WORDS = 105
-    _ANCIENT_SHORT_TARGET_WORDS = 88
+    # ~50-59s shorts at ~142-155 WPM land around 120-145 spoken words.
+    _ANCIENT_SHORT_MIN_WORDS = 120
+    _ANCIENT_SHORT_MAX_WORDS = 148
+    _ANCIENT_SHORT_TARGET_WORDS = 132
+    _BRAIN_SHORT_MIN_WORDS = 122
+    _BRAIN_SHORT_MAX_WORDS = 142
+    _BRAIN_SHORT_TARGET_WORDS = 132
 
     _EDITORIAL_STOP_WORDS = {
         "about", "after", "again", "because", "before", "behind", "from", "have",
@@ -124,6 +128,8 @@ class ScriptWriter:
             "routed",
             "local_first",
             "openai_compatible",
+            "groq",
+            "mistral",
         }
 
     def _clean(self, text: str) -> str:
@@ -564,18 +570,28 @@ class ScriptWriter:
         if content_kind == "video":
             min_s = int(getattr(channel.videos, "min_duration_seconds", 480) or 480)
             return max(1250, self._target_words_for_duration(min_s, wpm=165))
-        # shorts
-        min_s = int(getattr(channel.shorts, "min_duration_seconds", 30) or 30)
+        # shorts — aim for the middle of the 50-59s window
+        min_s = int(getattr(channel.shorts, "min_duration_seconds", 50) or 50)
+        mid_s = max(
+            min_s,
+            int(
+                (
+                    float(getattr(channel.shorts, "min_duration_seconds", 50) or 50)
+                    + float(getattr(channel.shorts, "max_duration_seconds", 59) or 59)
+                )
+                / 2.0
+            ),
+        )
         if channel.id == "ancient_history":
-            # Shorts are normalized to roughly 35.9 seconds after synthesis. An
-            # 88-word target yields about 147 WPM and leaves room for a factual
-            # closer without approaching the absolute 105-word ceiling.
+            # Mid-window target (~54s) at ~150 WPM keeps atempo inside 0.85-1.20.
             return max(
                 self._ANCIENT_SHORT_TARGET_WORDS,
-                self._target_words_for_duration(min_s, wpm=160),
+                self._target_words_for_duration(mid_s, wpm=150),
             )
-        wpm = 155
-        return self._target_words_for_duration(min_s, wpm=wpm)
+        return max(
+            self._BRAIN_SHORT_TARGET_WORDS,
+            self._target_words_for_duration(mid_s, wpm=155),
+        )
 
 
     def _video_expansion_lines(self, topic: TopicCandidate, subject: str) -> list[str]:
@@ -2471,29 +2487,45 @@ class ScriptWriter:
                 f"Now follow {subject} beyond its famous turning point. Separate the immediate result from the institutions, routes, memories, technologies, communities, or political limits that survived into the next generation. That longer view often reverses the simple verdict of victory or defeat. It shows whether the event transformed a system, interrupted it briefly, or created a new problem that later rulers inherited without fully understanding its origin.",
             ),
         ]
+        # Mild Phase-1 skeleton variation: rotate synthesis + crosscheck order by
+        # subject so two longs do not share an identical chapter spine.
+        skeleton_seed = sum(ord(ch) for ch in subject.lower()) + len(points)
+        if skeleton_seed % 2:
+            synthesis_sections = list(reversed(synthesis_sections))
+        rotated_crosschecks = list(crosschecks)
+        rotate_by = skeleton_seed % max(1, len(rotated_crosschecks))
+        if rotate_by:
+            rotated_crosschecks = rotated_crosschecks[rotate_by:] + rotated_crosschecks[:rotate_by]
         for caption, narration in synthesis_sections:
             if len(body) >= 16:
                 break
             body.append(self._long_scene(channel.id, subject, narration, caption))
-        for caption, narration in crosschecks:
+        for caption, narration in rotated_crosschecks:
             if len(body) >= 16:
                 break
             body.append(self._long_scene(channel.id, subject, narration, caption))
         out.extend(body[:16])
+        closing_variants = [
+            (
+                f"The remaining uncertainty around {subject} is not a failure of the story. It is a boundary around what the sources can support. Strong history marks that boundary clearly, compares rival explanations, and avoids filling silence with invented certainty. That honesty makes the confirmed evidence more powerful, not less dramatic. It also identifies the next inscription, layer, date, or scientific test that could genuinely change the conclusion.",
+                "What remains uncertain",
+                f"The lasting importance of {subject} is not one isolated fact. It is the relationship between physical evidence, organized power, human choices, and the consequences that followed. Once those layers are kept together, the past stops looking like a legend and starts looking like people solving problems under pressure with imperfect information. Return to the opening clue and notice how much more precisely its meaning can now be stated.",
+                "Why it still matters",
+            ),
+            (
+                f"What we still cannot prove about {subject} belongs in the conclusion. Mark the gaps, keep rival explanations visible, and refuse invented certainty where the sources are silent. That restraint makes the confirmed evidence sharper and shows which discovery would actually change the claim.",
+                "Name the open questions",
+                f"The reason {subject} still matters is the chain connecting evidence, power, ordinary lives, and later consequences. Keep those layers together and the opening clue stops looking like a legend. It becomes a decision made under pressure, with imperfect information, that still shaped later choices.",
+                "Return to the opening clue",
+            ),
+        ]
+        close_a, close_a_caption, close_b, close_b_caption = closing_variants[
+            skeleton_seed % len(closing_variants)
+        ]
         out.extend(
             [
-                self._long_scene(
-                    channel.id,
-                    subject,
-                    f"The remaining uncertainty around {subject} is not a failure of the story. It is a boundary around what the sources can support. Strong history marks that boundary clearly, compares rival explanations, and avoids filling silence with invented certainty. That honesty makes the confirmed evidence more powerful, not less dramatic. It also identifies the next inscription, layer, date, or scientific test that could genuinely change the conclusion.",
-                    "What remains uncertain",
-                ),
-                self._long_scene(
-                    channel.id,
-                    subject,
-                    f"The lasting importance of {subject} is not one isolated fact. It is the relationship between physical evidence, organized power, human choices, and the consequences that followed. Once those layers are kept together, the past stops looking like a legend and starts looking like people solving problems under pressure with imperfect information. Return to the opening clue and notice how much more precisely its meaning can now be stated.",
-                    "Why it still matters",
-                ),
+                self._long_scene(channel.id, subject, close_a, close_a_caption),
+                self._long_scene(channel.id, subject, close_b, close_b_caption),
             ]
         )
         return out
@@ -3134,6 +3166,14 @@ class ScriptWriter:
                 "Here is the reset. Catch the first cue. Separate facts from predictions. Regulate before reacting. Ask one clean question, compare the answer with ordinary behavior, and keep your boundary. The goal is not to erase chemistry or become impossible to hurt. Stay warm and steady enough for reality to answer. Growing clarity gives you something real to explore. If confusion remains the main source of intensity, you do not need another dramatic scene to believe that answer. Ordinary days provide the strongest contrast. Consistent answers reduce invented suspense. Repeated avoidance also supplies useful information. You never need perfect certainty. You do need enough clarity. Choices remain yours throughout the process. Evidence matters more than emotional theater. Your values still guide future access.",
             ),
         ]
+        # Mild skeleton variation: rotate mid-episode chapter order by subject.
+        skeleton_seed = sum(ord(ch) for ch in spoken_subject.lower()) + len(sections)
+        head, mid, tail = sections[:2], sections[2:-3], sections[-3:]
+        if mid and skeleton_seed % 3 == 1:
+            mid = mid[1:] + mid[:1]
+        elif mid and skeleton_seed % 3 == 2:
+            mid = list(reversed(mid[:4])) + mid[4:]
+        sections = head + mid + tail
         return [
             self._long_scene(channel.id, subject, narration, caption)
             for caption, narration in sections
@@ -3296,12 +3336,12 @@ class ScriptWriter:
                 if len(polished) >= minimum_scenes:
                     break
 
-        max_scenes = 14 if content_kind == "video" else 8
+        max_scenes = 14 if content_kind == "video" else 10
         target_words = self._target_words(channel, content_kind=content_kind)
         expansion_lines = list(self._video_expansion_lines(topic, self._spoken_subject(topic)))
         random.shuffle(expansion_lines)
         expansion_index = 0
-        expansion_word_limit = 32 if content_kind == "video" else (16 if channel.id == "brain_lens" else 22)
+        expansion_word_limit = 32 if content_kind == "video" else (18 if channel.id == "brain_lens" else 24)
         while len(polished) < max_scenes and self._word_count(" ".join(scene.narration for scene in polished)) < target_words:
             line = self._tidy_scene_line(
                 expansion_lines[expansion_index % len(expansion_lines)],
@@ -3326,17 +3366,17 @@ class ScriptWriter:
             polished = polished[: max_scenes - 1] + [polished[-1]]
 
         if channel.id == "brain_lens" and content_kind == "short" and len(polished) >= 2:
-            word_budget = 88
+            word_budget = self._target_words(channel, content_kind=content_kind)
             opener_scene = replace(
                 polished[0],
-                narration=self._tidy_scene_line(polished[0].narration, max_words=17),
+                narration=self._tidy_scene_line(polished[0].narration, max_words=20),
             )
             closer_scene = replace(
                 polished[-1],
-                narration=self._tidy_scene_line(polished[-1].narration, max_words=15),
+                narration=self._tidy_scene_line(polished[-1].narration, max_words=18),
             )
             middle_scenes = [
-                replace(scene, narration=self._tidy_scene_line(scene.narration, max_words=18))
+                replace(scene, narration=self._tidy_scene_line(scene.narration, max_words=22))
                 for scene in polished[1:-1]
             ]
             middle_scenes = [scene for scene in middle_scenes if scene.narration]
@@ -3345,10 +3385,10 @@ class ScriptWriter:
             used_words = fixed_words
             for scene in middle_scenes:
                 scene_words = self._word_count(scene.narration)
-                if len(selected_middle) < 3 or used_words + scene_words <= word_budget:
+                if len(selected_middle) < 4 or used_words + scene_words <= word_budget:
                     selected_middle.append(scene)
                     used_words += scene_words
-                if len(selected_middle) >= 6:
+                if len(selected_middle) >= 8:
                     break
             polished = [opener_scene, *selected_middle, closer_scene]
         elif channel.id == "ancient_history" and content_kind == "short" and len(polished) >= 2:
@@ -3370,17 +3410,57 @@ class ScriptWriter:
             used_words = self._word_count(opener_scene.narration) + self._word_count(closer_scene.narration)
             for scene in middle_scenes:
                 scene_words = self._word_count(scene.narration)
-                if len(selected_middle) < 3 or used_words + scene_words <= word_budget:
+                if len(selected_middle) < 4 or used_words + scene_words <= word_budget:
                     selected_middle.append(scene)
                     used_words += scene_words
-                if len(selected_middle) >= 5:
+                if len(selected_middle) >= 8:
                     break
             polished = [opener_scene, *selected_middle, closer_scene]
 
         beats = [scene.narration for scene in polished if scene.narration]
         narration = self._reduce_subject_repetition(" ".join(beats), subject, channel.id)
         beats = self._sentences(narration) if content_kind == "short" else beats
+        if channel.id == "brain_lens" and content_kind == "short":
+            narration_words = self._word_count(narration)
+            if narration_words < self._BRAIN_SHORT_MIN_WORDS:
+                fill_lines = list(self._video_expansion_lines(topic, subject))
+                random.shuffle(fill_lines)
+                for line in fill_lines:
+                    clean = self._tidy_scene_line(line, max_words=22)
+                    if not clean:
+                        continue
+                    beats.insert(-1 if len(beats) >= 2 else len(beats), clean)
+                    narration = self._reduce_subject_repetition(" ".join(beats), subject, channel.id)
+                    beats = self._sentences(narration)
+                    if self._word_count(narration) >= self._BRAIN_SHORT_MIN_WORDS:
+                        break
+            narration_words = self._word_count(narration)
+            if narration_words < self._BRAIN_SHORT_MIN_WORDS:
+                raise ValueError(
+                    "Brain Lens Short has only "
+                    f"{narration_words} words; needs at least "
+                    f"{self._BRAIN_SHORT_MIN_WORDS} for 50-59s pacing"
+                )
+            if narration_words > self._BRAIN_SHORT_MAX_WORDS:
+                raise ValueError(
+                    "Brain Lens Short has "
+                    f"{narration_words} words; exceeds the "
+                    f"{self._BRAIN_SHORT_MAX_WORDS}-word safety ceiling"
+                )
         if channel.id == "ancient_history" and content_kind == "short":
+            narration_words = self._word_count(narration)
+            if narration_words < self._ANCIENT_SHORT_MIN_WORDS:
+                fill_lines = list(self._video_expansion_lines(topic, subject))
+                random.shuffle(fill_lines)
+                for line in fill_lines:
+                    clean = self._tidy_scene_line(line, max_words=24)
+                    if not clean:
+                        continue
+                    beats.insert(-1 if len(beats) >= 2 else len(beats), clean)
+                    narration = self._reduce_subject_repetition(" ".join(beats), subject, channel.id)
+                    beats = self._sentences(narration)
+                    if self._word_count(narration) >= self._ANCIENT_SHORT_MIN_WORDS:
+                        break
             narration_words = self._word_count(narration)
             if narration_words < self._ANCIENT_SHORT_MIN_WORDS:
                 raise ValueError(
@@ -3401,7 +3481,7 @@ class ScriptWriter:
         words = [w for w in text.split(" ") if w.strip()]
         if content_kind == "video":
             return 850 <= len(words) <= 1700
-        return 65 <= len(words) <= 220
+        return 110 <= len(words) <= 180
 
     # Extended style descriptions for richer script instructions
     _STYLE_INSTRUCTIONS = {
@@ -3544,7 +3624,24 @@ class ScriptWriter:
         prompt: str,
         max_output_tokens: int = 700,
         response_mime_type: str | None = None,
+        purpose: str = "unspecified",
     ) -> str:
+        model = str(self.cfg.ollama_model or "").strip().lower()
+        call_purpose = str(purpose or "").strip().lower()
+        # Full narration drafts need a stronger local model. Keep tiny 3B
+        # models only for compact JSON repair / scoring when nothing else works.
+        tiny_model = bool(re.search(r"(?:^|[:/\-_])3b(?:$|[:/\-_])", model)) or model.endswith(":3b")
+        full_script_purposes = {
+            "script_draft",
+            "script_expansion",
+            "scene_rewrite",
+            "scene_script",
+        }
+        if tiny_model and call_purpose in full_script_purposes:
+            raise RuntimeError(
+                f"refusing full scripts on tiny Ollama model {self.cfg.ollama_model}; "
+                "prefer qwen2.5:7b or a cloud provider"
+            )
         payload = {
             "model": self.cfg.ollama_model,
             "prompt": prompt,
@@ -3570,6 +3667,89 @@ class ScriptWriter:
         r.raise_for_status()
         data = r.json()
         return str(data.get("response", "")).strip()
+
+    def _named_openai_compatible_settings(self, provider: str) -> tuple[str, str, str]:
+        """Resolve first-class Groq/Mistral profiles without clobbering HF gateway."""
+        provider = (provider or "").strip().lower()
+        if provider == "groq":
+            return (
+                str(getattr(self.cfg, "groq_url", "https://api.groq.com/openai/v1") or "").strip(),
+                str(getattr(self.cfg, "groq_model", "llama-3.3-70b-versatile") or "").strip(),
+                (
+                    os.getenv(str(getattr(self.cfg, "groq_api_key_env", "GROQ_API_KEY") or "GROQ_API_KEY"))
+                    or os.getenv("GROQ_API_KEY")
+                    or ""
+                ).strip(),
+            )
+        if provider == "mistral":
+            return (
+                str(getattr(self.cfg, "mistral_url", "https://api.mistral.ai/v1") or "").strip(),
+                str(getattr(self.cfg, "mistral_model", "mistral-small-latest") or "").strip(),
+                (
+                    os.getenv(
+                        str(getattr(self.cfg, "mistral_api_key_env", "MISTRAL_API_KEY") or "MISTRAL_API_KEY")
+                    )
+                    or os.getenv("MISTRAL_API_KEY")
+                    or ""
+                ).strip(),
+            )
+        raise RuntimeError(f"unsupported named openai-compatible provider: {provider}")
+
+    def _generate_named_openai_compatible(
+        self,
+        provider: str,
+        prompt: str,
+        max_output_tokens: int = 700,
+        response_mime_type: str | None = None,
+    ) -> str:
+        base_url, model, api_key = self._named_openai_compatible_settings(provider)
+        if not base_url or not model:
+            raise RuntimeError(f"{provider} url/model is not configured")
+        if not api_key:
+            raise RuntimeError(f"{provider} API key is missing")
+        host = self._validate_openai_compatible_endpoint(base_url, model)
+        endpoint = base_url.rstrip("/") + "/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        messages = [{"role": "user", "content": prompt}]
+        payload: dict[str, object] = {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": max(256, int(max_output_tokens)),
+        }
+        if response_mime_type == "application/json":
+            payload["response_format"] = {"type": "json_object"}
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+            timeout=min(
+                120,
+                max(5, int(getattr(self.cfg, "openai_compatible_timeout_seconds", 90) or 90)),
+            ),
+            allow_redirects=False,
+        )
+        if response.status_code in {401, 403, 429, 500, 502, 503, 504}:
+            detail = self._redact_keys(
+                f"{response.status_code}: {response.text[:180]}",
+                [api_key],
+            )
+            raise RuntimeError(detail)
+        response.raise_for_status()
+        data = response.json()
+        choices = data.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"empty {provider} response")
+        message = choices[0].get("message") or {}
+        text = str(message.get("content") or "").strip()
+        if not text:
+            raise RuntimeError(f"empty {provider} response")
+        # Keep host in audit trail via last call details.
+        _ = host
+        return text
 
     def _openai_compatible_settings(self) -> tuple[str, str, str]:
         env_url = (os.getenv("AI_GATEWAY_URL") or "").strip()
@@ -3614,7 +3794,7 @@ class ScriptWriter:
         configured = getattr(
             self.cfg,
             "openai_compatible_allowed_hosts",
-            ["router.huggingface.co"],
+            ["router.huggingface.co", "api.groq.com", "api.mistral.ai"],
         )
         if isinstance(configured, str):
             configured = [configured]
@@ -3630,6 +3810,8 @@ class ScriptWriter:
                 continue
             if host:
                 allowed.add(host.lower().rstrip("."))
+        # Always permit first-class cloud hosts even if settings omit them.
+        allowed.update({"api.groq.com", "api.mistral.ai", "router.huggingface.co"})
         return allowed
 
     def _validate_openai_compatible_endpoint(self, base_url: str, model: str) -> str:
@@ -3661,6 +3843,10 @@ class ScriptWriter:
             model = self.cfg.gemini_model
         elif provider == "openai_compatible":
             url, model, _ = self._openai_compatible_settings()
+        elif provider == "groq":
+            url, model, _ = self._named_openai_compatible_settings("groq")
+        elif provider == "mistral":
+            url, model, _ = self._named_openai_compatible_settings("mistral")
         elif provider == "ollama":
             url = self.cfg.ollama_url
             model = self.cfg.ollama_model
@@ -3877,15 +4063,21 @@ class ScriptWriter:
             if str(item).strip()
         ]
         if provider in {"routed", "auto"}:
-            order = configured_order or ["gemini", "openai_compatible", "ollama"]
+            order = configured_order or ["gemini", "groq", "openai_compatible", "ollama"]
         elif provider == "local_first":
-            order = configured_order or ["ollama", "gemini", "openai_compatible"]
+            order = configured_order or ["ollama", "gemini", "groq", "openai_compatible"]
         elif provider == "gemini_ollama":
             order = ["gemini", "ollama"]
-        elif provider in {"gemini", "ollama", "openai_compatible"}:
+        elif provider in {"gemini", "ollama", "openai_compatible", "groq", "mistral"}:
             order = [provider]
         else:
             raise RuntimeError(f"Unsupported script writer provider: {self.cfg.provider}")
+
+        call_purpose = re.sub(
+            r"[^a-z0-9_]+",
+            "_",
+            str(purpose or "").strip().lower(),
+        ).strip("_")[:64] or "unspecified"
 
         generators = {
             "gemini": lambda: self._generate_gemini(
@@ -3898,19 +4090,27 @@ class ScriptWriter:
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
             ),
-            "ollama": lambda: self._generate_ollama(
+            "groq": lambda: self._generate_named_openai_compatible(
+                "groq",
                 prompt,
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
             ),
+            "mistral": lambda: self._generate_named_openai_compatible(
+                "mistral",
+                prompt,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+            ),
+            "ollama": lambda: self._generate_ollama(
+                prompt,
+                max_output_tokens=max_output_tokens,
+                response_mime_type=response_mime_type,
+                purpose=call_purpose,
+            ),
         }
         errors: list[str] = []
         attempted: list[dict] = []
-        call_purpose = re.sub(
-            r"[^a-z0-9_]+",
-            "_",
-            str(purpose or "").strip().lower(),
-        ).strip("_")[:64] or "unspecified"
 
         def audit_fields() -> dict[str, object]:
             return {
@@ -3984,11 +4184,19 @@ class ScriptWriter:
                 if cooldown:
                     self._provider_backoff_until[candidate] = time.monotonic() + cooldown
                 _, _, gateway_key = self._openai_compatible_settings()
-                message = self._redact_keys(
-                    str(exc),
-                    ([self._gemini_key()] if self._gemini_key() else [])
-                    + ([gateway_key] if gateway_key else []),
-                )
+                secret_keys = []
+                if self._gemini_key():
+                    secret_keys.append(self._gemini_key())
+                if gateway_key:
+                    secret_keys.append(gateway_key)
+                for named in ("groq", "mistral"):
+                    try:
+                        _, _, named_key = self._named_openai_compatible_settings(named)
+                    except Exception:
+                        named_key = ""
+                    if named_key:
+                        secret_keys.append(named_key)
+                message = self._redact_keys(str(exc), secret_keys)
                 attempted.append({
                     "provider": candidate,
                     "status": "failed",
@@ -4058,8 +4266,20 @@ class ScriptWriter:
         avoid_str = ", ".join(list(avoid_titles or [])[:14])
         dna_context = self._dna_context(dna)
         creative_frame = self._creative_frame(channel, topic)
-        target_words = "82-86" if content_kind == "short" else "150-240"
-        beat_limit = "18 words for beat 1, 22 words for every other beat" if content_kind == "short" else "24 words per beat"
+        target_words = (
+            f"{self._BRAIN_SHORT_MIN_WORDS}-{self._BRAIN_SHORT_MAX_WORDS}"
+            if content_kind == "short" and channel.id == "brain_lens"
+            else (
+                f"{self._ANCIENT_SHORT_MIN_WORDS}-{self._ANCIENT_SHORT_MAX_WORDS}"
+                if content_kind == "short"
+                else "150-240"
+            )
+        )
+        beat_limit = (
+            "20 words for beat 1, 24 words for every other beat"
+            if content_kind == "short"
+            else "24 words per beat"
+        )
         channel_rule = (
             "Brain Lens: make the viewer feel seen with mature, flirty, emotionally intelligent relationship psychology. Use attraction, chemistry, texting, body language, mixed signals, crushes, kissing tension, attachment, confidence, and boundaries when relevant. Keep it spicy but non-explicit, non-manipulative, respectful, and not medical. Start with what the viewer does or feels, not the concept name."
             if channel.id == "brain_lens"
@@ -4146,7 +4366,14 @@ class ScriptWriter:
             return topic
         total_words = self._word_count(" ".join(beats))
         if content_kind == "short":
-            if self._word_count(beats[0]) > 18 or not (81 <= total_words <= 86):
+            opener_limit = 20
+            if channel.id == "brain_lens":
+                word_ok = self._BRAIN_SHORT_MIN_WORDS <= total_words <= self._BRAIN_SHORT_MAX_WORDS
+            elif channel.id == "ancient_history":
+                word_ok = self._ANCIENT_SHORT_MIN_WORDS <= total_words <= self._ANCIENT_SHORT_MAX_WORDS
+            else:
+                word_ok = 120 <= total_words <= 148
+            if self._word_count(beats[0]) > opener_limit or not word_ok:
                 return topic
         elif not (100 <= total_words <= 320):
             return topic
@@ -4428,6 +4655,75 @@ class ScriptWriter:
             return result
         except Exception:
             return {}
+
+    def repair_brain_short_with_ai(
+        self,
+        channel: ChannelConfig,
+        topic: TopicCandidate,
+        *,
+        avoid_titles: set[str] | None = None,
+        dna: dict | None = None,
+    ) -> TopicCandidate | None:
+        """One provider-routed rewrite for a rejected Brain Lens Short.
+
+        Used only after the deterministic polish path fails editorial/caption
+        gates. Prefer Gemini → Groq → HF → Ollama over shipping templates.
+        """
+        if channel.id != "brain_lens" or not self._ai_enabled():
+            return None
+        return self._repair_short_with_ai(
+            channel, topic, avoid_titles=avoid_titles, dna=dna
+        )
+
+    def repair_ancient_short_with_ai(
+        self,
+        channel: ChannelConfig,
+        topic: TopicCandidate,
+        *,
+        avoid_titles: set[str] | None = None,
+        dna: dict | None = None,
+    ) -> TopicCandidate | None:
+        """One provider-routed rewrite for a rejected Ancient History Short."""
+        if channel.id != "ancient_history" or not self._ai_enabled():
+            return None
+        return self._repair_short_with_ai(
+            channel, topic, avoid_titles=avoid_titles, dna=dna
+        )
+
+    def _repair_short_with_ai(
+        self,
+        channel: ChannelConfig,
+        topic: TopicCandidate,
+        *,
+        avoid_titles: set[str] | None = None,
+        dna: dict | None = None,
+    ) -> TopicCandidate | None:
+        base = topic
+        try:
+            base = self._polish_scene_plan(channel, topic, content_kind="short")
+        except Exception:
+            base = topic
+        if not base.scene_plan:
+            return None
+        try:
+            rewritten = self._rewrite_scene_plan_with_ai(
+                channel=channel,
+                topic=base,
+                content_kind="short",
+                avoid_titles=avoid_titles,
+                dna=dna,
+            )
+            polished = self._polish_scene_plan(channel, rewritten, content_kind="short")
+            issues = self.editorial_quality_issues(
+                polished,
+                beats=polished.narration_beats,
+                content_kind="short",
+            )
+            if issues:
+                return None
+            return polished
+        except Exception:
+            return None
 
     def improve(self, channel: ChannelConfig, topic: TopicCandidate,
                 content_kind: str = "short", avoid_titles: set[str] | None = None,

@@ -208,6 +208,14 @@ class ContentResearcher:
             "friendship to romance tension": "Friendship-to-romance tension grows when familiar emotional safety meets new uncertainty about mutual attraction.",
             "consent and chemistry": "Consent strengthens chemistry when both people can express interest, hesitation and boundaries without pressure.",
             "trauma bond": "A trauma bond can form when relief after stress feels like love because the nervous system is chasing safety.",
+            "respect after rejection": "Respect after rejection means accepting another person's choice without guilt, bargaining, punishment or pressure.",
+            "planning initiative": "Planning initiative makes interest visible through concrete suggestions, shared decisions and reliable follow-through.",
+            "warmth after vulnerability": "Warmth after vulnerability protects openness through patient attention, privacy and respect rather than control.",
+            "comfortable silence": "Comfortable silence can signal ease when warmth and connection remain present without constant performance.",
+            "meeting friends": "Meeting friends can add social context to dating, but it does not by itself prove commitment or compatibility.",
+            "playful teasing boundaries": "Playful teasing stays connective when both people can redirect it and discomfort is respected immediately.",
+            "busy week consistency": "Busy-week consistency keeps communication understandable without requiring constant contact during a demanding schedule.",
+            "follow-up questions": "Thoughtful follow-up questions can make listening visible when curiosity remains mutual and respectful.",
             "working memory": "Working memory is the brain's short-term workspace for holding and using information right now.",
         }
         self.history_wikipedia_aliases = {
@@ -217,6 +225,7 @@ class ContentResearcher:
             "assyrian siege of lachish": "Siege of Lachish",
             "axum obelisks": "Obelisk of Axum",
             "boudica revolt": "Boudican revolt",
+            "bronze age collapse": "Late Bronze Age collapse",
             "chichen itza": "Chichen Itza",
             "cyrus cylinder": "Cyrus Cylinder",
             "byzantine greek fire": "Greek fire",
@@ -224,10 +233,12 @@ class ContentResearcher:
             "justinianic plague": "Plague of Justinian",
             "great zimbabwe": "Great Zimbabwe",
             "lascaux cave paintings": "Lascaux",
+            "lascaux": "Lascaux",
             "mausoleum of qin shi huang": "Mausoleum of the First Qin Emperor",
             "mausoleum of the first qin emperor": "Mausoleum of the First Qin Emperor",
             "mohenjo-daro": "Mohenjo-daro",
             "mayan calendar": "Maya calendar",
+            "nubian pyramids": "Nubian pyramids",
             "olmec colossal heads": "Olmec colossal heads",
             "kingdom of kush": "Kingdom of Kush",
             "sogdian merchants": "Sogdia",
@@ -303,7 +314,9 @@ class ContentResearcher:
                 "friends with benefits boundaries", "sexual tension versus compatibility", "kissing chemistry",
                 "friendship to romance tension", "consent and chemistry", "trauma bond",
                 "flirty banter", "relationship check-ins", "post-date anxiety", "growing attraction",
-                "honest attraction",
+                "honest attraction", "respect after rejection", "planning initiative",
+                "warmth after vulnerability", "comfortable silence", "meeting friends",
+                "playful teasing boundaries", "busy week consistency", "follow-up questions",
             },
         }
         self.brain_lens_priority_subjects = {
@@ -328,7 +341,9 @@ class ContentResearcher:
             "boundary response", "curiosity and interest", "consistency after intimacy",
             "jealousy and clarity", "direct interest", "apology follow-through",
             "flirty banter", "relationship check-ins", "post-date anxiety", "growing attraction",
-            "honest attraction",
+            "honest attraction", "respect after rejection", "planning initiative",
+            "warmth after vulnerability", "comfortable silence", "meeting friends",
+            "playful teasing boundaries", "busy week consistency", "follow-up questions",
         }
         self.story_subjects = [
             "Operation Mincemeat",
@@ -744,6 +759,20 @@ class ContentResearcher:
             "great zimbabwe",
             "axum obelisks",
             "olmec colossal heads",
+            # Expanded Phase-1 pool (curated facts already pass short budget).
+            "nubian pyramids",
+            "terrace farming at machu picchu",
+            "roman concrete",
+            "petra",
+            "nazca lines",
+            "gobekli tepe",
+            "cahokia",
+            "teotihuacan",
+            "knossos",
+            "rosetta stone",
+            "pompeii plaster casts",
+            "carthage harbor",
+            "sogdian merchants",
         }
     )
 
@@ -878,10 +907,10 @@ class ContentResearcher:
             ]
         if "roman concrete" in normalized or "opus caementicium" in normalized:
             return [
-                "Roman builders mixed lime mortar with rubble aggregate, and in many projects volcanic ash created hydraulic concrete that could harden in wet conditions.",
+                "Roman builders mixed lime mortar with rubble aggregate, and volcanic ash created hydraulic concrete that could harden in wet conditions.",
                 "Harbor works at sites around the Mediterranean used concrete in seawater, allowing piers and breakwaters to extend beyond the shoreline.",
                 "The Pantheon's unreinforced dome becomes lighter toward the top as builders changed the aggregate and reduced the structure's thickness.",
-                "Roman concrete was not one universal recipe: builders adjusted aggregate, ash and construction methods to local materials and the job each structure had to perform.",
+                "Roman concrete had no universal recipe: builders adjusted aggregate, ash, and methods to local materials and each structure's purpose.",
             ]
         if "persepolis" in normalized:
             return [
@@ -987,6 +1016,55 @@ class ContentResearcher:
                 "Commercial messages name traded goods including gold, silver, pepper, musk, wheat, silk and other cloth.",
                 "Sogdian communities carried religious traditions and artistic styles as well as merchandise between Central Asia and China.",
             ]
+        if normalized == "petra" or "petra " in normalized:
+            return [
+                "Nabataean engineers cut channels, dams and cisterns into Petra's sandstone cliffs to capture rare desert rain.",
+                "The Siq canyon controlled every approach to the city, while carved tombs and temples faced the visitor route.",
+                "Incense and caravan trade funded the stonework that made Petra a hydraulic and commercial capital.",
+                "Plaster-lined pipes and overflow paths show that water control was planned as carefully as monumental façades.",
+            ]
+        if "gobekli" in normalized or "göbekli" in normalized:
+            return [
+                "Göbekli Tepe in southeastern Turkey preserves T-shaped limestone pillars carved with animals inside circular enclosures.",
+                "Radiocarbon dates place major construction in the Pre-Pottery Neolithic, earlier than farming villages were once expected.",
+                "Builders later deliberately buried the enclosures, sealing pillars and fill that excavators now reconstruct phase by phase.",
+                "The scale of quarrying and carving suggests organized ritual gatherings before permanent agricultural towns dominated the region.",
+            ]
+        if "cahokia" in normalized:
+            return [
+                "Cahokia near present-day St. Louis raised Monks Mound and dozens of earthen platforms beside the Mississippi floodplain.",
+                "Woodhenge posts and plaza layouts mark ceremonial calendars while residential neighborhoods spread across a huge urban footprint.",
+                "Trade in copper, shell and other goods connected Cahokia to distant regions of North America.",
+                "Population decline after about 1200 CE left the mounds as the clearest surviving map of Mississippian political power.",
+            ]
+        if "teotihuacan" in normalized:
+            return [
+                "Teotihuacan's Avenue of the Dead aligns the Pyramid of the Sun and Pyramid of the Moon inside a planned urban grid.",
+                "Apartment compounds housed thousands of residents while specialized workshops produced obsidian tools and craft goods.",
+                "No long king list survives for the city, so scholars debate collective or palace-centered rule from architecture and murals.",
+                "Later burning damaged major buildings, but the street plan still preserves one of Mesoamerica's largest planned cities.",
+            ]
+        if "knossos" in normalized:
+            return [
+                "The palace complex at Knossos on Crete includes storage magazines, courtyards and frescoed rooms excavated by Arthur Evans.",
+                "Evans rebuilt parts in concrete and named spaces boldly, shaping the modern labyrinth image beyond the original ashlar remains.",
+                "Linear A tablets from the site remain undeciphered, while later Mycenaean Linear B shows a changed administrative phase.",
+                "Earthquake damage and rebuilding phases remind researchers to separate archaeological evidence from reconstructed tourist corridors.",
+            ]
+        if "rosetta stone" in normalized:
+            return [
+                "The Rosetta Stone carries the same Ptolemaic decree in hieroglyphic, Demotic and Greek scripts.",
+                "French soldiers found the slab near Rashid in 1799, and scholars used repeated royal names in cartouches as reading keys.",
+                "Jean-François Champollion's phonetic readings opened Egyptian hieroglyphs to modern historical study.",
+                "The decree itself records priestly privileges under Ptolemy V, so the stone is both a political text and a linguistic key.",
+            ]
+        if "pompeii" in normalized:
+            return [
+                "When Vesuvius buried Pompeii in 79 CE, ash hardened around bodies and later left hollow cavities excavators could fill with plaster.",
+                "The resulting casts preserve final postures, clothing folds and group scenes that ordinary skeletons rarely show so clearly.",
+                "Houses nearby still hold bread, tools, graffiti and furniture, tying the casts to everyday Roman life interrupted mid-action.",
+                "Modern conservation treats the casts as reconstructions that require ethical display choices as much as scientific care.",
+            ]
         if "ziggurat of ur" in normalized or normalized == "ur":
             return [
                 "King Ur-Nammu began the ziggurat around 2100 BCE, using a mudbrick core protected by fired-brick facing.",
@@ -1021,8 +1099,9 @@ class ContentResearcher:
         if "nazca" in normalized or "nasca" in normalized:
             return [
                 "The Nazca Lines sit in the desert of southern Peru, where dark surface stones were moved to reveal pale ground.",
-                "Many figures are best understood from above, which is why aerial views became central to modern study.",
-                "Archaeologists connect the geoglyphs to ritual landscapes, pathways and water concerns in an extremely dry region.",
+                "Geometric paths and animal figures stretch for hundreds of meters across the pampa while nearby pottery helps date Nazca activity.",
+                "Survey work shows many lines functioned as walking routes, so ritual procession is a stronger explanation than sky-only viewing.",
+                "Extreme aridity preserved the geoglyphs, while modern tracks and tourism still threaten edges that archaeologists must protect.",
             ]
         if any(token in normalized for token in ("battle", "siege", "sack")):
             return [
@@ -1598,12 +1677,26 @@ class ContentResearcher:
             # too thin. Recycle an older source-safe subject if needed, but never
             # append the raw catalog without reapplying this build's avoid set; doing
             # that caused the first ready subject to repeat on every planning attempt.
+            # When in-session avoids exhausted every visual-ready subject, allow one
+            # recycle pass against published/used subjects only so caption rejects
+            # do not force continuity-only builds.
             fallback_candidates = [
                 subject
                 for subject in dict.fromkeys([*pool, *self.history_subjects])
                 if not self._is_duplicate_subject(subject, avoid_subjects)
                 and self._normalize_subject(subject) in self._HISTORY_SHORT_VISUAL_READY_SUBJECTS
             ]
+            if not fallback_candidates:
+                # In-session caption rejects should not exhaust the whole short
+                # pool into continuity-only mode. Recycle unused visual-ready
+                # subjects even if this build already rejected their first draft.
+                fallback_candidates = [
+                    subject
+                    for subject in dict.fromkeys([*pool, *self.history_subjects])
+                    if not self._is_duplicate_subject(subject, used)
+                    and self._normalize_subject(subject)
+                    in self._HISTORY_SHORT_VISUAL_READY_SUBJECTS
+                ]
             ready_fallback = next(
                 (
                     (subject, facts)
@@ -1901,14 +1994,53 @@ class ContentResearcher:
 
     @staticmethod
     def _run_counts_as_published(item: dict) -> bool:
-        """Dry-run, held, and failed diagnostics must not exhaust topic rotation."""
+        """Dry-run holds and render failures must not exhaust topic rotation.
+
+        Successful uploads and quality-passed ready-to-upload builds do count.
+        """
         if item.get("uploaded") is True:
             return True
-        return bool(
+        if (
             str(item.get("youtube_id") or "").strip()
             or str(item.get("youtube_video_id") or "").strip()
             or str(item.get("facebook_id") or "").strip()
-        )
+        ):
+            return True
+        decision = str(item.get("quality_decision") or "").strip().lower()
+        if decision == "pass":
+            skipped = str(item.get("upload_skipped") or "").strip().lower()
+            return skipped != "quality_gate"
+        return False
+
+    def _load_requeued_subjects(self, channel_id: str | None = None) -> set[str]:
+        """Subjects currently waiting for retry should be preferred, not burned."""
+        values: set[str] = set()
+        try:
+            path = Path("data/state/failed_topics.jsonl")
+            if not path.exists():
+                return values
+            import json
+
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except Exception:
+                    continue
+                if channel_id and item.get("channel") != channel_id:
+                    continue
+                status = str(item.get("status") or "").strip().lower()
+                if status in {"consumed", "resolved", "uploaded"}:
+                    continue
+                for field in ("subject", "title"):
+                    value = self._memory_subject(str(item.get(field, "")))
+                    if value:
+                        values.add(value)
+        except Exception:
+            pass
+        return values
 
     def _load_used_topics(self, channel_id: str | None = None) -> set[str]:
         values: set[str] = set()
@@ -1948,6 +2080,10 @@ class ContentResearcher:
                             values.add(line)
             except Exception:
                 pass
+        # Requeued failures stay available for retry; strip them from used set.
+        requeued = self._load_requeued_subjects(channel_id)
+        if requeued:
+            values -= requeued
         return values
         
     def _is_duplicate_subject(self, subject: str, used: set[str]) -> bool:

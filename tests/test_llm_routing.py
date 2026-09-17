@@ -739,12 +739,60 @@ class RoutedScriptWriterTests(unittest.TestCase):
         writer_cfg = load_config(root / "config" / "settings.yaml").app.script_writer
         self.assertEqual(
             writer_cfg.provider_order,
-            ["gemini", "openai_compatible", "ollama"],
+            ["gemini", "groq", "openai_compatible", "ollama"],
         )
         self.assertEqual(writer_cfg.ollama_timeout_seconds, 90)
+        self.assertEqual(writer_cfg.ollama_model, "qwen2.5:7b")
+        self.assertEqual(writer_cfg.groq_model, "openai/gpt-oss-120b")
         self.assertEqual(
             writer_cfg.openai_compatible_allowed_hosts,
-            ["router.huggingface.co"],
+            ["router.huggingface.co", "api.groq.com", "api.mistral.ai"],
+        )
+
+    def test_groq_is_tried_after_gemini_in_default_routed_order(self) -> None:
+        writer = ScriptWriter(
+            _config(
+                provider="routed",
+                provider_order=["gemini", "groq", "openai_compatible", "ollama"],
+            )
+        )
+        with (
+            patch.object(writer, "_generate_gemini", side_effect=RuntimeError("503")),
+            patch.object(writer, "_generate_named_openai_compatible", return_value="from groq") as groq,
+            patch.object(writer, "_generate_openai_compatible", side_effect=AssertionError("hf")),
+            patch.object(writer, "_generate_ollama", side_effect=AssertionError("ollama")),
+        ):
+            self.assertEqual(writer._generate_ai("prompt", purpose="script_draft"), "from groq")
+        groq.assert_called_once()
+        self.assertEqual(writer.last_provider, "groq")
+
+    def test_tiny_ollama_refuses_full_script_drafts(self) -> None:
+        writer = ScriptWriter(_config(provider="ollama", ollama_model="llama3.2:3b"))
+        with self.assertRaisesRegex(RuntimeError, r"refusing full scripts on tiny Ollama"):
+            writer._generate_ollama("Write a long narration", purpose="script_draft")
+
+    def test_missing_groq_key_falls_through_to_next_provider(self) -> None:
+        writer = ScriptWriter(
+            _config(
+                provider="routed",
+                provider_order=["gemini", "groq", "openai_compatible", "ollama"],
+            )
+        )
+        with (
+            patch.object(writer, "_generate_gemini", side_effect=RuntimeError("quota")),
+            patch.object(
+                writer,
+                "_generate_named_openai_compatible",
+                side_effect=RuntimeError("groq API key is missing"),
+            ),
+            patch.object(writer, "_generate_openai_compatible", return_value="from hf"),
+            patch.object(writer, "_generate_ollama", side_effect=AssertionError("ollama")),
+        ):
+            self.assertEqual(writer._generate_ai("prompt", purpose="script_draft"), "from hf")
+        self.assertEqual(writer.last_provider, "openai_compatible")
+        self.assertEqual(
+            [item["provider"] for item in writer.provider_attempts],
+            ["gemini", "groq", "openai_compatible"],
         )
 
 

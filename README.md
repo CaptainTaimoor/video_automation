@@ -1,4 +1,4 @@
-﻿# YouTube Shorts Automation (Free-First, Local)
+# YouTube Shorts Automation (Free-First, Local)
 
 This project builds and uploads automated YouTube Shorts and 8–10 minute videos for two niches/channels using free/local tools and authorized API tiers where possible.
 
@@ -32,6 +32,10 @@ This project builds and uploads automated YouTube Shorts and 8–10 minute video
   weak results are held by the quality gate instead of being silently published.
 
 ## Setup
+
+**New PC / one-click:** run `setup\INSTALL.bat` as Administrator. It installs Python/Node if needed, creates `.venv`, installs dependencies, configures Windows auto-start, and opens LAN dashboard access. Use the `controls\` folder to enable/disable autostart and LAN.
+
+Manual setup:
 
 1. Install Python 3.10+.
 2. Create/activate a virtual environment.

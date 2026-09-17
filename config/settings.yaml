@@ -8,22 +8,34 @@
   state_dir: data/state
   topic_cache_dir: data/topics
   script_writer:
-    # Legitimate no-cost routing: the configured Gemini key first, then an
-    # optional OpenAI-compatible gateway, then the local Ollama installation.
-    # No provider tokens are stored in this file.
+    # Legitimate no-cost routing: Gemini first, then Groq when GROQ_API_KEY is
+    # set, then the Hugging Face OpenAI-compatible gateway, then local Ollama.
+    # Prefer qwen2.5:7b for Ollama full scripts; never rely on llama3.2:3b for
+    # narration drafts. No provider tokens are stored in this file.
     provider: routed
     provider_order:
       - gemini
+      - groq
       - openai_compatible
       - ollama
     provider_cooldown_seconds: 180
     gemini_model: gemini-2.5-flash-lite
     gemini_url: https://generativelanguage.googleapis.com/v1beta/models
-    ollama_model: llama3.2:3b
+    ollama_model: qwen2.5:7b
     ollama_url: http://localhost:11434/api/generate
     # Leave enough time for a cold local-model start, while keeping the final
     # fallback bounded so an unavailable daemon cannot stall a build forever.
     ollama_timeout_seconds: 90
+    # Account catalog (Sep 2026): llama-3.3-70b-versatile is not on this key.
+    # Prefer gpt-oss-120b for narration; gpt-oss-20b is the fast shorts alternate.
+    groq_model: openai/gpt-oss-120b
+    groq_url: https://api.groq.com/openai/v1
+    groq_api_key_env: GROQ_API_KEY
+    # If Groq returns model_not_found, list models with the same key and update
+    # groq_model. Free-tier RPD is per-model; cooldown will fall through to HF.
+    mistral_model: mistral-small-latest
+    mistral_url: https://api.mistral.ai/v1
+    mistral_api_key_env: MISTRAL_API_KEY
     # Legitimate free-tier fallback already available in this workspace. Set
     # AI_GATEWAY_URL, AI_GATEWAY_MODEL, and AI_GATEWAY_API_KEY together to use
     # a separate authorized profile without sending HF_API_KEY to another host.
@@ -32,6 +44,8 @@
     openai_compatible_api_key_env: HF_API_KEY
     openai_compatible_allowed_hosts:
       - router.huggingface.co
+      - api.groq.com
+      - api.mistral.ai
     openai_compatible_timeout_seconds: 90
     openai_compatible_disable_thinking: true
     timeout_seconds: 90
@@ -69,32 +83,51 @@ channels:
       - listicle
       - story
       - motivational
+    # Phase C (best-time trim): keep top hours from performance-report.
+    # Winners: 21, 19, 15, 07, 00, 18, 10 (+ a few near-winner probes).
     schedule_times:
       - "00:20"
-      - "03:50"
-      - "07:50"
-      - "11:20"
-      - "15:20"
-      - "19:20"
+      - "07:10"
+      - "08:10"
+      - "10:10"
+      - "12:10"
+      - "15:10"
+      - "16:10"
+      - "18:10"
+      - "19:10"
+      - "20:10"
+      - "21:10"
+      - "22:10"
     content_profiles:
       shorts:
         enabled: true
         schedule_times:
           - "00:20"
-          - "03:50"
-          - "07:50"
-          - "11:20"
-          - "15:20"
-          - "19:20"
-        min_duration_seconds: 32
-        max_duration_seconds: 36
+          - "07:10"
+          - "08:10"
+          - "10:10"
+          - "12:10"
+          - "15:10"
+          - "16:10"
+          - "18:10"
+          - "19:10"
+          - "20:10"
+          - "21:10"
+          - "22:10"
+        min_duration_seconds: 50
+        max_duration_seconds: 59
         target_width: 1080
         target_height: 1920
       videos:
         enabled: true
+        # Longs aligned to strong hours (still 6/day within 5–8 target).
         schedule_times:
+          - "07:30"
           - "10:30"
-          - "22:30"
+          - "15:30"
+          - "18:30"
+          - "19:30"
+          - "21:30"
         min_duration_seconds: 480
         max_duration_seconds: 600
         target_width: 1920
@@ -106,7 +139,9 @@ channels:
     visual_style: documentary
     viral_dna_channels:
       - https://www.youtube.com/@HistoryMarche
-      - https://www.youtube.com/@KnowledgeHub
+      - https://www.youtube.com/@VoicesofthePast
+      - https://www.youtube.com/@Toldinstone
+      - https://www.youtube.com/@HistoryMatters
     hashtags:
       - "#history"
       - "#ancienthistory"
@@ -120,15 +155,15 @@ channels:
       - "#civilization"
       - "#ancientcivilizations"
     output_dir: output/ancient_history
-    daily_upload_cap: 8
-    max_upload_gap_hours: 4.0
+    daily_upload_cap: 18
+    max_upload_gap_hours: 3.0
     upload_gap_retry_cooldown_minutes: 20
     short_build_timeout_minutes: 45
     video_build_timeout_minutes: 90
     short_build_stall_minutes: 12
     video_build_stall_minutes: 25
-    schedule_interval_hours: 2
-    backlog_schedule_interval_minutes: 90
+    schedule_interval_hours: 1
+    backlog_schedule_interval_minutes: 60
     youtube:
       upload_enabled: true
       client_secrets_file: client_secrets.json
@@ -139,6 +174,17 @@ channels:
       upload_enabled: false
       page_id: "101382192681601"
       access_token_env_var: "FB_PAGE_TOKEN_ANCIENT_HISTORY"
+
+    monetization:
+      enabled: true
+      long_form_cta: "Watch our longer documentaries on this channel for maps, sources, and the full evidence trail."
+      long_form_playlist_url: ""
+      pinned_comment_template: "Full documentary-style videos are on this channel. {title}"
+      affiliates:
+        - label: "Recommended history book"
+          url_env: "AFFILIATE_ANCIENT_BOOK_URL"
+        - label: "History tool / course pick"
+          url_env: "AFFILIATE_ANCIENT_TOOL_URL"
 
   - id: brain_lens
     display_name: "Brain Lens"
@@ -161,32 +207,39 @@ channels:
       - story
       - listicle
       - spicy_relationship
+    # Phase C: trim to best hours (10, 21, 13) + strong nearby slots.
+    # Dropped weak 12:xx cluster (very low avg views in report).
     schedule_times:
-      - "01:20"
-      - "05:20"
       - "09:20"
+      - "10:20"
       - "13:20"
-      - "16:00"
+      - "16:20"
+      - "19:20"
       - "21:20"
+      - "22:20"
     content_profiles:
       shorts:
         enabled: true
         schedule_times:
-          - "01:20"
-          - "05:20"
           - "09:20"
+          - "10:20"
           - "13:20"
-          - "16:00"
+          - "16:20"
+          - "19:20"
           - "21:20"
-        min_duration_seconds: 33
-        max_duration_seconds: 36
+          - "22:20"
+        min_duration_seconds: 50
+        max_duration_seconds: 59
         target_width: 1080
         target_height: 1920
       videos:
         enabled: true
         schedule_times:
-          - "11:30"
-          - "23:30"
+          - "10:00"
+          - "13:00"
+          - "16:00"
+          - "18:00"
+          - "21:00"
         min_duration_seconds: 480
         max_duration_seconds: 600
         target_width: 1920
@@ -197,10 +250,12 @@ channels:
       - kokoro-af_heart@1.10
     visual_style: stock
     viral_dna_channels:
-      - https://www.youtube.com/@psych2go
       - https://www.youtube.com/@charismaoncommand
-    daily_upload_cap: 8
-    max_upload_gap_hours: 4.0
+      - https://www.youtube.com/@HealthyGamerGG
+      - https://www.youtube.com/@ImprovementPill
+      - https://www.youtube.com/@JimmyonRelationships
+    daily_upload_cap: 12
+    max_upload_gap_hours: 3.5
     upload_gap_retry_cooldown_minutes: 20
     short_build_timeout_minutes: 45
     video_build_timeout_minutes: 90
@@ -221,8 +276,8 @@ channels:
       - "#brainscience"
       - "#selfimprovement"
     output_dir: output/brain_lens
-    schedule_interval_hours: 2
-    backlog_schedule_interval_minutes: 60
+    schedule_interval_hours: 1
+    backlog_schedule_interval_minutes: 45
     heygen:
       enabled: false
       use_for_shorts: true
@@ -281,4 +336,15 @@ channels:
       upload_enabled: false
       page_id: "1004784862724921"
       access_token_env_var: "FB_PAGE_TOKEN_BRAIN_LENS"
+
+    monetization:
+      enabled: true
+      long_form_cta: "Watch our longer Brain Lens videos for the full framework and practical next steps."
+      long_form_playlist_url: ""
+      pinned_comment_template: "Deeper breakdowns are in our longer videos. {title}"
+      affiliates:
+        - label: "Recommended relationship / psychology book"
+          url_env: "AFFILIATE_BRAIN_BOOK_URL"
+        - label: "Useful skill tool / course"
+          url_env: "AFFILIATE_BRAIN_TOOL_URL"
 

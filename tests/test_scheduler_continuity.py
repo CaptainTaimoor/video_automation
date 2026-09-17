@@ -456,6 +456,54 @@ class SchedulerContinuityTests(unittest.TestCase):
             "recovery_retry_scheduled",
         )
 
+    def test_build_subprocess_acquires_and_releases_concurrency_slot(self) -> None:
+        process = MagicMock()
+        process.wait.return_value = 0
+        process.pid = 9991
+        with (
+            patch.object(self.service, "_available_ram_mb", return_value=8192.0),
+            patch.object(self.service, "_monitor_build_process", return_value=(0, "", "", False)),
+            patch("yt_auto.scheduler_service.subprocess.Popen", return_value=process),
+        ):
+            initial = self.service._build_semaphore._value
+            result = self.service._execute_build_subprocess(
+                self.channel,
+                upload=False,
+                content_kind="short",
+                trigger_source="scheduled",
+            )
+        self.assertTrue(result.success)
+        self.assertEqual(self.service._build_semaphore._value, initial)
+
+    def test_build_capacity_waits_when_ram_is_too_low(self) -> None:
+        releases: list[str] = []
+
+        def fake_available() -> float | None:
+            # First check after acquire is low; second check is healthy.
+            if not releases:
+                return 500.0
+            return 4096.0
+
+        real_acquire = self.service._build_semaphore.acquire
+        real_release = self.service._build_semaphore.release
+
+        def tracking_release() -> None:
+            releases.append("released")
+            real_release()
+
+        with (
+            patch.object(self.service, "_available_ram_mb", side_effect=fake_available),
+            patch.object(self.service._build_semaphore, "acquire", side_effect=lambda blocking=True, timeout=None: real_acquire(blocking=blocking, timeout=timeout)),
+            patch.object(self.service._build_semaphore, "release", side_effect=tracking_release),
+            patch("yt_auto.scheduler_service.sleep") as sleeper,
+        ):
+            self.service._wait_for_build_capacity(self.channel.id, "short")
+
+        sleeper.assert_called()
+        self.assertGreaterEqual(len(releases), 1)
+        # Successful path ends holding one semaphore permit.
+        self.service._build_semaphore.release()
+
 
 if __name__ == "__main__":
     unittest.main()

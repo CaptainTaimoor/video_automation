@@ -119,14 +119,21 @@ def _watchdog_heartbeat_age_seconds() -> int | None:
 
 def _watchdog_status() -> tuple[bool, list[int], str]:
     owner_pid = _watchdog_lock_pid()
+    heartbeat_age = _watchdog_heartbeat_age_seconds()
     if _pid_is_running(owner_pid):
-        return True, [owner_pid], "lock_owner"
+        if heartbeat_age is not None and heartbeat_age <= WATCHDOG_HEARTBEAT_MAX_AGE_SECONDS:
+            return True, [owner_pid], f"lock_owner:heartbeat:{heartbeat_age}s"
+        evidence = (
+            f"stale_heartbeat:{heartbeat_age}s"
+            if heartbeat_age is not None
+            else "missing_heartbeat"
+        )
+        return False, [owner_pid], evidence
     watchdog_pids = _watchdog_pids()
     if watchdog_pids:
         return True, watchdog_pids, "process_scan"
     if owner_pid > 0:
         return False, [], "stale_lock"
-    heartbeat_age = _watchdog_heartbeat_age_seconds()
     if heartbeat_age is not None and heartbeat_age <= WATCHDOG_HEARTBEAT_MAX_AGE_SECONDS:
         return True, [], f"heartbeat:{heartbeat_age}s"
     return False, [], "absent"
@@ -141,6 +148,23 @@ def _start_watchdog() -> None:
         env=environment,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
+
+
+def _terminate_process_trees(pids: list[int]) -> None:
+    for pid in sorted({int(value) for value in pids if int(value) > 0}):
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill.exe", "/PID", str(pid), "/T", "/F"],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        else:
+            try:
+                os.kill(pid, 15)
+            except ProcessLookupError:
+                continue
 
 
 def _acquire_lock() -> Path | None:
@@ -182,9 +206,16 @@ def main() -> int:
         while True:
             watchdog_live, watchdog_pids, evidence = _watchdog_status()
             if not watchdog_live:
+                if watchdog_pids:
+                    _terminate_process_trees(watchdog_pids)
+                    _log(
+                        f"Watchdog was unhealthy ({evidence}); terminated process tree "
+                        f"{watchdog_pids}."
+                    )
+                    time.sleep(2)
                 _start_watchdog()
-                _log("Watchdog was absent; restart requested.")
-                _write_heartbeat(note="watchdog_restart_requested")
+                _log(f"Watchdog restart requested ({evidence}).")
+                _write_heartbeat(note=f"watchdog_restart_requested:{evidence}")
                 time.sleep(5)
             else:
                 pid_note = f":{','.join(map(str, watchdog_pids))}" if watchdog_pids else ""

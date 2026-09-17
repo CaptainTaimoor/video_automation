@@ -12,6 +12,7 @@ import numpy as np
 from moviepy.editor import VideoFileClip
 from PIL import Image, ImageDraw
 
+from yt_auto.hw_encode import H264EncodeProfile
 from yt_auto.images import HybridMediaFetcher
 from yt_auto.subtitles import SubtitleSegment
 from yt_auto.video_builder import VideoBuilder
@@ -44,18 +45,23 @@ class FastStillAnimationTests(unittest.TestCase):
 
     def test_fast_segment_render_failure_is_not_hidden_by_a_static_fallback(self) -> None:
         builder = VideoBuilder(1, 10, target_size=(180, 320))
+        cpu_profile = H264EncodeProfile(name="libx264", codec="libx264")
         with patch(
-            "yt_auto.video_builder.subprocess.run",
-            return_value=Mock(returncode=1, stderr=b"synthetic decoder failure"),
-        ) as run:
-            with self.assertRaisesRegex(RuntimeError, "synthetic decoder failure"):
-                builder._render_fast_segment(
-                    "ffmpeg",
-                    Path("broken.mp4"),
-                    Path("out.mp4"),
-                    duration=3.0,
-                    is_hook=False,
-                )
+            "yt_auto.video_builder.resolve_h264_encode_profile",
+            return_value=cpu_profile,
+        ):
+            with patch(
+                "yt_auto.video_builder.subprocess.run",
+                return_value=Mock(returncode=1, stderr=b"synthetic decoder failure"),
+            ) as run:
+                with self.assertRaisesRegex(RuntimeError, "synthetic decoder failure"):
+                    builder._render_fast_segment(
+                        "ffmpeg",
+                        Path("broken.mp4"),
+                        Path("out.mp4"),
+                        duration=3.0,
+                        is_hook=False,
+                    )
 
         self.assertEqual(1, run.call_count)
 

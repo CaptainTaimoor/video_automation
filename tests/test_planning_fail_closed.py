@@ -53,10 +53,10 @@ class PlanningFailClosedTests(unittest.TestCase):
         ):
             factory.build_one("ancient_history", content_kind="short")
 
-        self.assertEqual(factory.topic_planner.plan.call_count, 12)
-        self.assertEqual(factory.logger.warning.call_count, 12)
+        self.assertEqual(factory.topic_planner.plan.call_count, 20)
+        self.assertEqual(factory.logger.warning.call_count, 20)
         self.assertIn(
-            "Research exhausted for planning candidate 12",
+            "Research exhausted for planning candidate 20",
             factory.logger.warning.call_args.args[1],
         )
 

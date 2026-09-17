@@ -281,7 +281,7 @@ class TitleLab:
                     variants = [
                         TitleVariant("brain_relationship_intensity", f"Why {core} Can Feel So Intense—and What Actually Matters"),
                         TitleVariant("brain_relationship_pattern", f"{core}: The Pattern to Watch Before You Invest More"),
-                        TitleVariant("brain_relationship_clarity", f"{core}: How to Read the Moment Without Guessing"),
+                        TitleVariant("brain_relationship_clarity", f"{core}: What the Next Small Signal Usually Means"),
                     ]
                 else:
                     variants = [
@@ -598,6 +598,8 @@ class TitleLab:
         if re.match(r"^why .+ feels personal even when it is not$", lowered):
             return "generic repeated Brain Lens title"
         if channel_id == "brain_lens" and "quietly steals your attention" in lowered:
+            return "generic repeated Brain Lens title"
+        if channel_id == "brain_lens" and "how to read the moment without guessing" in lowered:
             return "generic repeated Brain Lens title"
         if channel_id == "brain_lens" and re.match(r"^why .+ (?:changes|change) your reaction so fast$", lowered):
             return "generic repeated Brain Lens title"

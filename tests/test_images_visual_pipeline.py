@@ -311,6 +311,53 @@ class VisualPipelineTests(unittest.TestCase):
             self.assertEqual(1, len(cached))
             self.assertEqual("good.jpg", cached[0][0].name)
 
+    def test_mohenjo_continuity_reuse_is_matched_to_the_spoken_scene(self) -> None:
+        fetcher = HybridMediaFetcher()
+        dancing = {
+            "url": "https://upload.wikimedia.org/Dancing_girl_of_Mohenjo-daro.jpg",
+            "asset_title": "File:Dancing girl of Mohenjo-daro.jpg",
+            "verified_subject": "mohenjo-daro",
+        }
+        site = {
+            "url": "https://upload.wikimedia.org/Mohenjo-daro.jpg",
+            "asset_title": "File:Mohenjo-daro.jpg",
+            "verified_subject": "mohenjo-daro",
+        }
+        seal = {
+            "url": "https://upload.wikimedia.org/Mohenjo-daro_three-faced_seal.jpg",
+            "asset_title": "File:Mohenjo-daro three-faced seal.jpg",
+            "verified_subject": "mohenjo-daro",
+        }
+        cache = [
+            (Path("dancing.jpg"), dancing),
+            (Path("site.jpg"), site),
+            (Path("seal.jpg"), seal),
+        ]
+
+        selected = fetcher._pop_ancient_continuity_asset(
+            cache,
+            "Mohenjo-Daro hid drains underground.",
+        )
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(Path("site.jpg"), selected[0])
+        self.assertFalse(
+            fetcher._asset_matches_scene_intent(
+                "ancient_history",
+                "Mohenjo-Daro hid drains underground.",
+                dancing["url"],
+                dancing,
+            )
+        )
+        self.assertTrue(
+            fetcher._asset_matches_scene_intent(
+                "ancient_history",
+                "Indus seals carried short inscriptions.",
+                seal["url"],
+                seal,
+            )
+        )
+
     def test_brain_action_cluster_recognizes_holding_hands_as_affection(self) -> None:
         action = HybridMediaFetcher._brain_action_cluster(
             "",
@@ -1174,7 +1221,7 @@ class VisualPipelineTests(unittest.TestCase):
 
         self.assertEqual(
             issue,
-            "Ancient Short contains 4 local fact-card fallback(s); maximum is 1",
+            "Ancient Short contains 4 local fact-card fallback(s); maximum is 2",
         )
 
     def test_ancient_short_preflight_allows_one_late_fact_card_with_real_evidence(self) -> None:
@@ -1195,15 +1242,15 @@ class VisualPipelineTests(unittest.TestCase):
 
         self.assertIsNone(factory._ancient_visual_preflight_issue(ancient, sources, "short"))
 
-    def test_ancient_short_visual_preflight_tries_three_ranked_candidates(self) -> None:
+    def test_visual_preflight_uses_the_expanded_six_candidate_pool(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
         ranked = [(score,) for score in (95, 90, 85, 80)]
 
         ancient_pool = factory._visual_asset_candidates("ancient_history", "short", ranked)
         brain_pool = factory._visual_asset_candidates("brain_lens", "short", ranked)
 
-        self.assertEqual(ancient_pool, ranked[:3])
-        self.assertEqual(brain_pool, ranked[:3])
+        self.assertEqual(ancient_pool, ranked)
+        self.assertEqual(brain_pool, ranked)
 
     def test_empty_visual_pool_is_recoverable_for_next_candidate(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
@@ -1549,6 +1596,74 @@ class VisualPipelineTests(unittest.TestCase):
         self.assertEqual(
             factory._brain_visual_preflight_issue(topic, sources),
             "Brain Lens Short contains 1 AI-generated visual(s); zero are allowed",
+        )
+
+    def test_brain_long_preflight_allows_one_late_ai_generated_visual(self) -> None:
+        factory = ShortsFactory.__new__(ShortsFactory)
+        topic = make_topic()
+        topic.content_kind = "video"
+        topic.subject = "Planning Initiative"
+        topic.title = "Planning Initiative: How Shared Effort Makes Dating Clearer"
+        sources = [
+            {
+                "source": "pexels_video",
+                "url": f"https://videos.pexels.com/couple-date-{index}.mp4",
+                "asset_title": "adult romantic couple walking together on a date",
+                "scene_index": index,
+            }
+            for index in range(1, 5)
+        ]
+        sources.append(
+            {
+                "source": "pollinations_ai",
+                "url": "pollinations.ai/generated",
+                "asset_title": "adult romantic couple planning a respectful date",
+                "scene_index": 5,
+            }
+        )
+
+        self.assertIsNone(factory._brain_visual_preflight_issue(topic, sources))
+
+    def test_brain_long_preflight_rejects_ai_generated_opening(self) -> None:
+        factory = ShortsFactory.__new__(ShortsFactory)
+        topic = make_topic()
+        topic.content_kind = "video"
+        topic.subject = "Planning Initiative"
+        topic.title = "Planning Initiative: How Shared Effort Makes Dating Clearer"
+        sources = [
+            {
+                "source": "pollinations_ai" if index == 1 else "pexels_video",
+                "url": f"https://videos.example/couple-date-{index}.mp4",
+                "asset_title": "adult romantic couple planning a respectful date",
+                "scene_index": index,
+            }
+            for index in range(1, 6)
+        ]
+
+        self.assertEqual(
+            factory._brain_visual_preflight_issue(topic, sources),
+            "Brain Lens long video uses an AI-generated visual in the opening",
+        )
+
+    def test_brain_long_preflight_rejects_multiple_ai_generated_visuals(self) -> None:
+        factory = ShortsFactory.__new__(ShortsFactory)
+        topic = make_topic()
+        topic.content_kind = "video"
+        topic.subject = "Planning Initiative"
+        topic.title = "Planning Initiative: How Shared Effort Makes Dating Clearer"
+        sources = [
+            {
+                "source": "pollinations_ai" if index in {5, 6} else "pexels_video",
+                "url": f"https://videos.example/couple-date-{index}.mp4",
+                "asset_title": "adult romantic couple planning a respectful date",
+                "scene_index": index,
+            }
+            for index in range(1, 7)
+        ]
+
+        self.assertEqual(
+            factory._brain_visual_preflight_issue(topic, sources),
+            "Brain Lens long video contains 2 AI-generated visual(s); maximum is 1",
         )
 
     def test_brain_short_preflight_allows_one_late_fact_card(self) -> None:

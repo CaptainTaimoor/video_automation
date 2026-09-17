@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from functools import lru_cache
 from typing import Iterable, List
@@ -429,6 +430,22 @@ def _title_score(channel: ChannelConfig, title: str, keywords: list[str]) -> tup
     return max(0, min(100, score)), issues, strengths
 
 
+def _resolved_affiliates(channel: ChannelConfig) -> list[dict]:
+    money = getattr(channel, "monetization", None)
+    if not money or not getattr(money, "enabled", True):
+        return []
+    resolved: list[dict] = []
+    for item in list(getattr(money, "affiliates", []) or []):
+        if not isinstance(item, dict):
+            continue
+        env_key = str(item.get("url_env") or "").strip()
+        url = (os.getenv(env_key) or "").strip() if env_key else ""
+        label = str(item.get("label") or "Recommended").strip()
+        if url.startswith("http"):
+            resolved.append({"label": label, "url": url, "url_env": env_key})
+    return resolved
+
+
 def _description_lines(
     channel: ChannelConfig,
     topic: TopicCandidate,
@@ -512,6 +529,28 @@ def _description_lines(
             .replace("in under a minute", "with deeper context")
             .replace("under a minute", "with deeper context")
         )
+    money = getattr(channel, "monetization", None)
+    if content_kind == "short":
+        cta = ""
+        playlist = ""
+        if money and getattr(money, "enabled", True):
+            cta = str(getattr(money, "long_form_cta", "") or "").strip()
+            playlist = str(getattr(money, "long_form_playlist_url", "") or "").strip()
+        lines.extend(
+            [
+                "",
+                "Want the full story?",
+                cta
+                or f"Watch the longer {channel.display_name} videos on this channel for deeper context and more evidence.",
+            ]
+        )
+        if playlist.startswith("http"):
+            lines.append(playlist)
+    affiliates = _resolved_affiliates(channel)
+    if affiliates:
+        lines.extend(["", "Helpful resources (affiliate links may earn a commission):"])
+        for item in affiliates[:3]:
+            lines.append(f"- {item['label']}: {item['url']}")
     lines.extend(["", subscribe_line])
     lines.extend(["", " ".join(hashtags)])
     return lines
@@ -529,6 +568,21 @@ def build_youtube_metadata(
     tags = fit_youtube_tags([*keywords, *(tag.replace("#", "") for tag in hashtags)])
     description = "\n".join(_description_lines(channel, topic, title, keywords, hashtags, content_kind))
     description = description.encode("utf-8")[:4900].decode("utf-8", "ignore").rstrip()
+    affiliates = _resolved_affiliates(channel)
+    money = getattr(channel, "monetization", None)
+    pinned = ""
+    if money and getattr(money, "enabled", True):
+        pinned = str(getattr(money, "pinned_comment_template", "") or "").strip()
+        if pinned:
+            pinned = pinned.replace("{title}", title).replace("{channel}", channel.display_name)
+        if not pinned and content_kind == "short":
+            playlist = str(getattr(money, "long_form_playlist_url", "") or "").strip()
+            pinned = (
+                f"Full story in our longer videos"
+                + (f": {playlist}" if playlist.startswith("http") else " on this channel.")
+            )
+            if affiliates:
+                pinned += f" Resource: {affiliates[0]['label']}."
 
     title_score, title_issues, title_strengths = _title_score(channel, title, keywords)
     description_score = 100
@@ -589,4 +643,11 @@ def build_youtube_metadata(
         "visual_captions": topic.visual_captions,
         "scene_count": len(topic.scene_plan) if topic.scene_plan else len(topic.narration_beats),
         "content_kind": content_kind,
+        "affiliate_links": affiliates,
+        "pinned_comment": pinned,
+        "long_form_playlist_url": (
+            str(getattr(money, "long_form_playlist_url", "") or "").strip()
+            if money and getattr(money, "enabled", True)
+            else ""
+        ),
     }
