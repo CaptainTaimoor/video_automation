@@ -33,7 +33,12 @@ This project builds and uploads automated YouTube Shorts and 8–10 minute video
 
 ## Setup
 
-**New PC / one-click:** run `setup\INSTALL.bat` as Administrator. It installs Python/Node if needed, creates `.venv`, installs dependencies, configures Windows auto-start, and opens LAN dashboard access. Use the `controls\` folder to enable/disable autostart and LAN.
+**Windows live box / one-click:** run `setup\INSTALL.bat` as Administrator. It installs Python/Node if needed, creates `.venv`, installs dependencies, configures Windows auto-start, and opens LAN dashboard access. Use the `controls\` folder to enable/disable autostart and LAN.
+
+**Linux / macOS (development and builds):** run `bash setup/install.sh`. It checks the
+Python version, creates `.venv`, installs dependencies, scaffolds `.env` and creates the
+runtime directories. It does not install auto-start services or touch the firewall —
+those steps are Windows-only and belong to the publishing box.
 
 Manual setup:
 
@@ -48,7 +53,8 @@ pip install -r requirements.txt
 4. Copy env template:
 
 ```bash
-copy .env.example .env
+copy .env.example .env      # Windows
+cp .env.example .env        # Linux/macOS
 ```
 
 5. Put your YouTube OAuth client file at `client_secrets.json`.
@@ -162,9 +168,20 @@ First upload run opens browser auth flow per channel and stores token:
 
 ## Regression Tests
 
+Install the test extras once, then run the suite from the project root:
+
 ```bash
-set PYTHONPATH=src
-python -m unittest discover -s tests -v
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+```
+
+`conftest.py` puts `src/` on `sys.path`, so pytest needs no `PYTHONPATH` export and
+no package install. The stdlib runner does not read `conftest.py`, so it still needs
+the path set explicitly:
+
+```bash
+set PYTHONPATH=src            # Windows
+PYTHONPATH=src python -m unittest discover -s tests -v   # Linux/macOS
 ```
 
 The suite includes adversarial silent-audio MP4s, timestamp holes, final-render

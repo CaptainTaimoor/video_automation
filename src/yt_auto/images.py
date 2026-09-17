@@ -190,7 +190,8 @@ class HybridMediaFetcher:
 
 
     def _wikimedia_search(self, query: str, limit: int = 8, deadline: float | None = None) -> List[Tuple[str, Dict[str, str]]]:
-        cache_key = f"{re.sub(r'\s+', ' ', query or '').strip().lower()}|{int(limit)}"
+        normalized_query = re.sub(r"\s+", " ", query or "").strip().lower()
+        cache_key = f"{normalized_query}|{int(limit)}"
         cached = self._wikimedia_search_cache.get(cache_key)
         if cached is not None:
             # Validation annotates metadata, so callers receive independent copies.

@@ -6,7 +6,10 @@ Portable one-click setup
      - .env
      - client_secrets.json
      - secrets\tokens\*.json
-3. Double-click INSTALL.bat (Run as Administrator when prompted).
+3. Windows: double-click INSTALL.bat (Run as Administrator when prompted).
+   Linux/macOS: run `bash setup/install.sh` instead -- it does the venv,
+   dependency and .env steps only, and skips the auto-start/firewall steps
+   below, which are Windows-specific.
 4. It will:
      - Install Python 3.12 and Node.js LTS via winget if missing
      - Create .venv and install requirements.txt
