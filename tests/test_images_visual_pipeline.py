@@ -252,6 +252,10 @@ class VisualPipelineTests(unittest.TestCase):
             self.assertNotIn("https://cdn.example/ignored.jpg", memory["recent_urls"])
 
     def test_ancient_continuity_reuses_safe_sources_from_caption_held_run(self) -> None:
+        # Ancient archive rule: a provenance-verified Wikimedia still is kept
+        # down to 360x480, because Commons often only holds small catalog
+        # images for niche subjects and an attributed real archive beats a
+        # generated fact card. Anything below that floor is still dropped.
         with tempfile.TemporaryDirectory() as tmp:
             channel = Path(tmp) / "output" / "ancient_history"
             held = channel / "short" / "2026-08-12" / "caption_held"
@@ -261,7 +265,10 @@ class VisualPipelineTests(unittest.TestCase):
             held_raw.mkdir(parents=True)
             current_raw.mkdir(parents=True)
             Image.new("RGB", (720, 1280), "white").save(held_raw / "good.jpg")
-            Image.new("RGB", (432, 576), "white").save(held_raw / "small.jpg")
+            # Above the 360x480 archive floor -> kept.
+            Image.new("RGB", (432, 576), "white").save(held_raw / "archive.jpg")
+            # Below the archive floor -> dropped.
+            Image.new("RGB", (200, 300), "white").save(held_raw / "small.jpg")
             (held / "sources.json").write_text(
                 json.dumps(
                     [
@@ -273,6 +280,16 @@ class VisualPipelineTests(unittest.TestCase):
                             "source_page_verified": "true",
                             "license": "CC BY-SA 4.0",
                             "asset_title": "Axum Obelisks stela field",
+                            "verified_subject": "axum obelisks",
+                        },
+                        {
+                            "file": "archive.jpg",
+                            "url": "https://upload.wikimedia.org/axum_stela_archive.jpg",
+                            "source": "wikimedia",
+                            "source_page": "https://commons.wikimedia.org/wiki/File:Axum_stela_archive.jpg",
+                            "source_page_verified": "true",
+                            "license": "CC BY-SA 4.0",
+                            "asset_title": "Axum Obelisks catalog still",
                             "verified_subject": "axum obelisks",
                         },
                         {
@@ -308,8 +325,11 @@ class VisualPipelineTests(unittest.TestCase):
             with patch.dict("os.environ", {"YT_CONTINUITY_RECOVERY": "1"}):
                 cached = HybridMediaFetcher()._ancient_continuity_cache(topic, current_raw)
 
-            self.assertEqual(1, len(cached))
-            self.assertEqual("good.jpg", cached[0][0].name)
+            names = [path.name for path, _ in cached]
+            self.assertEqual(2, len(cached))
+            self.assertIn("good.jpg", names)
+            self.assertIn("archive.jpg", names)
+            self.assertNotIn("small.jpg", names)
 
     def test_mohenjo_continuity_reuse_is_matched_to_the_spoken_scene(self) -> None:
         fetcher = HybridMediaFetcher()
@@ -1323,9 +1343,18 @@ class VisualPipelineTests(unittest.TestCase):
         with patch.dict("os.environ", {"YT_CONTINUITY_RECOVERY": "1"}):
             ordered = factory._visual_asset_candidates("ancient_history", "short", ranked)
 
-        self.assertEqual(6, len(ordered))
-        self.assertEqual("Lascaux", ordered[0][2].subject)
-        self.assertNotIn("Sogdian Merchants", [item[2].subject for item in ordered])
+        subjects = [item[2].subject for item in ordered]
+        # Recovery deliberately tries a short list of fresher packs instead of
+        # burning the whole budget on sparse subjects while the gap widens.
+        self.assertEqual(2, len(ordered))
+        # Lascaux scores LAST of the seven inputs but is archive-rich. Its
+        # survival is the point of the test: if the limit were applied before
+        # the sort, the top-2 by score (Sogdian, Nubian) would win and Lascaux
+        # could never appear.
+        self.assertIn("Lascaux", subjects)
+        # Nubian Pyramids is second by raw score yet archive-poor, so score
+        # order alone must not decide the pack.
+        self.assertNotIn("Nubian Pyramids", subjects)
 
     def test_stage_two_ancient_recovery_changes_archive_subject_priority(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)
@@ -1934,26 +1963,38 @@ class VisualPipelineTests(unittest.TestCase):
             self.assertTrue(repaired["reused_for_scene"])
             self.assertEqual(reuse_counts[backgrounds[0].name], 1)
 
-    def test_ancient_short_preflight_requires_eight_unique_verified_real_sources(self) -> None:
+    def test_ancient_short_preflight_requires_minimum_unique_verified_real_sources(self) -> None:
+        # Derived from the constant rather than hard-coded: the threshold is a
+        # tunable editorial dial, and this test is about the shortfall being
+        # reported, not about any particular value of it.
+        threshold = ShortsFactory.ANCIENT_SHORT_MIN_VERIFIED_REAL_VISUALS
+        shortfall = threshold - 1
         factory = ShortsFactory.__new__(ShortsFactory)
         factory.image_fetcher = HybridMediaFetcher()
         ancient = make_topic()
         ancient.niche_id = "ancient_history"
         ancient.title = "How Sogdian Merchants Connected Silk Road Cities"
         ancient.subject = "sogdian merchants"
-        sources = [self._verified_ancient_source(index) for index in range(1, 8)]
+        sources = [
+            self._verified_ancient_source(index) for index in range(1, shortfall + 1)
+        ]
+        # Generated diagrams must not count toward the verified-real quota.
         sources.extend(
             {
                 "source": "local_documentary_diagram",
                 "url": f"local_diagram_{index}",
                 "scene_index": index,
             }
-            for index in range(8, 13)
+            for index in range(shortfall + 1, shortfall + 6)
         )
 
         issue = factory._ancient_visual_preflight_issue(ancient, sources, "short")
 
-        self.assertEqual(issue, "only 7 unique verified real Ancient visuals; needs at least 8")
+        self.assertEqual(
+            issue,
+            f"only {shortfall} unique verified real Ancient visuals; "
+            f"needs at least {threshold}",
+        )
 
     def test_ancient_short_preflight_accepts_eight_relevant_verified_sources(self) -> None:
         factory = ShortsFactory.__new__(ShortsFactory)

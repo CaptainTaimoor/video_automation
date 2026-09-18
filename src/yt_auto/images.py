@@ -3508,7 +3508,18 @@ class HybridMediaFetcher:
             "artist_counts": {},
             "recent_lead_artists": set(),
         }
-        channel_root = self._channel_root_from_run_dir(run_dir, channel_id=channel_id) or run_dir.parents[3]
+        channel_root = self._channel_root_from_run_dir(run_dir, channel_id=channel_id)
+        if channel_root is None:
+            # _channel_root_from_run_dir already guards its own walk up the
+            # tree, so this fallback must too: a shallow run_dir raises
+            # IndexError on parents[3] and takes the whole fetch down.
+            parents = run_dir.parents
+            if len(parents) > 3:
+                channel_root = parents[3]
+            elif parents:
+                channel_root = parents[len(parents) - 1]
+            else:
+                channel_root = run_dir
         manifests = sorted(channel_root.rglob('sources.json'), key=lambda p: p.stat().st_mtime, reverse=True)
         published_run_dirs = self._published_run_directories()
         loaded = 0

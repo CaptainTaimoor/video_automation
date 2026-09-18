@@ -742,8 +742,10 @@ class SourceValidationTests(unittest.TestCase):
         factory.config = config
         factory._recent_story_fingerprints = Mock(return_value={})
 
+        candidates = list(factory._ancient_short_continuity_fallbacks(channel))
         prepared = []
-        for candidate in factory._ancient_short_continuity_fallbacks(channel):
+        rejected = []
+        for candidate in candidates:
             try:
                 prepared.append(
                     factory._prepare_ancient_continuity_fallback(
@@ -752,10 +754,16 @@ class SourceValidationTests(unittest.TestCase):
                         set(),
                     )
                 )
-            except ValueError:
-                continue
+            except ValueError as exc:
+                rejected.append((getattr(candidate, "subject", candidate), str(exc)))
 
-        self.assertEqual(14, len(prepared))
+        # The point of this test is that every continuity fallback is already
+        # publishable, not that the pool is any particular size -- subjects get
+        # added over time. Pinning an exact count made this fail purely because
+        # the pool grew, so assert the invariant and keep a regression floor.
+        self.assertEqual([], rejected)
+        self.assertEqual(len(candidates), len(prepared))
+        self.assertGreaterEqual(len(prepared), 14)
         continuity_subjects = {
             "nubian pyramids",
             "roman concrete",

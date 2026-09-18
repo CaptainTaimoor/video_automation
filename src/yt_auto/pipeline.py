@@ -84,6 +84,8 @@ class ShortsFactory:
     # 8 was starving continuity recovery when Commons only returned a handful
     # of verified subject-relevant stills. Keep quality high, but unblock gaps.
     ANCIENT_SHORT_MIN_VERIFIED_REAL_VISUALS = 6
+    # Max characters per spoken beat, so burned-in captions do not overflow.
+    ANCIENT_SHORT_MAX_BEAT_CHARS = 70
     ANCIENT_SHORT_MAX_FACT_CARD_FALLBACKS = 2
     BRAIN_SHORT_MAX_FACT_CARD_FALLBACKS = 1
     BRAIN_LONG_MAX_AI_GENERATED_VISUALS = 1
@@ -3484,7 +3486,17 @@ class ShortsFactory:
                 closer = spoken_beats[-1].rstrip()
                 if not closer.endswith((".", "!", "?")):
                     closer = f"{closer}."
-                spoken_beats[-1] = f"{closer} That evidence still defines {subject_words}."
+                subject_line = f"That evidence still defines {subject_words}."
+                merged = f"{closer} {subject_line}"
+                # Burned-in captions wrap on beat boundaries, so folding the
+                # subject line into the closer overflows the caption width for
+                # longer subject names. Keep the same words, but give the line
+                # its own beat once the merge would exceed the budget.
+                if len(merged) <= self.ANCIENT_SHORT_MAX_BEAT_CHARS:
+                    spoken_beats[-1] = merged
+                else:
+                    spoken_beats[-1] = closer
+                    spoken_beats.append(subject_line)
             source_urls = list(polished.source_urls or [])
             if not source_urls:
                 fallback_source = self.topic_planner.research._default_source_url(subject_words)
