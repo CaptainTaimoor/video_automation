@@ -269,6 +269,38 @@ def _issue_text(run: dict) -> str:
     return f"{run.get('channel', '?')}: {_short_title(run.get('title', ''), 46)} -> {_short_title(str(reason), 90)}"
 
 
+def _missing_credential_actions(factory: ShortsFactory) -> list[str]:
+    """Report credentials that are absent before they cause opaque failures.
+
+    A machine restored from git has the code but none of the secrets, and the
+    first symptom is a build that plans twenty topics and then dies with
+    "not enough usable visuals found" several minutes later. Naming the gap up
+    front turns that into a one-line fix.
+    """
+    missing: list[str] = []
+    if not str(os.getenv("GEMINI_API_KEY") or "").strip():
+        missing.append(
+            "GEMINI_API_KEY is not set in .env - scripts fall back to weak "
+            "templates and the quality gate rejects them"
+        )
+    if not any(
+        str(os.getenv(name) or "").strip()
+        for name in ("PEXELS_API_KEY", "PIXABAY_API_KEY")
+    ):
+        missing.append(
+            "No stock image key in .env (PEXELS_API_KEY or PIXABAY_API_KEY) - "
+            "visual fetch has fewer sources to satisfy the quality gate"
+        )
+    for channel in factory.config.channels:
+        if not channel.youtube.upload_enabled:
+            continue
+        secrets_file = channel.youtube.client_secrets_file
+        if not Path(secrets_file).exists():
+            missing.append(f"Missing {secrets_file} - required before 'run.py auth'")
+            break
+    return missing
+
+
 def _print_status(factory: ShortsFactory, detailed: bool = False) -> int:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     processes = _scheduler_processes()
@@ -368,6 +400,8 @@ def _print_status(factory: ShortsFactory, detailed: bool = False) -> int:
         ])
 
     print("-" * 72)
+    # Credentials come first: nothing else is actionable without them.
+    actions = _missing_credential_actions(factory) + actions
     current_actions = []
     for action in actions:
         if action not in current_actions:
@@ -376,6 +410,8 @@ def _print_status(factory: ShortsFactory, detailed: bool = False) -> int:
         print("Action needed:")
         for action in current_actions[:5]:
             print(f"- {action}")
+        if len(current_actions) > 5:
+            print(f"- ...and {len(current_actions) - 5} more")
     else:
         print("Action needed: none")
 

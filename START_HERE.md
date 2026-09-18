@@ -55,9 +55,16 @@ On Windows you can instead double-click `START_BOT_AND_DASHBOARD.bat`.
 
 ## If something fails
 
-- **"not enough usable visuals"** → your keys are missing or the PC has no
-  internet access to Wikimedia/Pexels.
-- **"run auth"** in status → redo Step 4.
+Run this first — it names exactly what is missing:
+
+```
+python run.py status
+```
+
+Under **Action needed** it lists any key you still have to paste into `.env`,
+a missing `client_secrets.json`, and any channel that still needs Step 4.
+
+- **"not enough usable visuals"** → almost always a missing key. Check `status`.
 - Dashboard: http://localhost:8787
 
 ## Not in GitHub (copy from an old backup if you have one)
