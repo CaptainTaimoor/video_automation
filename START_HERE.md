@@ -43,6 +43,17 @@ If the port is blocked, pin it: set `YT_OAUTH_PORT=8123` in `.env`.
 
 ## Step 5 — Test, then go live
 
+**Easiest:** double-click `GO_LIVE.bat` (Windows). It checks everything,
+creates `.venv` and installs packages if missing, then builds one test video
+without uploading. It prints exactly what to fix if anything is wrong.
+
+Manual equivalent:
+
+```
+python scripts/go_live.py
+```
+
+
 ```
 python run.py status
 python run.py build --channel ancient_history --kind short --dry-run
