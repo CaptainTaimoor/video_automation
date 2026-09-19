@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import webbrowser
 from pathlib import Path
 from typing import Dict, List
 
@@ -91,17 +92,75 @@ class YouTubeUploader:
         if not creds.valid:
             raise UploadAuthError(f"OAuth token for {channel.id} is not valid. Re-authorize: python run.py auth --channel {channel.id}")
 
-    def _obtain_credentials(self, channel: ChannelConfig):
-        flow = InstalledAppFlow.from_client_secrets_file(
-            str(channel.youtube.client_secrets_file),
-            SCOPES,
-        )
-        creds = flow.run_local_server(port=0)
+    @staticmethod
+    def _browser_available() -> bool:
+        """True when Python can actually launch a browser on this machine.
+
+        Headless boxes, WSL, SSH sessions and Windows services all reach the
+        OAuth step fine and then die on `webbrowser.Error: could not locate
+        runnable browser`. Checking first lets us print the URL instead.
+        """
+        try:
+            webbrowser.get()
+            return True
+        except webbrowser.Error:
+            return False
+
+    def _obtain_credentials(self, channel: ChannelConfig, open_browser: bool = True):
+        secrets_file = Path(channel.youtube.client_secrets_file)
+        if not secrets_file.exists():
+            raise UploadAuthError(
+                f"Missing {secrets_file}. In Google Cloud Console create an "
+                f'OAuth client of type "Desktop app", download the JSON, and '
+                f"save it there."
+            )
+        # google_auth_oauthlib accepts a {"web": ...} client here, then the
+        # loopback redirect is rejected by Google with a confusing
+        # redirect_uri_mismatch. Catch the wrong client type up front.
+        try:
+            raw = json.loads(secrets_file.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise UploadAuthError(
+                f"{secrets_file} is not readable JSON ({exc}). Re-download the "
+                f'OAuth "Desktop app" client from Google Cloud Console.'
+            ) from exc
+        if isinstance(raw, dict) and "installed" not in raw:
+            kind = "web application" if "web" in raw else f"unrecognised ({', '.join(raw) or 'empty'})"
+            raise UploadAuthError(
+                f"{secrets_file} is a {kind} OAuth client, which cannot be used for "
+                f'desktop login. In Google Cloud Console create an OAuth client with '
+                f'Application type = "Desktop app" and download that file instead. A '
+                f'correct file begins with {{"installed": ...}}.'
+            )
+
+        try:
+            flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), SCOPES)
+        except ValueError as exc:
+            raise UploadAuthError(
+                f"{secrets_file} is not a usable OAuth client file ({exc})."
+            ) from exc
+
+        # A blocked random port can be pinned with YT_OAUTH_PORT; Google ignores
+        # the port for loopback redirects, so any free port is acceptable.
+        try:
+            port = int(str(os.getenv("YT_OAUTH_PORT") or "0").strip() or 0)
+        except ValueError:
+            port = 0
+
+        launch = open_browser and self._browser_available()
+        if not launch:
+            print(
+                f"[{channel.id}] No browser can be opened here, so the link is "
+                f"printed below. Open it in any browser -- on this machine, or on "
+                f"your phone if this box has no desktop."
+            )
+
+        creds = flow.run_local_server(port=port, open_browser=launch)
         ensure_dir(channel.youtube.token_file.parent)
         channel.youtube.token_file.write_text(creds.to_json(), encoding="utf-8")
         return creds
 
-    def _service_for_channel(self, channel: ChannelConfig):
+    def _service_for_channel(self, channel: ChannelConfig, open_browser: bool = True):
         if channel.id in self._services:
             return self._services[channel.id]
 
@@ -124,8 +183,8 @@ class YouTubeUploader:
             token_file.write_text(creds.to_json(), encoding="utf-8")
 
         if not creds or not creds.valid:
-            print(f"[{channel.id}] OAuth authorization required. A browser window will open.")
-            creds = self._obtain_credentials(channel)
+            print(f"[{channel.id}] OAuth authorization required.")
+            creds = self._obtain_credentials(channel, open_browser=open_browser)
 
         ensure_dir(token_file.parent)
         token_file.write_text(creds.to_json(), encoding="utf-8")
@@ -134,8 +193,8 @@ class YouTubeUploader:
         self._services[channel.id] = service
         return service
 
-    def authorize(self, channel: ChannelConfig) -> dict:
-        service = self._service_for_channel(channel)
+    def authorize(self, channel: ChannelConfig, open_browser: bool = True) -> dict:
+        service = self._service_for_channel(channel, open_browser=open_browser)
         data = service.channels().list(part="snippet", mine=True).execute()
         items = data.get("items", [])
         if not items:

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from yt_auto.pipeline import ShortsFactory, _load_optional_dotenv
 from yt_auto.scheduler_service import ScheduleService
+from yt_auto.uploaders.youtube import UploadAuthError
 from yt_auto.utils import ensure_dir
 
 
@@ -453,7 +454,15 @@ def cmd_status(factory: ShortsFactory, args: argparse.Namespace) -> int:
 
 def cmd_auth(factory: ShortsFactory, args: argparse.Namespace) -> int:
     channel = factory._channel(args.channel)
-    result = factory.youtube.authorize(channel)
+    try:
+        result = factory.youtube.authorize(
+            channel,
+            open_browser=not bool(getattr(args, "no_browser", False)),
+        )
+    except UploadAuthError as exc:
+        # A setup problem the user can fix; a traceback only obscures it.
+        print(f"Authorization failed for {channel.id}:\n  {exc}")
+        return 1
     print(f"Authorized channel: {result.get('title', '')} ({result.get('channel_id', '')})")
     print(f"Saved token: {channel.youtube.token_file}")
     return 0
@@ -650,6 +659,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_auth = sub.add_parser("auth", help="Authorize a YouTube channel")
     p_auth.add_argument("--channel", required=True, help="Channel id from config")
+    p_auth.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Print the authorization URL instead of opening a browser "
+             "(use over SSH/WSL, or when no browser is installed)",
+    )
 
     p_build = sub.add_parser("build", help="Build one short or full video")
     p_build.add_argument("--channel", required=True, help="Channel id from config")

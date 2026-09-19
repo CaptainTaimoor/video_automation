@@ -36,6 +36,11 @@ python run.py auth --channel ancient_history
 python run.py auth --channel brain_lens
 ```
 
+If no browser opens, the command prints a link instead — open it in any
+browser, even on your phone. To force that behaviour, add `--no-browser`.
+
+If the port is blocked, pin it: set `YT_OAUTH_PORT=8123` in `.env`.
+
 ## Step 5 — Test, then go live
 
 ```
