@@ -22,6 +22,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def enable_espeak_fallback() -> None:
+    """Point phonemizer at the bundled espeak-ng before the pipeline is built.
+
+    misaki looks up words in a dictionary and falls back to espeak for anything
+    outside it. phonemizer will not find espeak on Windows by itself, so the
+    fallback silently never loads -- and then any out-of-dictionary word
+    ("Aksumite", "stelae") yields None phonemes and crashes the render with a
+    bare TypeError from inside a join. Wiring the bundled library here keeps
+    proper nouns speakable.
+    """
+    try:
+        import espeakng_loader
+        from phonemizer.backend.espeak.wrapper import EspeakWrapper
+
+        EspeakWrapper.set_library(espeakng_loader.get_library_path())
+        EspeakWrapper.set_data_path(espeakng_loader.get_data_path())
+    except Exception as exc:  # fall through; KPipeline warns and skips OOD words
+        print(f"espeak fallback unavailable: {exc}")
+
+
 def render(args: argparse.Namespace) -> None:
     input_path = Path(args.input_json).resolve()
     output_dir = Path(args.output_dir).resolve()
@@ -34,6 +54,7 @@ def render(args: argparse.Namespace) -> None:
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(max(1, min(6, (os.cpu_count() or 2) - 1)))
     lang_code = args.voice[0].lower() if args.voice and args.voice[0].lower() in {"a", "b"} else "a"
+    enable_espeak_fallback()
     pipeline = KPipeline(lang_code=lang_code)
     rendered: list[dict] = []
 

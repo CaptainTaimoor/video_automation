@@ -1214,7 +1214,7 @@ def ready_queue_snapshot():
     try:
         from yt_auto import ready_queue as rq
     except Exception as exc:
-        return {"enabled": False, "error": str(exc), "items": [], "by_status": {}}
+        return {"enabled": False, "error": str(exc), "items": [], "by_status": {}, "tabs": []}
     tz = "Asia/Karachi"
     try:
         if yaml:
@@ -1225,6 +1225,15 @@ def ready_queue_snapshot():
     channel_ids = [c["id"] for c in CHANNELS]
     summary = rq.queue_summary(STATE, channel_ids, timezone_name=tz, root=ROOT)
     summary["flag_path"] = str(rq.flag_path(ROOT))
+    # The page groups by plain cause rather than raw status; keep that shaping
+    # in one tested place instead of in the browser.
+    try:
+        from yt_auto.dashboard_views import queue_tabs
+
+        summary["tabs"] = queue_tabs(summary)
+    except Exception as exc:  # a view bug must not blank the whole queue page
+        summary["tabs"] = []
+        summary["tabs_error"] = str(exc)
     return summary
 
 

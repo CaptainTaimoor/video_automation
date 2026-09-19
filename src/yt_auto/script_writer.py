@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from yt_auto import brain_hooks, pipeline_quality
 from yt_auto.models import ChannelConfig, ScenePlanItem, ScriptWriterConfig, TopicCandidate
 from yt_auto.network_policy import validate_ollama_generate_url
 
@@ -947,34 +948,9 @@ class ScriptWriter:
         "Subscribe for more untold stories that sound impossible but are real.",
     ]
 
-    _BRAIN_LENS_OPENERS = [
-        "They text one dry word, and suddenly you want them more.",
-        "You felt the chemistry, then one silence made your stomach drop.",
-        "You stare at their name, pretending you are not waiting.",
-        "They pull back for one day, and your brain turns it into a chase.",
-        "You laugh in front of them, then replay every tiny glance later.",
-        "You say you are over it, but your thumb still checks their story.",
-        "One almost-kiss can feel louder than a whole conversation.",
-        "You call it chemistry, but your nervous system may be reading uncertainty.",
-        "They give mixed signals, and your brain mistakes the stress for sparks.",
-        "You want to look calm, but your body already exposed the crush.",
-        "You delete the message, rewrite it, then make it sound less interested.",
-        "The person who feels addictive is not always the person who feels safe.",
-        "You notice their voice change, and suddenly your confidence changes too.",
-        "You walk into the room and instantly check if they noticed you.",
-        "You think you want closure, but your brain may want one more hit of hope.",
-        "They hold eye contact half a second longer, and your brain writes a whole story.",
-        "You are not falling for them yet; you are falling for the tension.",
-        "One late-night reply can feel more intimate than an actual conversation.",
-        "They smile, look away, and suddenly you are analyzing the whole room.",
-        "You feel calm around the right person, but addicted around the confusing one.",
-    ]
+    _BRAIN_LENS_OPENERS = list(brain_hooks.OPENERS)
 
-    _BRAIN_LENS_CLOSERS = [
-        "Chemistry gets attention; consistency earns access.",
-        "The spark starts the story, but the pattern tells you whether to stay.",
-        "Judge the ordinary pattern, not the most exciting moment.",
-    ]
+    _BRAIN_LENS_CLOSERS = list(brain_hooks.CLOSERS)
 
     _HISTORY_OPENERS = [
         "Start with the surviving artifact from {subject}, because the object tells you what the legend skips.",
@@ -986,18 +962,7 @@ class ScriptWriter:
         "The human part of {subject} starts with the people who had to live with the decision.",
     ]
 
-    _BRAIN_LENS_FRAMES = [
-        "hot relationship micro-moment, brain explanation, emotionally mature power move",
-        "phone tension, attraction loop, one calm next action",
-        "body cue, romantic misread, practical confidence reset",
-        "almost-flirt moment, nervous system reaction, safer interpretation",
-        "mixed signal, dopamine loop, clean boundary payoff",
-        "crush behavior, hidden insecurity, attractive self-control",
-        "dating scene, body language clue, non-toxic confidence advice",
-        "late-night text, chemistry spike, self-respect reset",
-        "eye contact tension, attraction cue, calm confidence payoff",
-        "almost-kiss suspense, nervous system cue, mature next move",
-    ]
+    _BRAIN_LENS_FRAMES = list(brain_hooks.FRAMES)
 
     _HISTORY_FRAMES = [
         "artifact clue, political consequence, myth-versus-evidence reveal",
@@ -1041,63 +1006,7 @@ class ScriptWriter:
         subject = self._spoken_subject(topic)
         if topic.niche_id == "brain_lens":
             lowered = f"{topic.title} {topic.subject} {subject}".lower()
-            topic_openers = (
-                (("decision fatigue",), "You open the menu, scan it twice, and suddenly choosing lunch feels exhausting."),
-                (("almost relationships", "situationship"), "They text like a partner, avoid the label, and somehow still control your whole mood."),
-                (("love bombing",), "They plan a future with you on day three, and the intensity feels impossible to ignore."),
-                (("breadcrumb",), "They disappear, send one perfect message, and your hope resets instantly."),
-                (("push pull",), "They pull you close, go cold, then return just as you start moving on."),
-                (("mixed signals", "mixed attachment"), "They act deeply interested, disappear, then return before your hope has time to switch off."),
-                (("emotional availability",), "They can name what they feel without making you guess where you stand."),
-                (("self respect in dating", "fear of being too much"), "You really like them, so you start editing every need that might make you harder to keep."),
-                (("flirting anxiety",), "You know what you want to say, then eye contact makes every word disappear."),
-                (("eye contact",), "They hold your gaze one beat longer, and your body reacts before you think."),
-                (("almost kiss",), "They lean closer, pause, and that unfinished second becomes the whole memory."),
-                (("late night texting",), "One midnight message feels more intimate than the plans they still have not made."),
-                (("texting anxiety", "reply time anxiety", "attachment anxiety after texting"), "Their reply slows down. Suddenly, the timestamp feels brutal. The whole connection seems at risk."),
-                (("voice change attraction",), "Their voice shifts when you walk over, and you wonder whether that tiny change means attraction."),
-                (("micro flirting", "flirting body language", "body language"), "They lean in, mirror your smile, and find one more reason not to end the conversation."),
-                (("chemistry versus compatibility", "chemistry anxiety"), "The date feels electric, but your body is still asking whether this is attraction or alarm."),
-                (("romantic uncertainty",), "Nothing is defined, so every text feels like new evidence for the relationship you hope is forming."),
-                (("exclusivity conversation", "talking stage anxiety"), "You talk every day, but asking what this is suddenly feels riskier than staying confused."),
-                (("orbiting", "checking an ex"), "They stop talking to you, keep watching every story, and one view reopens the whole question."),
-                (("ghosting", "closure seeking"), "They disappear without an answer, and your mind keeps drafting the explanation they never gave."),
-                (("slow fading", "dry texting"), "Their replies get shorter, the plans get vaguer, and you start working harder for less connection."),
-                (("double texting", "canceled date"), "One unanswered message or canceled plan makes your thumb hover over a second explanation."),
-                (("voice note intimacy", "late night vulnerability"), "Their voice lands in your headphones after midnight, and the message feels more intimate than the relationship is."),
-                (("attraction to unavailable", "fear of intimacy"), "Closeness feels magnetic until it becomes real, then distance suddenly looks safer."),
-                (("apology consistency", "conflict repair"), "The apology sounds perfect, but the next conflict reveals whether anything actually changed."),
-                (("vulnerability reciprocity", "emotional intimacy versus oversharing"), "You share one honest thing, then watch whether they meet you with care or leave you exposed."),
-                (("friends with benefits", "consent and chemistry"), "The chemistry is real, but one clear question decides whether the arrangement is still mutual."),
-                (("sexual tension versus compatibility", "kissing chemistry", "first kiss nerves"), "The space closes and your body says yes, while compatibility is still an unanswered question."),
-                (("crush idealization", "limerence"), "You know a few magnetic details, and your mind writes the rest of the person for you."),
-                (("future faking",), "They describe a beautiful future, but the next real plan never makes it onto the calendar."),
-                (("benching",), "They keep you warm enough to stay available, but never close enough to build anything real."),
-                (("social media jealousy",), "One story, like, or follow turns a fragment online into a full relationship threat."),
-                (("rebound chemistry",), "The new connection feels electric, but part of the spark may be relief from the loss before it."),
-                (("relationship pacing", "mutual effort", "emotional safety"), "You stop measuring promises and start noticing whether the pace, effort, and care are actually mutual."),
-                (("silent treatment",), "They stop replying after conflict, and your body starts chasing connection before you know what happened."),
-                (("rejection sensitivity",), "You hear one plan change, and your brain searches the whole relationship for proof you did something wrong."),
-                (("fear conditioning",), "Your body tenses before anything happens because it learned the warning first."),
-                (("fear of abandonment",), "They take longer to reply, and your body treats the silence like a warning."),
-                (("anxious attachment",), "One delayed text turns a calm evening into a search for reassurance."),
-                (("avoidant attachment",), "They get close, then need distance the moment the connection starts feeling real."),
-                (("attachment styles",), "One person asks for closeness while the other suddenly needs distance."),
-                (("emotional contagion",), "You walk into a tense room, and your mood changes before anyone explains why."),
-                (("emotional regulation",), "One sharp message hits, and your body wants to reply before your judgment catches up."),
-                (("attention span",), "You reach for your phone while someone you care about is still talking."),
-                (("fawn response",), "Someone sounds disappointed, and you agree before checking what you actually want."),
-                (("halo effect", "first impression"), "One electric date can make you defend red flags you would instantly notice in your best friend's relationship."),
-                (("impostor syndrome",), "You get praised, then immediately search for the mistake everyone missed."),
-                (("learned helplessness",), "You stop trying before the next attempt because the last failures still feel like proof."),
-                (("memory distortion",), "One good memory gets replayed until the whole relationship looks safer than it was."),
-                (("mirror neurons",), "They tense their jaw, and your body copies the mood before you notice."),
-                (("analysis paralysis",), "You reopen the same options, hoping one more comparison will finally make the choice feel safe."),
-                (("anchoring effect",), "The first number you see quietly becomes the standard for every choice that follows."),
-                (("comparison trap",), "You check one polished life online, then your own ordinary day suddenly feels smaller."),
-                (("attachment",), "One slow reply changes your mood, even when nothing else changed."),
-                (("dopamine", "reward loop"), "You check again without deciding to because your brain still expects a reward."),
-            )
+            topic_openers = brain_hooks.TOPIC_OPENERS
             for terms, opener in topic_openers:
                 if any(term in lowered for term in terms):
                     return opener
@@ -1116,21 +1025,20 @@ class ScriptWriter:
             return random.choice(self._HISTORY_FRAMES)
         return f"{topic.style} with a concrete hook, rising curiosity, and a clear payoff"
 
+    _EXTRA_GENERIC_BITS = (
+        "behind the scenes",
+        "rarely make it into textbooks",
+    )
+
     def _is_generic_opener(self, text: str) -> bool:
         cleaned = self._clean(text).lower().strip()
         if not cleaned:
             return True
         if cleaned.startswith(self._GENERIC_OPENER_STARTS):
             return True
-        generic_bits = (
-            "behind the scenes",
-            "rarely make it into textbooks",
-            "shapes everyday behavior",
-            "starts to make sense",
-            "you're definitely not alone",
-            "does before you notice it",
-        )
-        return any(bit in cleaned for bit in generic_bits)
+        if any(bit in cleaned for bit in self._EXTRA_GENERIC_BITS):
+            return True
+        return brain_hooks.is_generic_opener(cleaned)
 
     def _hook_strength_score(self, topic: TopicCandidate, text: str) -> float:
         """Prefer concrete tension and evidence over a neutral definition."""
@@ -1343,10 +1251,7 @@ class ScriptWriter:
                     if token not in self._EDITORIAL_STOP_WORDS
                 }
                 opener_tokens = set(re.findall(r"[a-z]{4,}", opener.lower()))
-                evidence_cues = (
-                    "archaeolog", "artifact", "date", "door", "inscription",
-                    "ruin", "stone", "tomb", "wall",
-                )
+                evidence_cues = pipeline_quality.EVIDENCE_CUES
                 if not (subject_tokens & opener_tokens) and not any(cue in opener.lower() for cue in evidence_cues):
                     issues.append("Ancient History hook lacks its subject or a concrete surviving clue")
                 payoff_tokens = set(
@@ -1355,15 +1260,7 @@ class ScriptWriter:
                 if not (subject_tokens & payoff_tokens):
                     issues.append("Ancient History payoff does not return to the core subject")
 
-            middle = " ".join(lines[1:-1]).lower()
-            if not any(
-                cue in middle
-                for cue in (
-                    " but ", " because ", " instead ", " so ", " yet ",
-                    " while ", " then ", " which ", " prove", " trace",
-                    " confirm", " reveal",
-                )
-            ):
+            if not pipeline_quality.has_midpoint_turn(lines):
                 issues.append("short lacks a midpoint contrast, consequence, or reframe")
         return list(dict.fromkeys(issues))
 

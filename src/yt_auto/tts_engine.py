@@ -294,6 +294,11 @@ class NarrationEngine:
             "--speed",
             str(self.kokoro_speed),
         ]
+        # Why this reports instead of returning a bare []: the caller turns an
+        # empty list into "Kokoro batch narration failed", which says nothing
+        # about the cause and makes a broken voice environment look identical
+        # to a bad line of text.
+        self.last_kokoro_error = None
         try:
             subprocess.run(
                 command,
@@ -305,11 +310,28 @@ class NarrationEngine:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
             items = list(payload.get("items") or [])
             if len(items) != len(texts):
+                self.last_kokoro_error = (
+                    f"manifest has {len(items)} clips for {len(texts)} beats"
+                )
                 return []
-            if not all(Path(str(item.get("path") or "")).exists() for item in items):
+            missing = [
+                str(item.get("path") or "")
+                for item in items
+                if not Path(str(item.get("path") or "")).exists()
+            ]
+            if missing:
+                self.last_kokoro_error = f"clip missing on disk: {missing[0]}"
                 return []
             return items
-        except Exception:
+        except subprocess.CalledProcessError as exc:
+            tail = (exc.stderr or exc.stdout or "").strip().splitlines()
+            self.last_kokoro_error = tail[-1] if tail else f"exit code {exc.returncode}"
+            return []
+        except subprocess.TimeoutExpired:
+            self.last_kokoro_error = f"timed out rendering {len(texts)} beats"
+            return []
+        except Exception as exc:
+            self.last_kokoro_error = f"{exc.__class__.__name__}: {exc}"
             return []
 
     def _render_kokoro(self, text: str, out_path: Path) -> bool:
@@ -488,7 +510,11 @@ class NarrationEngine:
             if self.backend_preference == "kokoro" and not self.http_tts_url:
                 kokoro_items = self._render_kokoro_batch(clean_beats, out_dir)
                 if not kokoro_items:
-                    raise RuntimeError("Kokoro batch narration failed; refusing to use a lower-quality fallback.")
+                    reason = getattr(self, "last_kokoro_error", None)
+                    raise RuntimeError(
+                        "Kokoro batch narration failed; refusing to use a lower-quality fallback."
+                        + (f" Reason: {reason}" if reason else "")
+                    )
 
             for idx, beat in enumerate(clean_beats):
                 if kokoro_items:

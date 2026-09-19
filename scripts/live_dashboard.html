@@ -454,6 +454,26 @@
       background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
     }
 
+    /* Queue page: tabs, and each list scrolls in its own box so the page
+       stays short no matter how many items are stuck. */
+    .qtabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: none; }
+    .qtabs::-webkit-scrollbar { display: none; }
+    .qtab {
+      flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px;
+      border: 1px solid var(--line); border-radius: 999px;
+      background: rgba(255,255,255,.028); color: var(--soft);
+      padding: 8px 14px; font-size: 12px; cursor: pointer; white-space: nowrap;
+    }
+    .qtab:hover { border-color: rgba(45,212,191,.4); }
+    .qtab[aria-selected="true"] { border-color: rgba(45,212,191,.55); color: var(--text); background: rgba(45,212,191,.10); }
+    .qcount { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+    .qtab[aria-selected="true"] .qcount { color: var(--text); }
+    .qtab.alert .qcount { color: var(--bad); border-color: rgba(239,111,126,.35); }
+    .qlist { display: grid; gap: 8px; max-height: 58vh; overflow-y: auto; padding-right: 4px; }
+    .qgroup { border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.015); padding: 10px 11px; display: grid; gap: 8px; }
+    .qgroup-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+    .qcause { font-size: 13px; color: var(--text); }
+    .qnext { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.4; }
     @media (max-width: 1120px) {
       .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .layout, .bottom, .side-grid { grid-template-columns: 1fr; }
@@ -469,6 +489,9 @@
       .rmeta { justify-content: flex-start; }
       .vrow { grid-template-columns: minmax(0, 1fr) repeat(2, auto); }
       .vrow .hide-sm { display: none; }
+      .qlist { max-height: none; overflow-y: visible; }
+      .qtab { padding: 10px 15px; font-size: 13px; }
+      .qgroup-head { flex-direction: column; align-items: flex-start; }
     }
     @media (max-width: 520px) {
       .kpis, .metric-grid, .latest-grid, .metric-grid.six { grid-template-columns: 1fr; }
@@ -546,7 +569,8 @@
             <button class="btn" type="button" onclick="loadQueue(true)">Refresh</button>
           </div>
           <div id="queuePacks" class="rows" style="margin-bottom:12px"></div>
-          <div id="queueRows" class="rows"></div>
+          <div class="qtabs" id="queueTabs" role="tablist"></div>
+          <div id="queueRows" class="qlist"></div>
           <div class="empty" id="queueNote" style="margin-top:12px">Ready Queue is OFF.</div>
           <select id="qChannel" hidden><option value=""></option></select>
           <select id="qKind" hidden><option value=""></option></select>
@@ -1201,6 +1225,48 @@
       }
     }
 
+    let activeQueueTab = "problems";
+
+    function queueItemRow(item) {
+      const name = item.channel === "brain_lens" ? "Brain Lens" : "Secrets of Time";
+      const status = String(item.status || "");
+      const title = item.title || `${name} ${item.content_kind || ""} @ ${item.target_slot || "—"}`.trim();
+      const next = item.next_step ? `<div class="qnext">${clean(item.next_step)}</div>` : "";
+      const yt = item.video_id || item.youtube_id;
+      return `
+        <div class="row">
+          <div>
+            <div class="rtitle">${clean(title)}</div>
+            <div class="upload-sub">${clean(name)} · ${clean(item.content_kind)} · slot ${clean(item.target_slot || "—")} · ${clean(item.plain_status || status)}</div>
+            ${next}
+          </div>
+          <div class="rmeta">
+            ${status === "planned" || status === "failed" ? `<button class="btn" type="button" onclick="queueItemAction('${clean(item.id)}','force-render')">Build</button>` : ""}
+            ${status === "rendered" ? `<button class="btn good" type="button" onclick="queueItemAction('${clean(item.id)}','force-upload')">Upload now</button>` : ""}
+            ${status === "failed" || status === "held_quality" ? `<button class="btn warn" type="button" onclick="queueItemAction('${clean(item.id)}','retry')">Retry now</button>` : ""}
+            ${status === "uploaded" && yt ? `<a class="btn good" target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=${encodeURIComponent(yt)}">Open on YouTube</a>` : ""}
+            ${status !== "uploaded" ? `<button class="btn bad" type="button" onclick="queueItemAction('${clean(item.id)}','cancel')">Skip</button>` : ""}
+          </div>
+        </div>`;
+    }
+
+    function renderQueueTabBody(tab) {
+      if (!tab || !tab.count) {
+        return `<div class="empty">Nothing here right now.</div>`;
+      }
+      if (tab.key === "problems" && (tab.groups || []).length) {
+        return tab.groups.map(group => `
+          <div class="qgroup">
+            <div class="qgroup-head">
+              <div class="qcause">${clean(group.cause)} · ${group.count}</div>
+              <button class="btn warn" type="button" onclick="retryGroup('${clean(group.cause)}')">Retry all ${group.count} now</button>
+            </div>
+            ${group.items.map(queueItemRow).join("")}
+          </div>`).join("");
+      }
+      return tab.items.map(queueItemRow).join("");
+    }
+
     function renderQueue(queue) {
       lastQueue = queue;
       const enabled = !!queue.enabled;
@@ -1221,36 +1287,45 @@
           }).join("")
         : "";
 
-      const hide = new Set(["uploaded", "cancelled"]);
-      const items = (queue.items || []).filter(i => !hide.has(String(i.status || "")));
-      $("queueRows").innerHTML = items.length ? items.map(item => {
-        const name = item.channel === "brain_lens" ? "Brain Lens" : "Secrets of Time";
-        const status = String(item.status || "");
-        const plain = ({
-          planned: "Waiting to build",
-          rendering: "Building now",
-          rendered: "Ready to upload",
-          held_quality: "Held (quality)",
-          failed: "Failed",
-          queued_upload: "Uploading",
-        })[status] || status;
-        return `
-        <div class="row">
-          <div>
-            <div class="rtitle">${clean(item.title || `${name} ${item.content_kind || ""} @ ${item.target_slot || "—"}`.trim())}</div>
-            <div class="upload-sub">${clean(name)} · ${clean(item.content_kind)} · slot ${clean(item.target_slot || "—")} · ${clean(plain)}</div>
-          </div>
-          <div class="rmeta">
-            ${status === "planned" || status === "failed" ? `<button class="btn" type="button" onclick="queueItemAction('${clean(item.id)}','force-render')">Build</button>` : ""}
-            ${status === "rendered" ? `<button class="btn good" type="button" onclick="queueItemAction('${clean(item.id)}','force-upload')">Upload now</button>` : ""}
-            ${status === "failed" ? `<button class="btn warn" type="button" onclick="queueItemAction('${clean(item.id)}','retry')">Retry</button>` : ""}
-            ${status !== "uploaded" ? `<button class="btn bad" type="button" onclick="queueItemAction('${clean(item.id)}','cancel')">Skip</button>` : ""}
-          </div>
-        </div>`;
-      }).join("") : `<div class="empty">${enabled ? "Nothing queued yet — tap Prep today." : "Turn Ready Queue ON, then tap Prep today."}</div>`;
+      const tabs = queue.tabs || [];
+      if (!tabs.some(t => t.key === activeQueueTab)) {
+        activeQueueTab = (tabs.find(t => t.count) || tabs[0] || {}).key || "problems";
+      }
+      $("queueTabs").innerHTML = tabs.map(tab => `
+        <button class="qtab${tab.key === "problems" && tab.count ? " alert" : ""}" type="button" role="tab"
+                aria-selected="${tab.key === activeQueueTab}" onclick="selectQueueTab('${tab.key}')">
+          ${clean(tab.label)}<span class="qcount">${tab.count}</span>
+        </button>`).join("");
+
+      const active = tabs.find(t => t.key === activeQueueTab);
+      $("queueRows").innerHTML = tabs.length
+        ? renderQueueTabBody(active)
+        : `<div class="empty">${enabled ? "Nothing queued yet — tap Prep today." : "Turn Ready Queue ON, then tap Prep today."}</div>`;
+
+      const problems = (tabs.find(t => t.key === "problems") || {}).count || 0;
+      const ready = (tabs.find(t => t.key === "ready") || {}).count || 0;
       $("queueNote").textContent = enabled
-        ? `${items.length} in queue · ${queue.rendered_count || 0} ready to upload at the next slot.`
+        ? `${problems} with problems · ${ready} ready to upload at the next slot.`
         : "OFF = normal mode (build when it’s time to upload).";
+    }
+
+    function selectQueueTab(key) {
+      activeQueueTab = key;
+      if (lastQueue) renderQueue(lastQueue);
+    }
+
+    async function retryGroup(cause) {
+      const tab = ((lastQueue || {}).tabs || []).find(t => t.key === "problems");
+      const group = ((tab || {}).groups || []).find(g => g.cause === cause);
+      if (!group) return;
+      for (const item of group.items) {
+        try {
+          await apiPost(`/api/queue/items/${encodeURIComponent(item.id)}/retry`, {});
+        } catch (error) {
+          /* keep going; the reload below shows whatever came back */
+        }
+      }
+      await loadQueue(true);
     }
 
     async function loadQueue(force) {
