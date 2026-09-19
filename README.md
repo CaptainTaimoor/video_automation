@@ -166,6 +166,22 @@ First upload run opens browser auth flow per channel and stores token:
 - Free hosted fallback: Hugging Face Inference router (optional key/quota).
 - Upload + metrics: YouTube Data API v3.
 
+## Dashboard Access
+
+The ops dashboard serves on port 8787 and binds `0.0.0.0`, and `INSTALL.bat`
+opens that port to the LAN. Read-only views (`GET /api/status`, the page
+itself) stay open. State-changing actions -- queue toggle, force-render,
+force-upload, cancel, settings patch, restart-scheduler -- are gated:
+
+- **`YT_DASHBOARD_TOKEN` set** - every POST must present it, via
+  `X-Dashboard-Token`, `Authorization: Bearer`, or `?token=`. This applies to
+  localhost too, so nothing on the box bypasses it. The dashboard prompts once
+  and remembers the token in the browser.
+- **`YT_DASHBOARD_TOKEN` empty** - POSTs are accepted from this machine only.
+  Other machines get `401`. One-click local ops keep working with no prompt.
+
+Set the token whenever the dashboard is reachable from anything but localhost.
+
 ## Regression Tests
 
 Install the test extras once, then run the suite from the project root:

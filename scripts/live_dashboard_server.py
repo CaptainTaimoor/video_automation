@@ -10,7 +10,9 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
+import hmac
+import ipaddress
 import socket
 try:
     import yaml
@@ -1455,9 +1457,43 @@ def log_tail(name: str, lines: int = 120) -> dict:
     }
 
 
+def _dashboard_control_token() -> str:
+    return str(os.getenv("YT_DASHBOARD_TOKEN") or "").strip()
+
+
+def _client_is_loopback(handler: BaseHTTPRequestHandler) -> bool:
+    try:
+        return ipaddress.ip_address(handler.client_address[0]).is_loopback
+    except (ValueError, IndexError, TypeError):
+        return False
+
+
+def _presented_token(handler: BaseHTTPRequestHandler) -> str:
+    header = str(handler.headers.get("X-Dashboard-Token") or "").strip()
+    if header:
+        return header
+    auth = str(handler.headers.get("Authorization") or "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    # Query fallback so a one-off curl works without header juggling.
+    query = parse_qs(urlparse(handler.path).query)
+    values = query.get("token") or []
+    return str(values[0]).strip() if values else ""
+
+
 def _dashboard_token_ok(handler: BaseHTTPRequestHandler) -> bool:
-    # Private LAN ops UI: one-click buttons, no token prompts.
-    return True
+    """Gate state-changing dashboard actions.
+
+    The server binds 0.0.0.0 and the installer opens port 8787 to the LAN, so
+    control actions (force-upload among them) were reachable by anyone on the
+    network. With YT_DASHBOARD_TOKEN set, every caller must present it. Without
+    it, one-click local ops still work but only from this machine -- a remote
+    caller is refused rather than silently trusted.
+    """
+    configured = _dashboard_control_token()
+    if not configured:
+        return _client_is_loopback(handler)
+    return hmac.compare_digest(_presented_token(handler), configured)
 
 
 def _read_json_body(handler: BaseHTTPRequestHandler) -> dict:
@@ -1483,7 +1519,20 @@ def _json_response(handler: BaseHTTPRequestHandler, payload: dict, status: int =
 
 
 def _require_token(handler: BaseHTTPRequestHandler) -> bool:
-    return True
+    """Return True when the request may proceed; otherwise answer 401."""
+    if _dashboard_token_ok(handler):
+        return True
+    if _dashboard_control_token():
+        error = "invalid_or_missing_token"
+        detail = "Send the dashboard token as X-Dashboard-Token."
+    else:
+        error = "remote_control_disabled"
+        detail = (
+            "Control actions from another machine need YT_DASHBOARD_TOKEN set "
+            "in .env; local (loopback) use needs no token."
+        )
+    _json_response(handler, {"ok": False, "error": error, "detail": detail}, status=401)
+    return False
 
 
 def patch_settings(body: dict) -> dict:

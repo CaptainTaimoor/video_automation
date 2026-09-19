@@ -657,15 +657,54 @@
       return "bad";
     }
 
-    function ensureToken(forcePrompt = false) {
-      return "";
+    const TOKEN_KEY = "yt_dashboard_token";
+
+    function storedToken() {
+      try {
+        return localStorage.getItem(TOKEN_KEY) || "";
+      } catch (err) {
+        return "";
+      }
     }
 
-    async function apiPost(path, body = {}) {
+    function rememberToken(token) {
+      try {
+        if (token) localStorage.setItem(TOKEN_KEY, token);
+        else localStorage.removeItem(TOKEN_KEY);
+      } catch (err) {
+        /* private mode: token lives for this page only */
+      }
+    }
+
+    // Only ever called after the server refuses an action, so local one-click
+    // use (loopback, no token configured) never sees a prompt.
+    function ensureToken(forcePrompt = false) {
+      const current = storedToken();
+      if (!forcePrompt && current) return current;
+      const entered = window.prompt(
+        "Dashboard control token\n\nSet YT_DASHBOARD_TOKEN in .env, then enter it here.",
+        ""
+      );
+      if (entered === null) return current;
+      const next = entered.trim();
+      rememberToken(next);
+      return next;
+    }
+
+    async function apiPost(path, body = {}, retryOnAuth = true) {
       const headers = { "Content-Type": "application/json" };
+      const token = storedToken();
+      if (token) headers["X-Dashboard-Token"] = token;
       const response = await fetch(path, { method: "POST", headers, body: JSON.stringify(body || {}) });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.ok === false) throw new Error(data.error || `HTTP ${response.status}`);
+      if (response.status === 401 && retryOnAuth) {
+        // Stored token is wrong or absent: ask once, then retry exactly once.
+        const next = ensureToken(true);
+        if (next) return apiPost(path, body, false);
+      }
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+      }
       return data;
     }
 
