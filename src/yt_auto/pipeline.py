@@ -679,6 +679,58 @@ class ShortsFactory:
                 continue
         return out
 
+    # A backup topic is reused only after this long. Recovery draws from a
+    # short fixed list, so without a cooldown the same subject ships again
+    # every time the channel goes quiet -- Pompeii went out twelve times.
+    CONTINUITY_SUBJECT_COOLDOWN_DAYS = 30
+
+    @staticmethod
+    def _normalise_subject(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+    @staticmethod
+    def _run_log_day(run: dict) -> str:
+        """The YYYY-MM-DD a run belongs to, taken from its output folder.
+
+        Run records carry no timestamp of their own, but every run_dir is
+        written under .../<channel>/<kind>/<YYYY-MM-DD>/<stamp>.
+        """
+        match = re.search(r"(\d{4}-\d{2}-\d{2})", str(run.get("run_dir") or ""))
+        return match.group(1) if match else ""
+
+    def _recently_published_subjects(
+        self,
+        channel_id: str,
+        *,
+        days: int | None = None,
+        today: str | None = None,
+    ) -> set[str]:
+        """Subjects this channel actually published inside the cooldown window.
+
+        Matching on the exact title is not enough: recovery rewrites the title
+        for the same curated facts, so a renamed repeat looked new every time.
+        """
+        window = int(days if days is not None else self.CONTINUITY_SUBJECT_COOLDOWN_DAYS)
+        now = datetime.strptime(today, "%Y-%m-%d") if today else datetime.now()
+        cutoff = now - timedelta(days=max(0, window))
+        seen: set[str] = set()
+        for run in self._read_run_log():
+            if str(run.get("channel") or "") != channel_id:
+                continue
+            if not (run.get("uploaded") or run.get("youtube_id")):
+                continue
+            day = self._run_log_day(run)
+            if day:
+                try:
+                    if datetime.strptime(day, "%Y-%m-%d") < cutoff:
+                        continue
+                except ValueError:
+                    pass
+            subject = self._normalise_subject(run.get("subject"))
+            if subject:
+                seen.add(subject)
+        return seen
+
     def _update_run_log_upload(
         self,
         run_dir: str,
@@ -6231,10 +6283,15 @@ class ShortsFactory:
             for item in published_avoid_titles
             if str(item or "").strip()
         }
+        # Drop by subject as well as by title: recovery rewrites the title for
+        # the same curated facts, so an exact-title check let the same subject
+        # through again and again under a new name.
+        recent_subjects = self._recently_published_subjects(channel.id)
         all_continuity_fallbacks = [
             item
             for item in all_continuity_fallbacks
             if str(item.title or "").strip().lower() not in published_title_keys
+            and self._normalise_subject(getattr(item, "subject", "")) not in recent_subjects
         ]
         continuity_fallbacks = list(all_continuity_fallbacks)
         rejected_title_counts: dict[str, int] = {}

@@ -474,6 +474,27 @@
     .qgroup-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
     .qcause { font-size: 13px; color: var(--text); }
     .qnext { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.4; }
+    /* Narration API keys: one collapsed card per provider. */
+    .kcard { border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.02); margin-bottom: 10px; overflow: hidden; }
+    .khead { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; color: var(--text); font: inherit; padding: 12px 13px; cursor: pointer; text-align: left; }
+    .khead:hover { background: rgba(255,255,255,.03); }
+    .kchev { transition: transform .15s ease; color: var(--muted); }
+    .kcard.open .kchev { transform: rotate(90deg); }
+    .kname { font-size: 13px; font-weight: 640; text-transform: capitalize; }
+    .kcount { margin-left: auto; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+    .kbody { padding: 0 13px 13px; display: grid; gap: 8px; }
+    .krow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding-top: 9px; }
+    .kmask { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--soft); word-break: break-all; }
+    .ksub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .kacts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+    .kadd { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; border-top: 1px solid var(--line-strong); padding-top: 10px; }
+    .kadd input { background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font: inherit; font-size: 12px; padding: 8px 10px; min-width: 0; }
+    .kadd input:focus { outline: none; border-color: rgba(45,212,191,.5); }
+    @media (max-width: 820px) {
+      .krow { grid-template-columns: 1fr; }
+      .kacts { justify-content: flex-start; }
+      .kacts .btn { min-height: 38px; }
+    }
     @media (max-width: 1120px) {
       .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .layout, .bottom, .side-grid { grid-template-columns: 1fr; }
@@ -603,7 +624,12 @@
             <button class="btn warn" type="button" onclick="restartScheduler()">Restart scheduler</button>
           </div>
           <div id="settingsFlags" class="rows"></div>
-          <div id="settingsHint" class="empty" style="margin-top:12px">Use the buttons above. Secrets stay in your .env file on the PC.</div>
+          <div id="settingsHint" class="empty" style="margin-top:12px">Use the buttons above. Secrets stay on this PC.</div>
+
+          <h3 style="margin:20px 0 4px;font-size:14px">Narration API keys</h3>
+          <div class="micro" style="margin-bottom:10px">Each key is tried 3 times before the next one is used. If every key fails, the bot falls back to the free Edge voice. Keys can only be read on this PC.</div>
+          <div id="keyCards"></div>
+          <div class="empty" id="keyNote" hidden></div>
           <div id="settingsKeys" hidden></div>
           <div id="settingsChannels" hidden></div>
         </div>
@@ -751,6 +777,7 @@
         a.classList.toggle("active", r === page || (page === "home" && r === "home"));
       });
       if (page === "queue") loadQueue(false);
+      if (page === "settings") loadKeys();
       if (page === "analytics") loadAnalytics(route.channel);
       if (page === "settings") loadSettings(false);
     }
@@ -1326,6 +1353,125 @@
         }
       }
       await loadQueue(true);
+    }
+
+    /* --- Narration API keys ------------------------------------------- */
+    let keyData = null;
+    const openProviders = new Set();
+
+    async function loadKeys() {
+      try {
+        const response = await fetch("/api/api-keys", { cache: "no-store" });
+        if (response.status === 403) {
+          $("keyCards").innerHTML = "";
+          $("keyNote").hidden = false;
+          $("keyNote").textContent = "Open the dashboard on the bot PC to manage API keys.";
+          return;
+        }
+        keyData = await response.json();
+        $("keyNote").hidden = true;
+        renderKeys();
+      } catch (error) {
+        $("keyNote").hidden = false;
+        $("keyNote").textContent = "Could not load keys: " + (error.message || error);
+      }
+    }
+
+    function renderKeys() {
+      const providers = (keyData && keyData.providers) || [];
+      const cards = providers.map(entry => {
+        const provider = clean(entry.provider);
+        const open = openProviders.has(entry.provider);
+        const rows = entry.keys.map((key, index) => {
+          const notes = [key.label || "no label"];
+          if (key.model) notes.push(key.model + (key.version ? " " + key.version : ""));
+          if (key.paused) notes.push("paused");
+          if (key.resting) notes.push("resting after failures");
+          return '<div class="krow">'
+            + '<div><div class="kmask" id="k-' + provider + '-' + index + '">' + clean(key.masked) + '</div>'
+            + '<div class="ksub">' + clean(notes.join(" \u00b7 ")) + '</div></div>'
+            + '<div class="kacts">'
+            + '<button class="btn" type="button" title="Show or hide this key" onclick="toggleReveal(\'' + provider + '\',' + index + ')">i</button>'
+            + '<button class="btn warn" type="button" onclick="pauseKey(\'' + provider + '\',' + index + ',' + (!key.paused) + ')">' + (key.paused ? "Resume" : "Pause") + '</button>'
+            + '<button class="btn bad" type="button" onclick="removeKey(\'' + provider + '\',' + index + ')">Remove</button>'
+            + '</div></div>';
+        }).join("") || '<div class="ksub" style="padding-top:9px">No keys yet.</div>';
+
+        const adder = '<div class="kadd">'
+          + '<input id="add-' + provider + '-value" placeholder="Paste API key" type="password" autocomplete="off">'
+          + '<input id="add-' + provider + '-label" placeholder="Label (optional)">'
+          + '<input id="add-' + provider + '-model" placeholder="Model (optional)">'
+          + '<input id="add-' + provider + '-version" placeholder="Version (optional)">'
+          + '<button class="btn good" type="button" onclick="addKey(\'' + provider + '\')">Add API key</button>'
+          + '</div>';
+
+        return '<div class="kcard' + (open ? " open" : "") + '">'
+          + '<button class="khead" type="button" onclick="toggleProvider(\'' + provider + '\')">'
+          + '<span class="kchev">&#9656;</span><span class="kname">' + provider + '</span>'
+          + '<span class="kcount">' + entry.keys.length + ' key' + (entry.keys.length === 1 ? "" : "s") + '</span>'
+          + '</button>'
+          + (open ? '<div class="kbody">' + rows + adder + '</div>' : "")
+          + '</div>';
+      }).join("");
+      $("keyCards").innerHTML = cards || '<div class="empty">No providers configured yet.</div>';
+    }
+
+    function toggleProvider(provider) {
+      if (openProviders.has(provider)) openProviders.delete(provider);
+      else openProviders.add(provider);
+      renderKeys();
+    }
+
+    async function keyAction(action, body) {
+      const data = await apiPost("/api/api-keys/" + action, body);
+      if (data && data.providers) { keyData = data; renderKeys(); }
+      return data;
+    }
+
+    async function toggleReveal(provider, index) {
+      const cell = $("k-" + provider + "-" + index);
+      if (!cell) return;
+      if (cell.dataset.shown === "1") {
+        cell.textContent = cell.dataset.masked || cell.textContent;
+        cell.dataset.shown = "0";
+        return;
+      }
+      try {
+        const data = await apiPost("/api/api-keys/reveal", { provider: provider, index: index });
+        if (data && data.value) {
+          cell.dataset.masked = cell.textContent;
+          cell.textContent = data.value;
+          cell.dataset.shown = "1";
+        }
+      } catch (error) {
+        alert(error.message || error);
+      }
+    }
+
+    async function addKey(provider) {
+      const field = $("add-" + provider + "-value");
+      const value = (field && field.value || "").trim();
+      if (!value) { alert("Paste a key first."); return; }
+      const read = suffix => {
+        const el = $("add-" + provider + "-" + suffix);
+        return (el && el.value || "").trim();
+      };
+      await keyAction("add", {
+        provider: provider,
+        value: value,
+        label: read("label"),
+        model: read("model"),
+        version: read("version"),
+      });
+    }
+
+    async function removeKey(provider, index) {
+      if (!confirm("Remove this key?")) return;
+      await keyAction("remove", { provider: provider, index: index });
+    }
+
+    async function pauseKey(provider, index, paused) {
+      await keyAction("pause", { provider: provider, index: index, paused: paused });
     }
 
     async function loadQueue(force) {

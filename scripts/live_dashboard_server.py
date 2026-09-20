@@ -1533,6 +1533,37 @@ def _json_response(handler: BaseHTTPRequestHandler, payload: dict, status: int =
     handler.wfile.write(body)
 
 
+def _key_store():
+    _sys_path_src()
+    from yt_auto.api_keys import KeyStore
+
+    store = KeyStore.load(ROOT)
+    if store.merge_environment():
+        store.save(ROOT)
+    return store
+
+
+def _require_loopback(handler: BaseHTTPRequestHandler) -> bool:
+    """Key management is bot-PC only, whatever the dashboard token says.
+
+    Revealing or adding a key is not the same class of action as restarting
+    the scheduler: a token travels, and a phone on the same Wi-Fi should never
+    be able to read them.
+    """
+    if _client_is_loopback(handler):
+        return True
+    _json_response(
+        handler,
+        {
+            "ok": False,
+            "error": "loopback_only",
+            "detail": "Open the dashboard on the bot PC (http://127.0.0.1:8787) to manage API keys.",
+        },
+        status=403,
+    )
+    return False
+
+
 def _require_token(handler: BaseHTTPRequestHandler) -> bool:
     """Return True when the request may proceed; otherwise answer 401."""
     if _dashboard_token_ok(handler):
@@ -1858,6 +1889,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/suggestions":
             _json_response(self, suggestions_payload())
             return
+        if path == "/api/api-keys":
+            if not _require_loopback(self):
+                return
+            _json_response(self, _key_store().public_view())
+            return
+
         if path == "/api/settings":
             _json_response(self, settings_payload())
             return
@@ -1877,6 +1914,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not _require_token(self):
             return
         body = _read_json_body(self)
+
+        if path.startswith("/api/api-keys/"):
+            if not _require_loopback(self):
+                return
+            action = path[len("/api/api-keys/"):]
+            store = _key_store()
+            provider = str(body.get("provider") or "").strip()
+            index = int(body.get("index") or 0)
+            if action == "add":
+                value = str(body.get("value") or "").strip()
+                if not provider or not value:
+                    _json_response(self, {"ok": False, "error": "provider_and_value_required"}, status=400)
+                    return
+                store.add(
+                    provider,
+                    value,
+                    label=str(body.get("label") or ""),
+                    model=str(body.get("model") or ""),
+                    version=str(body.get("version") or ""),
+                )
+            elif action == "remove":
+                store.remove(provider, index)
+            elif action == "pause":
+                store.set_paused(provider, index, bool(body.get("paused")))
+            elif action == "reveal":
+                # The one place a whole key is returned, and only to the bot PC.
+                keys = store.providers.get(provider) or []
+                value = keys[index].value if 0 <= index < len(keys) else ""
+                _json_response(self, {"ok": bool(value), "value": value})
+                return
+            else:
+                _json_response(self, {"ok": False, "error": "unknown_action"}, status=400)
+                return
+            store.save(ROOT)
+            _json_response(self, {"ok": True, **store.public_view()})
+            return
 
         if path == "/api/queue/toggle":
             _json_response(self, queue_action("toggle", body=body))
