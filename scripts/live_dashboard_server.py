@@ -1228,11 +1228,17 @@ def ready_queue_snapshot():
     # The page groups by plain cause rather than raw status; keep that shaping
     # in one tested place instead of in the browser.
     try:
-        from yt_auto.dashboard_views import queue_tabs
+        from yt_auto.dashboard_views import annotate_retries, queue_tabs
 
+        # Annotate first: the tabs carry the rows the page draws, so the retry
+        # wording has to be on them before they are split up.
+        summary["retry_policy"] = annotate_retries(
+            summary.get("items") or [], summary.get("today") or ""
+        )
         summary["tabs"] = queue_tabs(summary)
     except Exception as exc:  # a view bug must not blank the whole queue page
         summary["tabs"] = []
+        summary["retry_policy"] = {}
         summary["tabs_error"] = str(exc)
     return summary
 

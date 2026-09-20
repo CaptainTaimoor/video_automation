@@ -71,6 +71,11 @@ class ContentProfile:
     min_duration_seconds: int
     max_duration_seconds: int
     target_size: Tuple[int, int]
+    # How many of this kind to publish per day. A count is drawn inside the
+    # range each day, so the upper half of the range actually gets used;
+    # schedule_times is the fallback when no range is configured.
+    daily_min: int = 0
+    daily_max: int = 0
 
 
 @dataclass

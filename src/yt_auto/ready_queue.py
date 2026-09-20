@@ -473,9 +473,64 @@ def pick_next_to_render(
             candidates.append((score, item))
 
     if not candidates:
-        return None
+        # Nothing new to make: go back to today's slots that failed or were
+        # held. A slot used to give up after three attempts and a held video
+        # was never remade, so the day ended with red and dotted slots while
+        # the encoder sat idle. Each retry is a fresh build of that slot.
+        return _pick_backfill(state_dir, channel_ids, today=now.strftime("%Y-%m-%d"))
     candidates.sort(key=lambda row: row[0])
     return dict(candidates[0][1])
+
+
+# A failed or held slot is retried only while nothing else needs the encoder,
+# at most this many times a day, and not sooner than the cooldown after its
+# last try, so one stubborn slot cannot hold the machine all day.
+BACKFILL_MAX_ATTEMPTS = 8
+BACKFILL_COOLDOWN_MINUTES = 20
+
+
+def _pick_backfill(
+    state_dir: Path,
+    channel_ids: list[str],
+    *,
+    today: str,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """The earliest slot today that failed or was held and is due another try."""
+    moment = now or datetime.now()
+    rows: list[tuple[tuple[str, str], dict[str, Any]]] = []
+    for channel_id in channel_ids:
+        for item in load_queue(state_dir, channel_id).get("items") or []:
+            if not isinstance(item, dict) or str(item.get("target_date") or "") != today:
+                continue
+            if str(item.get("status") or "") not in {"failed", "held_quality"}:
+                continue
+            if int(item.get("attempts") or 0) >= BACKFILL_MAX_ATTEMPTS:
+                continue
+            last = _naive_stamp(item.get("updated_at"))
+            if last is not None and moment - last < timedelta(minutes=BACKFILL_COOLDOWN_MINUTES):
+                continue
+            rows.append(
+                (
+                    (str(item.get("target_slot") or "99:99").zfill(5), str(item.get("created_at") or "")),
+                    item,
+                )
+            )
+    if not rows:
+        return None
+    rows.sort(key=lambda row: row[0])
+    return dict(rows[0][1])
+
+
+def _naive_stamp(value: Any) -> datetime | None:
+    """Parse a stored timestamp as local naive time, or None when unreadable."""
+    try:
+        parsed = datetime.fromisoformat(str(value or ""))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone().replace(tzinfo=None)
+    return parsed
 
 
 def pick_ready_for_upload(

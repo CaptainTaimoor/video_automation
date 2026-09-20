@@ -8,7 +8,12 @@ without a browser, and keeps one definition of it for the page and the tests.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+
+# One dot per upload the day owes; the name says what became of it. Ordered
+# worst-to-best so a slot retried several times keeps its furthest state.
+SLOT_STATES = ("failed", "held", "owed", "building", "ready", "scheduled", "published")
 
 # Tab key, label, and the queue statuses that belong to it. Order is the order
 # the tabs appear on the page.
@@ -124,3 +129,83 @@ def queue_tabs(queue: dict[str, Any], *, cooldown_minutes: int = 15) -> list[dic
             }
         )
     return tabs
+
+
+def slot_state(item: dict[str, Any] | None, slot_minutes: int, now_minutes: int) -> str:
+    """What has become of the video owed at this slot."""
+    if not item:
+        return "owed"
+    status = str(item.get("status") or "")
+    if status == "uploaded":
+        return "published" if slot_minutes <= now_minutes else "scheduled"
+    if status in {"rendered", "queued_upload"}:
+        return "ready"
+    if status in {"scripted", "assets_ready", "rendering"}:
+        return "building"
+    if status == "held_quality":
+        return "held"
+    if status == "failed":
+        return "failed"
+    return "owed"
+
+
+def minutes_of(slot: str) -> int:
+    """"HH:MM" as minutes past midnight, or -1 when it is not a time."""
+    try:
+        hour, minute = (int(part) for part in str(slot).split(":")[:2])
+    except (TypeError, ValueError):
+        return -1
+    return hour * 60 + minute
+
+
+def on_track(states: list[str], slots: list[str], now_minutes: int) -> bool:
+    """True when nothing whose hour has passed is still unpublished."""
+    for state, slot in zip(states, slots):
+        if minutes_of(slot) < now_minutes and state in {"owed", "failed", "held"}:
+            return False
+    return True
+
+
+def annotate_retries(
+    items: list[dict[str, Any]],
+    today: str,
+    *,
+    now: datetime | None = None,
+    max_tries: int = MAX_DAILY_ATTEMPTS,
+    cooldown_minutes: int = 20,
+) -> dict[str, Any]:
+    """Mark each problem row with what the bot will do about it next.
+
+    "Retry all" looked broken: the rows went back to planning, failed again
+    within minutes and reappeared, with nothing on the card saying so. Each
+    problem now carries when it was last tried and whether the bot will try
+    again by itself, and when, or has given up for the day.
+    """
+    moment = now or datetime.now()
+    for item in items or ():
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status") or "") not in {"failed", "held_quality"}:
+            continue
+        item["cause"] = plain_cause(item.get("error"))
+        ago = _minutes_since(item.get("updated_at"), moment)
+        item["last_tried_minutes_ago"] = ago
+        tries = int(item.get("attempts") or 0)
+        if str(item.get("target_date") or "") != today:
+            item["retry_state"] = "past_day"
+        elif tries >= max_tries:
+            item["retry_state"] = "gave_up"
+        else:
+            item["retry_state"] = "auto"
+            item["next_try_in_minutes"] = max(0, cooldown_minutes - (ago or 0))
+    return {"max_tries": max_tries, "cooldown_minutes": cooldown_minutes}
+
+
+def _minutes_since(stamp: Any, moment: datetime) -> int | None:
+    try:
+        last = datetime.fromisoformat(str(stamp or ""))
+    except (TypeError, ValueError):
+        return None
+    if last.tzinfo is not None:
+        last = last.astimezone().replace(tzinfo=None)
+    return max(0, int((moment - last).total_seconds() // 60))

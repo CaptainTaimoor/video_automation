@@ -146,6 +146,8 @@ def load_config(path: Path) -> AppConfig:
                 int(short_raw.get("target_width", app_raw.get("thumbnail", {}).get("width", 1080))),
                 int(short_raw.get("target_height", app_raw.get("thumbnail", {}).get("height", 1920))),
             ),
+            daily_min=int(short_raw.get("daily_min", 0) or 0),
+            daily_max=int(short_raw.get("daily_max", 0) or 0),
         )
 
         video_raw = content_raw.get("videos", {})
@@ -158,6 +160,8 @@ def load_config(path: Path) -> AppConfig:
                 int(video_raw.get("target_width", 1920)),
                 int(video_raw.get("target_height", 1080)),
             ),
+            daily_min=int(video_raw.get("daily_min", 0) or 0),
+            daily_max=int(video_raw.get("daily_max", 0) or 0),
         )
 
         fb_config = None

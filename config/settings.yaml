@@ -100,6 +100,10 @@ channels:
       - "22:10"
     content_profiles:
       shorts:
+        # Videos per day: a count is drawn inside this range each day and
+        # placed on the channel's best-performing hours.
+        daily_min: 10
+        daily_max: 12
         enabled: true
         schedule_times:
           - "00:20"
@@ -119,6 +123,10 @@ channels:
         target_width: 1080
         target_height: 1920
       videos:
+        # Videos per day: a count is drawn inside this range each day and
+        # placed on the channel's best-performing hours.
+        daily_min: 6
+        daily_max: 8
         enabled: true
         # Longs aligned to strong hours (still 6/day within 5–8 target).
         schedule_times:
@@ -219,6 +227,10 @@ channels:
       - "22:20"
     content_profiles:
       shorts:
+        # Videos per day: a count is drawn inside this range each day and
+        # placed on the channel's best-performing hours.
+        daily_min: 8
+        daily_max: 10
         enabled: true
         schedule_times:
           - "09:20"
@@ -233,6 +245,10 @@ channels:
         target_width: 1080
         target_height: 1920
       videos:
+        # Videos per day: a count is drawn inside this range each day and
+        # placed on the channel's best-performing hours.
+        daily_min: 5
+        daily_max: 7
         enabled: true
         schedule_times:
           - "10:00"
