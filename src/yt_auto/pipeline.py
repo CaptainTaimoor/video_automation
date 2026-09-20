@@ -515,6 +515,18 @@ class ShortsFactory:
             channels.pop(channel_id, None)
             self._save_upload_state(state)
 
+    def _long_word_window(self, channel: ChannelConfig) -> tuple[int, int]:
+        """The word band a long script must land in, from its configured length.
+
+        Derived from the writer's own target so the two cannot drift: the
+        floor allows a script a little under target, the ceiling is set by the
+        maximum duration rather than a fixed number.
+        """
+        target = int(self.script_writer._target_words(channel, "video"))
+        max_seconds = int(getattr(channel.videos, "max_duration_seconds", 360) or 360)
+        ceiling = int(self.script_writer._target_words_for_duration(max_seconds, wpm=165))
+        return max(200, int(target * 0.85)), max(ceiling, int(target * 1.15))
+
     def _ancient_long_title(self, topic: TopicCandidate) -> str:
         subject = re.sub(r"\s+", " ", str(topic.subject or topic.title or "Ancient history")).strip()
         lowered = subject.lower()
@@ -1439,14 +1451,19 @@ class ShortsFactory:
                 )
         if getattr(topic, "content_kind", "short") == "video":
             long_word_count = len(re.findall(r"[A-Za-z0-9']+", topic.narration or ""))
-            minimum_words = 1200 if channel.id == "ancient_history" else 1250
+            # Both bounds come from the channel's configured duration, the same
+            # way the writer's target does. Fixed numbers here meant the
+            # duration setting did nothing: a 4-6 minute channel still had to
+            # clear a 1200-word floor written for a nine-minute video, so the
+            # script came out long and then needed a 43% speed-up to fit.
+            minimum_words, maximum_words = self._long_word_window(channel)
             if long_word_count < minimum_words:
                 raise ValueError(
                     f"Rejected thin long script: {long_word_count} words; needs at least {minimum_words}"
                 )
-            if long_word_count > 1520:
+            if long_word_count > maximum_words:
                 raise ValueError(
-                    f"Rejected overfilled long script: {long_word_count} words; maximum is 1520"
+                    f"Rejected overfilled long script: {long_word_count} words; maximum is {maximum_words}"
                 )
             repetition_issue = self._long_script_repetition_issue(topic)
             if repetition_issue:
