@@ -26,6 +26,10 @@ class HybridMediaFetcher:
     BRAIN_SHORT_MIN_UNIQUE_REAL_FOR_REUSE = 4
     BRAIN_LONG_MIN_UNIQUE_REAL_FOR_REUSE = 6
     SHORT_MAX_LOCAL_FACT_CARD_FALLBACKS = 1
+    # Attributed archives whose catalogue stills are allowed to be smaller than
+    # the usual floor: a real 400px photograph of the actual site beats a
+    # generated card at any resolution.
+    SMALL_ARCHIVE_SOURCES = frozenset({"wikimedia", "openverse"})
     # API metadata for these assets is too vague to expose the off-topic context
     # visible on the human source page (for example, mortgage/home-buying stock).
     BRAIN_LENS_BLOCKED_ASSET_IDS = {
@@ -321,6 +325,60 @@ class HybridMediaFetcher:
                         "source_page": str(hit.get("pageURL") or ""),
                         "media_width": str(hit.get("imageWidth") or hit.get("webformatWidth") or ""),
                         "media_height": str(hit.get("imageHeight") or hit.get("webformatHeight") or ""),
+                    },
+                )
+            )
+        return results
+
+    # Commercial-use licences only. A channel chasing monetisation cannot
+    # ship "non-commercial" or "no derivatives" material, and Openverse will
+    # happily return both unless asked not to.
+    OPENVERSE_LICENCES = "cc0,pdm,by,by-sa"
+
+    def _openverse_search(self, query: str, limit: int = 6, deadline: float | None = None) -> List[Tuple[str, Dict[str, str]]]:
+        """Openverse: a large keyless archive, used where Wikimedia runs thin.
+
+        Wikimedia has deep coverage of famous sites and almost none of the
+        subjects that actually failed -- Nubian pyramids, Mohenjo-daro,
+        Gobekli Tepe. When a subject ran out of real photographs the pipeline
+        invented a text-on-colour card instead, and roughly a third of videos
+        carried two of them. Openverse returned usable images for every one of
+        those subjects, and needs no API key.
+        """
+        endpoint = "https://api.openverse.org/v1/images/"
+        params = {
+            "q": query,
+            "page_size": str(max(1, min(20, int(limit)))),
+            "license": self.OPENVERSE_LICENCES,
+            "mature": "false",
+        }
+        timeout = self._deadline_timeout(deadline, 18.0)
+        if timeout is None:
+            return []
+        response = self.session.get(endpoint, params=params, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+
+        results: List[Tuple[str, Dict[str, str]]] = []
+        for hit in payload.get("results", []) or []:
+            url = hit.get("url")
+            if not url:
+                continue
+            results.append(
+                (
+                    str(url),
+                    {
+                        "source": "openverse",
+                        "license": str(hit.get("license") or "").upper() or "Openverse",
+                        "artist": str(hit.get("creator") or "Unknown"),
+                        "asset_title": str(hit.get("title") or ""),
+                        "asset_id": f"openverse:{hit.get('id')}",
+                        # foreign_landing_url is the page on the holding
+                        # institution's own site, which is the provenance the
+                        # verifier wants; the api url is not.
+                        "source_page": str(hit.get("foreign_landing_url") or hit.get("url") or ""),
+                        "media_width": str(hit.get("width") or ""),
+                        "media_height": str(hit.get("height") or ""),
                     },
                 )
             )
@@ -2716,10 +2774,11 @@ class HybridMediaFetcher:
             if match:
                 return f"{prefix}:{match.group(1)}"
 
-        if str(meta.get("source") or "").lower() == "wikimedia":
+        source = str(meta.get("source") or "").lower()
+        if source in self.SMALL_ARCHIVE_SOURCES:
             title = str(meta.get("asset_title") or Path(urlparse(url).path).name).strip().lower()
             if title:
-                return f"wikimedia:{title}"
+                return f"{source}:{title}"
 
         canonical = self._canonical_media_url(url)
         if not canonical:
@@ -3075,7 +3134,11 @@ class HybridMediaFetcher:
         verified_ancient_archive = (
             niche_id == "ancient_history"
             and path.suffix.lower() != ".mp4"
-            and str(meta.get("source") or "").strip().lower() == "wikimedia"
+            # Both are attributed archives, and both hold catalogue stills of
+            # niche subjects at modest sizes. Naming only Wikimedia here would
+            # let Commons through and throw Openverse away for the very
+            # subjects Openverse was added to cover.
+            and str(meta.get("source") or "").strip().lower() in self.SMALL_ARCHIVE_SOURCES
             and self._has_source_page_provenance(meta)
             # Commons often only has ~360-500px catalog stills for niche subjects.
             # Prefer those attributed archives over generated fact cards.
@@ -3883,6 +3946,7 @@ class HybridMediaFetcher:
             (self._pexels_video_search, {"query": query, "limit": 2, "orientation": orientation}),
             (self._pexels_photo_search, {"query": query, "limit": 3, "orientation": orientation}),
             (self._wikimedia_search, {"query": query, "limit": 5}),
+            (self._openverse_search, {"query": query, "limit": 6}),
             (self._pixabay_search, {"query": query, "limit": 3}),
         ]
         if niche_id == "brain_lens":
@@ -3927,6 +3991,11 @@ class HybridMediaFetcher:
                         {"query": historical_query, "limit": archive_limit},
                     )
                 )
+            # Openverse before stock: a real photograph of the actual site
+            # beats a generic "ancient ruins" stock clip, and beats the
+            # generated card that used to fill the gap.
+            for historical_query in historical_queries[:2]:
+                providers.append((self._openverse_search, {"query": historical_query, "limit": 8}))
             stock_query = f"{query} ancient ruins archaeology museum"
             providers.append((self._pexels_video_search, {"query": stock_query, "limit": 2, "orientation": orientation}))
             providers.append((self._pixabay_search, {"query": stock_query, "limit": 4}))

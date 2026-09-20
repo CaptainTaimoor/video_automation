@@ -28,6 +28,14 @@ MIN_GAP_MINUTES = {"short": 60, "video": 120}
 # its score is pulled toward the channel average until it has this many.
 TRUST_THRESHOLD = 3
 
+# When a channel wants more uploads than it has measured good hours, the rest
+# are placed here. Walking 0..23 instead put the overflow at midnight and 01:00
+# -- the worst hours of the day -- simply because they come first in a range.
+# Evening leads, then afternoon, morning, and only then the small hours.
+FALLBACK_HOUR_ORDER: tuple[int, ...] = (
+    20, 19, 21, 18, 22, 17, 16, 23, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 1, 0,
+)
+
 
 def draw_count(low: int, high: int, *, rng: random.Random | None = None) -> int:
     """A count inside the channel's range, redrawn each day."""
@@ -129,11 +137,9 @@ def plan_slots(
             chosen.append(minute)
 
     if len(chosen) < count:
-        for hour in range(24):
+        for hour in FALLBACK_HOUR_ORDER:
             if len(chosen) >= count:
                 break
-            if is_quiet_hour(hour):
-                continue
             minute = hour * 60
             if fits(minute):
                 chosen.append(minute)

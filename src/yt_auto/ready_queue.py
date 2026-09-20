@@ -292,15 +292,44 @@ def clear_cancelled(state_dir: Path, channel_ids: list[str] | None = None) -> in
     return removed
 
 
-def channel_slots_from_config(channel: Any) -> list[tuple[str, str]]:
-    """Return [(HH:MM, content_kind), ...] for a ChannelConfig-like object."""
+def _profile_slots(profile: Any, kind: str, hours: list[int], rng: Any) -> list[tuple[str, str]]:
+    """This kind's times for today: drawn from its range, or its fixed list."""
+    if profile is None:
+        return []
+    low = int(getattr(profile, "daily_min", 0) or 0)
+    high = int(getattr(profile, "daily_max", 0) or 0)
+    if low > 0 and high > 0 and hours:
+        from yt_auto import upload_plan
+
+        times = upload_plan.build_plan(low=low, high=high, hours=hours, content_kind=kind, rng=rng)
+        return [(t, kind) for t in times]
+    return [(str(t), kind) for t in (getattr(profile, "schedule_times", None) or [])]
+
+
+def channel_slots_from_config(
+    channel: Any,
+    *,
+    best_hours: dict[str, list[int]] | None = None,
+    rng: Any = None,
+) -> list[tuple[str, str]]:
+    """Return [(HH:MM, content_kind), ...] for a ChannelConfig-like object.
+
+    When the channel configures a daily range and the caller supplies the
+    hours its audience actually watches, today's times are drawn fresh: the
+    fixed list published at the same hours every day and always stopped at the
+    minimum, so the top of each range was never reached. Without a range or
+    without analytics it falls back to the configured list, so this stays safe
+    on a channel that has neither.
+    """
+    channel_id = str(getattr(channel, "id", "") or "")
+    hours = list((best_hours or {}).get(channel_id) or [])
     slots: list[tuple[str, str]] = []
     videos = getattr(channel, "videos", None)
     shorts = getattr(channel, "shorts", None)
     if videos is not None and getattr(videos, "enabled", False):
-        slots.extend((str(t), "video") for t in (getattr(videos, "schedule_times", None) or []))
+        slots.extend(_profile_slots(videos, "video", hours, rng))
     if shorts is not None and getattr(shorts, "enabled", True):
-        slots.extend((str(t), "short") for t in (getattr(shorts, "schedule_times", None) or []))
+        slots.extend(_profile_slots(shorts, "short", hours, rng))
     if not slots:
         slots.extend((str(t), "short") for t in (getattr(channel, "schedule_times", None) or []))
     slots.sort(key=lambda item: item[0])
@@ -315,12 +344,13 @@ def build_day_pack(
     timezone_name: str,
     day: str | None = None,
     rebuild: bool = False,
+    best_hours: dict[str, list[int]] | None = None,
 ) -> dict[str, Any]:
     """Create today's planned queue items + day pack plan.json."""
     channel_id = str(getattr(channel, "id", "") or "")
     now = _aware_now(timezone_name)
     day = day or now.strftime("%Y-%m-%d")
-    slots = channel_slots_from_config(channel)
+    slots = channel_slots_from_config(channel, best_hours=best_hours)
     pack_dir = day_pack_dir(root, channel_id, day)
     pack_dir.mkdir(parents=True, exist_ok=True)
 

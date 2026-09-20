@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
@@ -19,6 +20,14 @@ SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
+
+
+
+def _rfc3339_utc(moment: datetime) -> str:
+    """YouTube wants UTC with a trailing Z; a naive time is read as local."""
+    if moment.tzinfo is None:
+        moment = moment.astimezone()
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class UploadLimitExceededError(RuntimeError):
@@ -151,6 +160,7 @@ class YouTubeUploader:
         privacy_status: str,
         thumbnail_path: Path | None = None,
         is_short: bool = False,
+        publish_at: datetime | None = None,
     ) -> str:
         service = self._service_for_channel(channel)
 
@@ -166,6 +176,14 @@ class YouTubeUploader:
                 "selfDeclaredMadeForKids": False,
             },
         }
+        # A scheduled publish must be uploaded private; YouTube flips it public
+        # itself at the given time, so the machine can be busy or off by then.
+        # Both uploader classes in this repo take this argument: patching only
+        # the one that looked current is how two finished videos were lost to
+        # an unexpected-keyword error.
+        if publish_at is not None:
+            body["status"]["privacyStatus"] = "private"
+            body["status"]["publishAt"] = _rfc3339_utc(publish_at)
 
         media = MediaFileUpload(str(video_path), chunksize=-1, resumable=True)
         request = service.videos().insert(part="snippet,status", body=body, media_body=media)

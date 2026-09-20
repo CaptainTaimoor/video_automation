@@ -741,6 +741,11 @@ class SourceValidationTests(unittest.TestCase):
         factory.title_lab = TitleLab()
         factory.config = config
         factory._recent_story_fingerprints = Mock(return_value={})
+        # This asks whether the shipped fallback pool is publishable, not what
+        # the machine happens to have built lately. Left unmocked it reads the
+        # live run log, so building any of these subjects locally makes the
+        # test fail with "overused recent angle".
+        factory._read_run_log = Mock(return_value=[])
 
         candidates = list(factory._ancient_short_continuity_fallbacks(channel))
         prepared = []
