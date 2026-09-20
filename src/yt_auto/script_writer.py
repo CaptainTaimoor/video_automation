@@ -567,6 +567,41 @@ class ScriptWriter:
         wps = wpm / 60.0
         return max(60, int(seconds * wps * 0.94))
 
+    # A long script is assembled by three different paths. Each one used to
+    # decide its own length, so setting a channel to four minutes shortened
+    # one of them and left the others writing nine minutes of narration --
+    # which then needed a 43% speed-up to fit, and the voice guard refused.
+    # Every path ends here instead.
+    LONG_PLAN_MIN_MIDDLE = 4
+
+    def _fit_long_plan(
+        self,
+        channel: ChannelConfig,
+        plan: list[ScenePlanItem],
+        content_kind: str = "video",
+    ) -> list[ScenePlanItem]:
+        """Trim a long scene plan to the channel's word budget.
+
+        The opening and closing scenes are always kept: they carry the hook and
+        the payoff, and a script without either is worse than a slightly long
+        one. Enough middle is kept for a real structure before the budget is
+        allowed to stop it.
+        """
+        if content_kind != "video" or len(plan) < 3:
+            return plan
+        budget = int(self._target_words(channel, content_kind="video"))
+        opener, closer = plan[0], plan[-1]
+        used = self._word_count(opener.narration) + self._word_count(closer.narration)
+        middle: list[ScenePlanItem] = []
+        for scene in plan[1:-1]:
+            words = self._word_count(scene.narration)
+            if len(middle) < self.LONG_PLAN_MIN_MIDDLE or used + words <= budget:
+                middle.append(scene)
+                used += words
+            if used >= budget and len(middle) >= self.LONG_PLAN_MIN_MIDDLE:
+                break
+        return [opener, *middle, closer]
+
     def _target_words(self, channel: ChannelConfig, content_kind: str) -> int:
         if content_kind == "video":
             # Derived from the configured duration, with no fixed floor.
@@ -2044,6 +2079,16 @@ class ScriptWriter:
             scene.preferred_image_url = preferred_archive_by_caption.get(scene.visual_text, "")
         return plan
 
+    # Roughly one researched fact per this many spoken words, measured from
+    # the nine-minute scripts that wanted fourteen.
+    LONG_WORDS_PER_FACT = 90
+    MIN_LONG_FACTS = 6
+
+    def _long_facts_needed(self, channel: ChannelConfig) -> int:
+        """Facts a long script needs, scaled to its configured length."""
+        target = int(self._target_words(channel, "video"))
+        return max(self.MIN_LONG_FACTS, round(target / self.LONG_WORDS_PER_FACT))
+
     def _history_long_video_plan(
         self,
         channel: ChannelConfig,
@@ -2084,10 +2129,15 @@ class ScriptWriter:
             seen.add(key)
             seen_token_sets.append(token_set)
             points.append(point)
-        points = points[:14]
-        if len(points) < 14:
+        # How many facts a script needs depends on how long it has to fill.
+        # Fourteen was right for a nine-minute video and impossible for a
+        # four-minute one, so a shortened channel rejected every topic for
+        # being under-researched and never built anything.
+        needed = self._long_facts_needed(channel)
+        points = points[:needed]
+        if len(points) < needed:
             raise ValueError(
-                f"Long Ancient script has only {len(points)} distinct researched facts; needs 14 before expansion."
+                f"Long Ancient script has only {len(points)} distinct researched facts; needs {needed} before expansion."
             )
         if "lachish" in subject.lower():
             return self._lachish_long_video_plan(channel, topic, subject)
@@ -3118,6 +3168,7 @@ class ScriptWriter:
         if content_kind == "video" and self._word_count(topic.narration) >= 700:
             section_plan = self._video_sections_from_narration(channel, topic, subject)
             if section_plan:
+                section_plan = self._fit_long_plan(channel, section_plan, content_kind)
                 beats = [scene.narration for scene in section_plan if scene.narration]
                 visual_captions = [scene.visual_text for scene in section_plan if scene.visual_text]
                 return replace(
@@ -3130,7 +3181,9 @@ class ScriptWriter:
                     content_kind=content_kind,
                 )
         if content_kind == "video":
-            fallback_plan = self._long_video_fallback_plan(channel, topic, subject)
+            fallback_plan = self._fit_long_plan(
+                channel, self._long_video_fallback_plan(channel, topic, subject), content_kind
+            )
             beats = [scene.narration for scene in fallback_plan if scene.narration]
             visual_captions = [scene.visual_text for scene in fallback_plan if scene.visual_text]
             return replace(
@@ -3266,6 +3319,8 @@ class ScriptWriter:
 
         if len(polished) > max_scenes:
             polished = polished[: max_scenes - 1] + [polished[-1]]
+
+        polished = self._fit_long_plan(channel, polished, content_kind)
 
         if channel.id == "brain_lens" and content_kind == "short" and len(polished) >= 2:
             word_budget = self._target_words(channel, content_kind=content_kind)
