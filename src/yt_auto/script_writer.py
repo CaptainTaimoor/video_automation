@@ -607,10 +607,17 @@ class ScriptWriter:
             # Derived from the configured duration, with no fixed floor.
             # A hardcoded 1250-word minimum meant the duration setting did
             # nothing: shortening a channel to 4-6 minutes still produced a
-            # nine-minute script, which the length check then rejected. The
-            # only floor left is the one below which a video is not a video.
+            # nine-minute script, which the length check then rejected.
+            #
+            # Aim at the middle of the band, the way Shorts do below. Aiming at
+            # the minimum leaves no room underneath: a script that lands even
+            # slightly short then has to be stretched to reach the floor, and
+            # stretching narration is exactly what makes a voice sound wrong.
+            # One came back needing 16.6% against an 8% limit.
             min_s = int(getattr(channel.videos, "min_duration_seconds", 480) or 480)
-            return max(320, self._target_words_for_duration(min_s, wpm=165))
+            max_s = int(getattr(channel.videos, "max_duration_seconds", min_s) or min_s)
+            mid_s = max(min_s, (min_s + max(min_s, max_s)) // 2)
+            return max(320, self._target_words_for_duration(mid_s, wpm=165))
         # shorts — aim for the middle of the 50-59s window
         min_s = int(getattr(channel.shorts, "min_duration_seconds", 50) or 50)
         mid_s = max(
