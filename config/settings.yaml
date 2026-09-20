@@ -39,10 +39,23 @@
     # Legitimate free-tier fallback already available in this workspace. Set
     # AI_GATEWAY_URL, AI_GATEWAY_MODEL, and AI_GATEWAY_API_KEY together to use
     # a separate authorized profile without sending HF_API_KEY to another host.
-    openai_compatible_url: https://router.huggingface.co
-    openai_compatible_model: Qwen/Qwen3-8B
-    openai_compatible_api_key_env: HF_API_KEY
+    # OpenRouter's free tier. The account's credit is not spent: it only
+    # raises the free daily request limit. The Hugging Face router answered
+    # 402 on every call, which is why this moved.
+    openai_compatible_url: https://openrouter.ai/api
+    openai_compatible_model: openrouter/free
+    # Tried in turn when the one above is busy. Asked back to back, four of
+    # seven free models answered 429, so a single one is not dependable.
+    openai_compatible_models:
+      - openrouter/free
+      - nvidia/nemotron-3-super-120b-a12b:free
+      - qwen/qwen3.8-27b:free
+      - inclusionai/ling-3.0-flash-vl:free
+      - poolside/laguna-s-2.1:free
+      - nvidia/nemotron-3.5-lightning:free
+    openai_compatible_api_key_env: OPENROUTER_API_KEY
     openai_compatible_allowed_hosts:
+      - openrouter.ai
       - router.huggingface.co
       - api.groq.com
       - api.mistral.ai

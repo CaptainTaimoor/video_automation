@@ -3674,6 +3674,32 @@ class ScriptWriter:
         api_key = (os.getenv(key_env) or "").strip()
         return base_url, model, api_key
 
+    def _openai_compatible_models(self) -> list[str]:
+        """Every model to try, in order.
+
+        A free model answers 429 as often as it answers, so one of them is not
+        a provider -- it is a coin flip. Tried back to back, four of seven were
+        busy. The ladder makes that a non-event: the next one answers.
+        """
+        # An environment override is a separate provider profile: pairing its
+        # endpoint with the configured profile's models would send this
+        # account's model list to someone else's host. When either override is
+        # present, only the override's own model is allowed -- and if it did
+        # not name one, there is no model, which is the caller's error.
+        env_url = (os.getenv("AI_GATEWAY_URL") or "").strip()
+        env_model = (os.getenv("AI_GATEWAY_MODEL") or "").strip()
+        if env_url or env_model:
+            return [env_model] if env_model else []
+        ladder = [
+            str(name).strip()
+            for name in (getattr(self.cfg, "openai_compatible_models", None) or [])
+            if str(name).strip()
+        ]
+        first = (getattr(self.cfg, "openai_compatible_model", "") or "").strip()
+        if first and first not in ladder:
+            ladder.insert(0, first)
+        return ladder
+
     @staticmethod
     def _safe_endpoint_host(url: str) -> str:
         """Return only a normalized hostname suitable for logs and metadata."""
@@ -3792,8 +3818,44 @@ class ScriptWriter:
         response_mime_type: str | None = None,
     ) -> str:
         base_url, model, api_key = self._openai_compatible_settings()
-        if not base_url or not model:
+        ladder = self._openai_compatible_models() or ([model] if model else [])
+        if not base_url or not ladder:
             raise RuntimeError("AI_GATEWAY_URL and AI_GATEWAY_MODEL are not configured")
+        if len(ladder) > 1:
+            errors: list[str] = []
+            for candidate in ladder:
+                try:
+                    return self._generate_openai_compatible_once(
+                        prompt,
+                        candidate,
+                        base_url,
+                        api_key,
+                        max_output_tokens=max_output_tokens,
+                        response_mime_type=response_mime_type,
+                    )
+                except Exception as exc:
+                    errors.append(f"{self._safe_model_label(candidate)}: {exc}")
+                    continue
+            raise RuntimeError("every gateway model failed: " + "; ".join(errors[-4:]))
+        model = ladder[0]
+        return self._generate_openai_compatible_once(
+            prompt,
+            model,
+            base_url,
+            api_key,
+            max_output_tokens=max_output_tokens,
+            response_mime_type=response_mime_type,
+        )
+
+    def _generate_openai_compatible_once(
+        self,
+        prompt: str,
+        model: str,
+        base_url: str,
+        api_key: str,
+        max_output_tokens: int = 700,
+        response_mime_type: str | None = None,
+    ) -> str:
         self._validate_openai_compatible_endpoint(base_url, model)
 
         endpoint = base_url.rstrip("/")
@@ -4111,17 +4173,62 @@ class ScriptWriter:
         raise RuntimeError("All configured AI providers failed: " + "; ".join(errors[-4:]))
 
     def _json_from_ai(self, raw: str) -> dict:
+        """The answer in a reply, ignoring whatever the model said around it.
+
+        Free models think out loud and often restate the example from the
+        question before answering. Taking the first JSON-looking span read the
+        question back as the answer, so the last complete object wins and
+        anything that only echoes the prompt's placeholders is skipped.
+        """
         raw = (raw or "").strip()
+        if not raw:
+            return {}
         try:
-            return json.loads(raw)
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed
         except Exception:
-            match = re.search(r"\{[\s\S]+\}", raw)
-            if not match:
-                return {}
-            try:
-                return json.loads(match.group())
-            except Exception:
-                return {}
+            pass
+
+        # Strip code fences so a fenced answer parses like a bare one.
+        fenced = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
+
+        candidates: list[dict] = []
+        starts = [i for i, ch in enumerate(fenced) if ch == "{"]
+        for start in starts:
+            depth = 0
+            for index in range(start, len(fenced)):
+                if fenced[index] == "{":
+                    depth += 1
+                elif fenced[index] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            found = json.loads(fenced[start:index + 1])
+                        except Exception:
+                            break
+                        if isinstance(found, dict) and found:
+                            candidates.append(found)
+                        break
+
+        for found in reversed(candidates):
+            if not self._looks_like_prompt_echo(found):
+                return found
+        return candidates[-1] if candidates else {}
+
+    # Placeholder wording a model copies from the question instead of answering.
+    _ECHO_MARKERS = ("...", "…", "your text", "example", "placeholder", "first beat", "second beat")
+
+    @classmethod
+    def _looks_like_prompt_echo(cls, payload: dict) -> bool:
+        blob = " ".join(
+            str(item)
+            for value in payload.values()
+            for item in (value if isinstance(value, list) else [value])
+        ).strip().lower()
+        if not blob:
+            return True
+        return any(marker in blob for marker in cls._ECHO_MARKERS)
 
     @staticmethod
     def _valid_percent_score(value: object) -> bool:

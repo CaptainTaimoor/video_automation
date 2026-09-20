@@ -744,10 +744,14 @@ class RoutedScriptWriterTests(unittest.TestCase):
         self.assertEqual(writer_cfg.ollama_timeout_seconds, 90)
         self.assertEqual(writer_cfg.ollama_model, "qwen2.5:7b")
         self.assertEqual(writer_cfg.groq_model, "openai/gpt-oss-120b")
+        # openrouter.ai leads: the gateway moved there for the free models,
+        # and a host missing from this list has every call refused.
         self.assertEqual(
             writer_cfg.openai_compatible_allowed_hosts,
-            ["router.huggingface.co", "api.groq.com", "api.mistral.ai"],
+            ["openrouter.ai", "router.huggingface.co", "api.groq.com", "api.mistral.ai"],
         )
+        self.assertEqual(writer_cfg.openai_compatible_url, "https://openrouter.ai/api")
+        self.assertEqual(writer_cfg.openai_compatible_api_key_env, "OPENROUTER_API_KEY")
 
     def test_groq_is_tried_after_gemini_in_default_routed_order(self) -> None:
         writer = ScriptWriter(

@@ -65,6 +65,7 @@ def load_config(path: Path) -> AppConfig:
         ),
         openai_compatible_url=str(script_writer_raw.get("openai_compatible_url", "")),
         openai_compatible_model=str(script_writer_raw.get("openai_compatible_model", "")),
+        openai_compatible_models=list(script_writer_raw.get("openai_compatible_models", []) or []),
         openai_compatible_api_key_env=str(
             script_writer_raw.get("openai_compatible_api_key_env", "AI_GATEWAY_API_KEY")
         ),

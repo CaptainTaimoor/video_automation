@@ -140,6 +140,9 @@ class ScriptWriterConfig:
     ollama_timeout_seconds: int = 90
     openai_compatible_url: str = ""
     openai_compatible_model: str = ""
+    # Tried in order when the first is busy. A free model answers 429 as
+    # often as it answers, so one of them is not a dependable provider.
+    openai_compatible_models: list = field(default_factory=list)
     openai_compatible_api_key_env: str = "AI_GATEWAY_API_KEY"
     openai_compatible_allowed_hosts: List[str] = field(
         default_factory=lambda: [
