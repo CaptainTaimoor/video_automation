@@ -30,6 +30,12 @@ class HybridMediaFetcher:
     # the usual floor: a real 400px photograph of the actual site beats a
     # generated card at any resolution.
     SMALL_ARCHIVE_SOURCES = frozenset({"wikimedia", "openverse"})
+    # Only the first page of Pexels was ever read, and its first page is the
+    # most popular clips -- exactly the ones the anti-repeat rules throw out
+    # for having been used already. A scene could see twenty candidates and
+    # keep four. Reading a few pages widens the pool at one request each.
+    STOCK_SEARCH_PAGES = 3
+    STOCK_PAGE_SIZE = 20
     # API metadata for these assets is too vague to expose the off-topic context
     # visible on the human source page (for example, mortgage/home-buying stock).
     BRAIN_LENS_BLOCKED_ASSET_IDS = {
@@ -456,23 +462,42 @@ class HybridMediaFetcher:
                         time.sleep(min(0.6 + attempt, pause))
         return None
 
+    def _stock_pages(self, limit: int) -> list[tuple[int, int]]:
+        """[(page, per_page), ...] to cover ``limit`` candidates.
+
+        One page is enough for a small ask; a larger one is spread over
+        several so the deeper, less-used clips are reachable.
+        """
+        wanted = max(1, int(limit))
+        if wanted <= 8:
+            return [(1, wanted)]
+        per_page = min(self.STOCK_PAGE_SIZE, max(8, wanted))
+        pages = min(self.STOCK_SEARCH_PAGES, max(1, -(-wanted // per_page) + 1))
+        return [(page, per_page) for page in range(1, pages + 1)]
+
     def _pexels_photo_search(self, query: str, limit: int = 4, orientation: str = "portrait", deadline: float | None = None) -> List[Tuple[str, Dict[str, str]]]:
         if not self.pexels_api_key:
             return []
 
         endpoint = "https://api.pexels.com/v1/search"
         headers = {"Authorization": self.pexels_api_key}
-        params = {"query": query, "per_page": limit, "orientation": orientation}
 
-        try:
-            timeout = self._deadline_timeout(deadline, 18.0)
-            if timeout is None:
-                return []
-            r = self.session.get(endpoint, headers=headers, params=params, timeout=timeout)
-            r.raise_for_status()
-            data = r.json()
-        except Exception:
-            return []
+        collected: list = []
+        for page, per_page in self._stock_pages(limit):
+            params = {"query": query, "per_page": per_page, "orientation": orientation, "page": page}
+            try:
+                timeout = self._deadline_timeout(deadline, 18.0)
+                if timeout is None:
+                    break
+                r = self.session.get(endpoint, headers=headers, params=params, timeout=timeout)
+                r.raise_for_status()
+                batch = r.json().get("photos", []) or []
+            except Exception:
+                break
+            collected.extend(batch)
+            if len(batch) < per_page:
+                break  # ran out of results; a further page repeats or 404s
+        data = {"photos": collected}
 
         results: List[Tuple[str, Dict[str, str]]] = []
         for photo in data.get("photos", []):
@@ -538,17 +563,23 @@ class HybridMediaFetcher:
         
         endpoint = "https://api.pexels.com/videos/search"
         headers = {"Authorization": self.pexels_api_key}
-        params = {"query": query, "per_page": limit, "orientation": orientation}
-        
-        try:
-            timeout = self._deadline_timeout(deadline, 18.0)
-            if timeout is None:
-                return []
-            r = self.session.get(endpoint, headers=headers, params=params, timeout=timeout)
-            r.raise_for_status()
-            data = r.json()
-        except Exception:
-            return []
+
+        collected: list = []
+        for page, per_page in self._stock_pages(limit):
+            params = {"query": query, "per_page": per_page, "orientation": orientation, "page": page}
+            try:
+                timeout = self._deadline_timeout(deadline, 18.0)
+                if timeout is None:
+                    break
+                r = self.session.get(endpoint, headers=headers, params=params, timeout=timeout)
+                r.raise_for_status()
+                batch = r.json().get("videos", []) or []
+            except Exception:
+                break
+            collected.extend(batch)
+            if len(batch) < per_page:
+                break  # ran out of results; a further page repeats or 404s
+        data = {"videos": collected}
 
         results: List[Tuple[str, Dict[str, str]]] = []
         for video in data.get("videos", []):

@@ -29,6 +29,16 @@ from typing import Any, Callable, Iterable
 # and takes no key.
 PROVIDER_ORDER: tuple[str, ...] = ("deepgram", "openrouter", "inworld", "gemini")
 
+# Shown under each provider on the page, so the choice is obvious without
+# going back through a chat log. Deepgram leads because its free credit lasts
+# years rather than days.
+PROVIDER_NOTES: dict[str, str] = {
+    "deepgram": "Aura voices. $200 free credit, no card - years at this volume. Tried first.",
+    "openrouter": "Many models behind one key. Note: no text-to-speech models, so this is for script writing.",
+    "inworld": "Warm, natural voices. Free tier is small - about 70 minutes.",
+    "gemini": "Google. Also writes the scripts. Free tier is small for voice.",
+}
+
 DEFAULT_ATTEMPTS_PER_KEY = 3
 
 # How long a key sits out after it has failed all its attempts, so one dead
@@ -158,9 +168,18 @@ class KeyStore:
     def keys_for(self, provider: str, *, now: float | None = None) -> list[ApiKey]:
         return [key for key in self.providers.get(str(provider)) or [] if key.available(now=now)]
 
-    def ordered_providers(self) -> list[str]:
-        """Configured providers, preferred order first, then any extras."""
-        known = [name for name in PROVIDER_ORDER if self.providers.get(name)]
+    def ordered_providers(self, *, include_empty: bool = False) -> list[str]:
+        """Configured providers, preferred order first, then any extras.
+
+        ``include_empty`` lists every provider the bot knows how to use, even
+        those with no key yet: the page needs a card for each, or there is
+        nowhere to paste the first key for a provider you have not used before.
+        The rotation itself asks for the configured ones only.
+        """
+        if include_empty:
+            known = list(PROVIDER_ORDER)
+        else:
+            known = [name for name in PROVIDER_ORDER if self.providers.get(name)]
         extra = sorted(set(self.providers) - set(PROVIDER_ORDER))
         return known + extra
 
@@ -170,9 +189,10 @@ class KeyStore:
             "providers": [
                 {
                     "provider": provider,
+                    "note": PROVIDER_NOTES.get(provider, ""),
                     "keys": [key.as_public() for key in self.providers.get(provider) or []],
                 }
-                for provider in self.ordered_providers()
+                for provider in self.ordered_providers(include_empty=True)
             ],
             "attempts_per_key": DEFAULT_ATTEMPTS_PER_KEY,
         }

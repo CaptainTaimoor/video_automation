@@ -209,3 +209,95 @@ def _minutes_since(stamp: Any, moment: datetime) -> int | None:
     if last.tzinfo is not None:
         last = last.astimezone().replace(tzinfo=None)
     return max(0, int((moment - last).total_seconds() // 60))
+
+
+def today_payload(
+    queue: dict[str, Any],
+    channel_names: dict[str, str],
+    *,
+    now_minutes: int,
+    planned_slots: dict[tuple[str, str], list[str]] | None = None,
+) -> dict[str, Any]:
+    """One dot per upload the day owes, per channel and kind.
+
+    The old page listed the times configured in settings, which is not what
+    the day actually drew -- it once claimed 7 Shorts on a day that planned 9.
+    This reads the drawn plan when the caller supplies it and falls back to the
+    slots the queue itself holds.
+    """
+    today = str(queue.get("today") or "")
+    items = [i for i in (queue.get("items") or []) if isinstance(i, dict)]
+    channels: list[dict[str, Any]] = []
+
+    for channel_id, display in channel_names.items():
+        mine = [i for i in items if str(i.get("channel") or "") == channel_id
+                and str(i.get("target_date") or "") == today]
+        kinds: dict[str, Any] = {}
+        for kind in ("short", "video"):
+            by_slot: dict[str, dict[str, Any]] = {}
+            for item in mine:
+                if str(item.get("content_kind") or "short") != kind:
+                    continue
+                slot = str(item.get("target_slot") or "")
+                current = by_slot.get(slot)
+                # A slot retried during the day keeps its furthest state, so a
+                # finished rebuild is not hidden behind its earlier failure.
+                if current is None or SLOT_STATES.index(slot_state(item, 0, 0)) > SLOT_STATES.index(
+                    slot_state(current, 0, 0)
+                ):
+                    by_slot[slot] = item
+
+            planned = (planned_slots or {}).get((channel_id, kind))
+            if planned is None:
+                planned = sorted(slot for slot in by_slot if slot)
+
+            slots = []
+            for slot in planned:
+                item = by_slot.get(slot)
+                slots.append(
+                    {
+                        "time": slot,
+                        "state": slot_state(item, minutes_of(slot), now_minutes),
+                        "title": (item or {}).get("title"),
+                        "item_id": (item or {}).get("id"),
+                        "youtube_id": (item or {}).get("youtube_id"),
+                    }
+                )
+            states = [s["state"] for s in slots]
+            kinds[kind] = {
+                "planned": len(slots),
+                "published": states.count("published"),
+                "scheduled": states.count("scheduled"),
+                "ready": states.count("ready"),
+                "building": states.count("building"),
+                "owed": states.count("owed") + states.count("failed") + states.count("held"),
+                "slots": slots,
+            }
+
+        every_state = [s["state"] for data in kinds.values() for s in data["slots"]]
+        every_slot = [s["time"] for data in kinds.values() for s in data["slots"]]
+        done = sum(data["published"] + data["scheduled"] for data in kinds.values())
+        owed = sum(data["planned"] for data in kinds.values())
+        upcoming = sorted(
+            (
+                {**slot, "kind": kind}
+                for kind, data in kinds.items()
+                for slot in data["slots"]
+                if slot["state"] != "published" and minutes_of(slot["time"]) >= now_minutes
+            ),
+            key=lambda slot: minutes_of(slot["time"]),
+        )[:3]
+
+        channels.append(
+            {
+                "id": channel_id,
+                "name": display,
+                "kinds": kinds,
+                "done": done,
+                "planned": owed,
+                "on_track": on_track(every_state, every_slot, now_minutes),
+                "next": upcoming,
+            }
+        )
+
+    return {"ok": True, "day": today, "channels": channels}

@@ -1889,6 +1889,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/suggestions":
             _json_response(self, suggestions_payload())
             return
+        if path == "/api/today":
+            _sys_path_src()
+            from datetime import datetime
+
+            from yt_auto.dashboard_views import today_payload
+            from yt_auto.upload_plan import saved_slots
+
+            queue = ready_queue_snapshot()
+            names = {c["id"]: c.get("name") or c["id"] for c in CHANNELS}
+            day = str(queue.get("today") or "")
+            planned = {}
+            for channel_id in names:
+                for kind in ("short", "video"):
+                    slots = saved_slots(STATE, channel_id, kind, day)
+                    if slots is not None:
+                        planned[(channel_id, kind)] = slots
+            now = datetime.now()
+            _json_response(
+                self,
+                today_payload(
+                    queue,
+                    names,
+                    now_minutes=now.hour * 60 + now.minute,
+                    planned_slots=planned or None,
+                ),
+            )
+            return
+
         if path == "/api/api-keys":
             if not _require_loopback(self):
                 return

@@ -495,6 +495,28 @@
       .kacts { justify-content: flex-start; }
       .kacts .btn { min-height: 38px; }
     }
+    /* Today: one dot per upload the day owes. */
+    .tgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+    .tcard { border: 1px solid var(--line); border-radius: var(--radius-md); background: rgba(255,255,255,.02); padding: 14px; }
+    .thead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .tname { font-size: 15px; font-weight: 650; }
+    .tcount { font-size: 13px; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+    .tstate { font-size: 11px; font-weight: 640; border-radius: 999px; padding: 2px 9px; }
+    .tstate.ok { color: var(--good); border: 1px solid rgba(93,222,168,.35); }
+    .tstate.behind { color: var(--bad); border: 1px solid rgba(239,111,126,.35); }
+    .tkind { margin-top: 12px; }
+    .tkind-label { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .tdots { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tdot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: transparent; }
+    .tdot.published { background: var(--good); border-color: var(--good); }
+    .tdot.scheduled { background: var(--amber); border-color: var(--amber); }
+    .tdot.ready { background: var(--teal); border-color: var(--teal); }
+    .tdot.building { background: rgba(45,212,191,.35); border-color: rgba(45,212,191,.5); }
+    .tdot.held { border-style: dashed; border-color: var(--warn); }
+    .tdot.failed { background: var(--bad); border-color: var(--bad); }
+    .tnext { margin-top: 12px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .tlegend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--muted); margin-top: 14px; }
+    .tlegend span { display: inline-flex; align-items: center; gap: 5px; }
     @media (max-width: 1120px) {
       .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .layout, .bottom, .side-grid { grid-template-columns: 1fr; }
@@ -536,6 +558,7 @@
     </section>
 
     <nav class="topnav" id="topnav">
+      <a href="#/today" data-route="today">Today</a>
       <a href="#/home" data-route="home">Home</a>
       <a href="#/queue" data-route="queue">Ready Queue</a>
       <a href="#/channels" data-route="channels">Channels</a>
@@ -571,6 +594,30 @@
           <div class="inside"><div id="workers" class="rows"></div></div>
         </article>
       </section>
+    </section>
+
+    <section id="page-today" class="page">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Today</h2>
+            <div class="micro">One dot per upload today owes. Hover a dot for its time and title.</div>
+          </div>
+          <span id="todayStamp" class="micro"></span>
+        </div>
+        <div class="inside">
+          <div id="todayGrid" class="tgrid"></div>
+          <div class="tlegend">
+            <span><i class="tdot published"></i> Published</span>
+            <span><i class="tdot scheduled"></i> Waiting for its time</span>
+            <span><i class="tdot ready"></i> Made, not sent</span>
+            <span><i class="tdot building"></i> Being made</span>
+            <span><i class="tdot"></i> Not started</span>
+            <span><i class="tdot held"></i> Held by quality</span>
+            <span><i class="tdot failed"></i> Failed</span>
+          </div>
+        </div>
+      </article>
     </section>
 
     <section id="page-queue" class="page">
@@ -776,6 +823,7 @@
         const r = a.getAttribute("data-route");
         a.classList.toggle("active", r === page || (page === "home" && r === "home"));
       });
+      if (page === "today") loadToday();
       if (page === "queue") loadQueue(false);
       if (page === "settings") loadKeys();
       if (page === "analytics") loadAnalytics(route.channel);
@@ -1355,6 +1403,49 @@
       await loadQueue(true);
     }
 
+    /* --- Today -------------------------------------------------------- */
+    async function loadToday() {
+      try {
+        const response = await fetch("/api/today", { cache: "no-store" });
+        const data = await response.json();
+        renderToday(data);
+      } catch (error) {
+        $("todayGrid").innerHTML = '<div class="empty">Could not load today: ' + clean(error.message || error) + '</div>';
+      }
+    }
+
+    function renderToday(data) {
+      const channels = (data && data.channels) || [];
+      $("todayStamp").textContent = data && data.day ? data.day : "";
+      const cards = channels.map(channel => {
+        const kinds = ["short", "video"].map(kind => {
+          const info = channel.kinds[kind];
+          if (!info || !info.planned) return "";
+          const dots = info.slots.map(slot => {
+            const title = slot.title || "Topic not chosen yet";
+            return '<i class="tdot ' + clean(slot.state) + '" title="' + clean(slot.time + " - " + slot.state + " - " + title) + '"></i>';
+          }).join("");
+          return '<div class="tkind"><div class="tkind-label">' + (kind === "video" ? "Long videos" : "Shorts")
+            + ' &middot; ' + info.published + '/' + info.planned + ' published</div>'
+            + '<div class="tdots">' + dots + '</div></div>';
+        }).join("");
+
+        const next = (channel.next || []).map(slot =>
+          clean(slot.time) + " " + (slot.kind === "video" ? "long" : "short")
+        ).join(" &middot; ");
+
+        return '<div class="tcard">'
+          + '<div class="thead"><span class="tname">' + clean(channel.name) + '</span>'
+          + '<span class="tstate ' + (channel.on_track ? "ok" : "behind") + '">'
+          + (channel.on_track ? "on track" : "behind") + '</span>'
+          + '<span class="tcount">' + channel.done + ' of ' + channel.planned + '</span></div>'
+          + kinds
+          + (next ? '<div class="tnext">Next up: ' + next + '</div>' : "")
+          + '</div>';
+      }).join("");
+      $("todayGrid").innerHTML = cards || '<div class="empty">Nothing planned for today yet.</div>';
+    }
+
     /* --- Narration API keys ------------------------------------------- */
     let keyData = null;
     const openProviders = new Set();
@@ -1410,7 +1501,7 @@
           + '<span class="kchev">&#9656;</span><span class="kname">' + provider + '</span>'
           + '<span class="kcount">' + entry.keys.length + ' key' + (entry.keys.length === 1 ? "" : "s") + '</span>'
           + '</button>'
-          + (open ? '<div class="kbody">' + rows + adder + '</div>' : "")
+          + (open ? '<div class="kbody">' + (entry.note ? '<div class="ksub" style="padding-top:8px">' + clean(entry.note) + '</div>' : "") + rows + adder + '</div>' : "")
           + '</div>';
       }).join("");
       $("keyCards").innerHTML = cards || '<div class="empty">No providers configured yet.</div>';
