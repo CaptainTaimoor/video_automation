@@ -695,7 +695,15 @@ class ContentResearcher:
             resolved = VERIFIED_CONTEXT_URLS[registry_lookup]
             self._source_validation_cache[resolved] = True
             return resolved
-        lookup_terms = list(dict.fromkeys(term for term in (lookup_term, brain_lookup) if term))
+        # A topic title is a headline -- "Why Nazca Lines still matters to
+        # historians" -- and no article is named that. Asked only for exact
+        # titles, this returned "" and the planner rejected the subject as
+        # source-less, then proposed the same headline again. Searching for
+        # the words inside it finds the page the headline is about.
+        searched = self._wikipedia_search_title(lookup_term)
+        lookup_terms = list(
+            dict.fromkeys(term for term in (lookup_term, brain_lookup, searched) if term)
+        )
         endpoint = "https://en.wikipedia.org/w/api.php"
         for candidate_term in lookup_terms:
             params = {

@@ -540,7 +540,17 @@ class ShortsFactory:
         for markers, title in titles:
             if any(marker in lowered for marker in markers):
                 return title
-        return f"{subject}: What the Surviving Evidence Actually Reveals"
+        # The curated titles above are already written out; this fallback takes
+        # the raw subject, which is stored lowercase. Published as-is it read
+        # "battle of marathon: What the Surviving Evidence Actually Reveals".
+        return f"{self._display_subject_title(subject)}: What the Surviving Evidence Actually Reveals"
+
+    def _display_subject_title(self, subject: str) -> str:
+        """Title-case a stored subject for display, reusing the planner's rules."""
+        try:
+            return self.topic_planner._display_subject_title(subject) or subject
+        except Exception:
+            return subject
 
     def _thumbnail_lead_asset(
         self,
