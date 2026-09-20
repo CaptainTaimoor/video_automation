@@ -3736,14 +3736,23 @@ class ShortsFactory:
 
         content_kind = str(metadata.get("content_kind") or "short")
         word_count = len(re.findall(r"[A-Za-z0-9']+", topic.narration or ""))
-        if content_kind == "video" and word_count < 850:
-            issues.append("long video narration too thin")
+        # These thresholds were written for a nine-minute video. Left fixed,
+        # a channel configured for 4-6 minutes scored its own correctly-sized
+        # script at 34 out of 100 and called it thin, shallow and off-target --
+        # for being exactly what it was asked to be.
+        long_low, long_high = self._long_word_window(channel)
+        if content_kind == "video" and word_count < long_low:
+            issues.append(f"long video narration too thin: {word_count} words, wants {long_low}")
             score -= 22
-        if content_kind == "video" and channel.id == "ancient_history" and word_count < 1150:
+        if (
+            content_kind == "video"
+            and channel.id == "ancient_history"
+            and word_count < int(long_low * 1.1)
+        ):
             issues.append("Ancient long video needs more documentary depth")
             score -= 16
-        if content_kind == "video" and word_count > 1600:
-            issues.append("long video narration is too dense for the 10-minute limit")
+        if content_kind == "video" and word_count > long_high:
+            issues.append(f"long video narration is too dense: {word_count} words, allows {long_high}")
             score -= 18
         if content_kind == "video":
             repetition_issue = self._long_script_repetition_issue(topic, channel)
@@ -3763,11 +3772,16 @@ class ShortsFactory:
             strengths.append("healthy narration length")
 
         if content_kind == "video":
-            if not (470 <= duration_seconds <= 620):
-                issues.append("duration outside 8-10 minute long-video target")
+            # Judge against the channel's own configured window, with a little
+            # tolerance either side for narration timing.
+            want_low = float(getattr(channel.videos, "min_duration_seconds", 480) or 480)
+            want_high = float(getattr(channel.videos, "max_duration_seconds", 600) or 600)
+            window = f"{want_low / 60:.0f}-{want_high / 60:.0f} minute long-video target"
+            if not (want_low * 0.95 <= duration_seconds <= want_high * 1.05):
+                issues.append(f"duration outside {window}")
                 score -= 14
             else:
-                strengths.append("8-10 minute long-video target")
+                strengths.append(window)
         elif channel.id == "brain_lens":
             topic_lines = list(topic.narration_beats or [])
             if not topic_lines and topic.narration:
