@@ -1533,6 +1533,25 @@ def _json_response(handler: BaseHTTPRequestHandler, payload: dict, status: int =
     handler.wfile.write(body)
 
 
+def _read_runs() -> list:
+    """Recent run records, or an empty list when the log is unreadable."""
+    import json as _json
+
+    path = STATE / "runs.jsonl"
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(_json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
 def _key_store():
     _sys_path_src()
     from yt_auto.api_keys import KeyStore
@@ -1889,6 +1908,57 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/suggestions":
             _json_response(self, suggestions_payload())
             return
+        if path == "/api/system":
+            _sys_path_src()
+            import shutil as _shutil
+
+            payload = {}
+            try:
+                usage = _shutil.disk_usage(str(ROOT))
+                payload["disk"] = {
+                    "free_gb": round(usage.free / (1024 ** 3), 1),
+                    "total_gb": round(usage.total / (1024 ** 3), 1),
+                    "used_pct": round(100.0 * usage.used / max(1, usage.total)),
+                }
+            except Exception as exc:
+                payload["disk"] = {"error": str(exc)}
+
+            try:
+                from yt_auto.visual_library import VisualLibrary
+
+                payload["library"] = VisualLibrary(ROOT).stats()
+            except Exception as exc:
+                payload["library"] = {"error": str(exc)}
+
+            try:
+                from yt_auto.api_keys import KeyStore
+
+                store = KeyStore.load(ROOT)
+                store.merge_environment()
+                payload["voice_keys"] = {
+                    provider: len(store.providers.get(provider) or [])
+                    for provider in store.ordered_providers(include_empty=True)
+                }
+            except Exception as exc:
+                payload["voice_keys"] = {"error": str(exc)}
+
+            # What actually spoke on the most recent builds, rather than what
+            # is configured -- those two drifted apart once and nobody saw it.
+            shipped = {}
+            try:
+                for run in list(_read_runs())[-25:]:
+                    engine = str(run.get("voice_backend") or run.get("engine") or "").strip()
+                    if engine:
+                        shipped[engine] = shipped.get(engine, 0) + 1
+            except Exception:
+                pass
+            payload["voices_shipped"] = shipped
+            payload["configured_voices"] = {
+                c["id"]: list(c.get("voices") or []) for c in CHANNELS
+            }
+            _json_response(self, payload)
+            return
+
         if path == "/api/today":
             _sys_path_src()
             from datetime import datetime

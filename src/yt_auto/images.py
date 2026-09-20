@@ -3289,11 +3289,19 @@ class HybridMediaFetcher:
             return "adult couple planning a date face to face conversation daytime"
         return "adult couple face to face relationship conversation daytime realistic"
 
-    def _asset_matches_scene_intent(self, niche_id: str, scene_text: str, url: str, meta: Dict[str, str]) -> bool:
+    def _asset_scene_verdict(self, niche_id: str, scene_text: str, url: str, meta: Dict[str, str]) -> str:
+        """How well this asset suits the scene: "match", "weak" or "blocked".
+
+        Three answers, not two. "blocked" is an explicit never-use rule -- a
+        gaming clip for a dating scene, an angry face for a calming one.
+        "weak" only means the asset did not satisfy a positive requirement,
+        which is not a reason to throw away real footage when the alternative
+        is a generated card.
+        """
         scene = re.sub(r"[^a-z0-9]+", " ", (scene_text or "").lower()).strip()
         asset = f" {self._asset_search_text(url, meta)} "
         if not scene:
-            return True
+            return "match"
 
         if niche_id == "brain_lens":
             unrelated_activity_groups = (
@@ -3313,7 +3321,7 @@ class HybridMediaFetcher:
             )
             for scene_markers, asset_markers in unrelated_activity_groups:
                 if not any(marker in scene for marker in scene_markers) and any(marker in asset for marker in asset_markers):
-                    return False
+                    return "blocked"
 
             subtle_or_ambiguous_scene = any(
                 marker in scene
@@ -3339,7 +3347,7 @@ class HybridMediaFetcher:
                 (subtle_or_ambiguous_scene or not scene_explicitly_calls_for_intimacy)
                 and any(marker in asset for marker in overt_intimacy_markers)
             ):
-                return False
+                return "blocked"
 
             calm_or_regulation_scene = any(
                 marker in scene
@@ -3352,21 +3360,15 @@ class HybridMediaFetcher:
                 marker in asset
                 for marker in ("heated", "angry", "yelling", "shouting", "screaming")
             ):
-                return False
+                return "blocked"
             regulation_scene = any(
                 marker in scene
                 for marker in ("unclench", "lengthen the exhale", "calmer body", "regulate before")
             )
             if regulation_scene:
                 if any(marker in asset for marker in ("worried", "anxious", "upset", "panic")):
-                    return False
-                return any(
-                    marker in asset
-                    for marker in (
-                        "breath", "meditat", "relax", "calm", "mindful", "walk", "walking",
-                        "outdoor", "putting phone away", "phone face down",
-                    )
-                )
+                    return "blocked"
+                return "match" if (any( marker in asset for marker in ( "breath", "meditat", "relax", "calm", "mindful", "walk", "walking", "outdoor", "putting phone away", "phone face down", ) )) else "weak"
 
             self_worth_scene = any(
                 marker in scene
@@ -3374,24 +3376,15 @@ class HybridMediaFetcher:
             )
             if self_worth_scene:
                 if any(marker in asset for marker in ("romantic couple", "tender moment", "kissing", "cuddle")):
-                    return False
-                return any(
-                    marker in asset
-                    for marker in (
-                        "friend", "support network", "person walking", "woman walking", "man walking",
-                        "alone", "solo", "self assured", "self confident",
-                    )
-                )
+                    return "blocked"
+                return "match" if (any( marker in asset for marker in ( "friend", "support network", "person walking", "woman walking", "man walking", "alone", "solo", "self assured", "self confident", ) )) else "weak"
 
             phone_scene = any(
                 marker in scene
                 for marker in ("text", "message", "reply", "phone", "smartphone")
             )
             if phone_scene:
-                return any(
-                    marker in asset
-                    for marker in ("phone", "message", "text", "smartphone")
-                )
+                return "match" if (any( marker in asset for marker in ("phone", "message", "text", "smartphone") )) else "weak"
 
             intent_groups = (
                 (("unclench", "lengthen the exhale", "calmer body", "regulate before"), ("calm", "relax", "breath", "meditat", "walk", "outdoor")),
@@ -3414,8 +3407,8 @@ class HybridMediaFetcher:
             )
             for scene_markers, asset_markers in intent_groups:
                 if any(marker in scene for marker in scene_markers):
-                    return any(marker in asset for marker in asset_markers)
-            return True
+                    return "match" if (any(marker in asset for marker in asset_markers)) else "weak"
+            return "match"
 
         if niche_id == "ancient_history":
             lachish_asset = "lachish" in asset or "lakhish" in asset
@@ -3437,36 +3430,27 @@ class HybridMediaFetcher:
                 )
                 for scene_markers, asset_markers in lachish_intents:
                     if any(marker in scene for marker in scene_markers):
-                        return any(marker in asset for marker in asset_markers)
-                return True
+                        return "match" if (any(marker in asset for marker in asset_markers)) else "weak"
+                return "match"
             if any(marker in scene for marker in ("soapstone bird", "soapstone birds")):
-                return any(marker in asset for marker in ("soapstone bird", "soapstone birds", "zimbabwe bird"))
+                return "match" if (any(marker in asset for marker in ("soapstone bird", "soapstone birds", "zimbabwe bird"))) else "weak"
             if any(
                 marker in scene
                 for marker in ("glass bead", "glass beads", "ceramic", "trade goods", "imported goods")
             ):
-                return any(
-                    marker in asset
-                    for marker in ("glass bead", "glass beads", "bead", "ceramic", "pottery", "trade goods")
-                )
+                return "match" if (any( marker in asset for marker in ("glass bead", "glass beads", "bead", "ceramic", "pottery", "trade goods") )) else "weak"
             if "quarr" in scene:
-                return any(marker in asset for marker in ("quarr", "unfinished obelisk", "unfinished stele"))
+                return "match" if (any(marker in asset for marker in ("quarr", "unfinished obelisk", "unfinished stele"))) else "weak"
             if any(
                 marker in scene
                 for marker in ("rome returned", "returned the obelisk", "return of the obelisk", "1937")
             ):
-                return any(
-                    marker in asset
-                    for marker in ("rome", "roma", "return", "returned", "celebrate", "1937", "1960")
-                )
+                return "match" if (any( marker in asset for marker in ("rome", "roma", "return", "returned", "celebrate", "1937", "1960") )) else "weak"
             if any(
                 marker in scene
                 for marker in ("great stele fell", "stelae fell", "stele fell", "fell and shattered")
             ):
-                return any(
-                    marker in asset
-                    for marker in ("remain", "fragment", "fallen", "great obelisk", "remhai")
-                )
+                return "match" if (any( marker in asset for marker in ("remain", "fragment", "fallen", "great obelisk", "remhai") )) else "weak"
             if any(
                 marker in asset
                 for marker in ("mohenjo", "harappa", "harappan", "indus")
@@ -3478,7 +3462,7 @@ class HybridMediaFetcher:
                     "seal", "script", "inscription", "symbol", "weight",
                 )
             ):
-                return self._ancient_continuity_scene_score(scene_text, meta) > 0
+                return "match" if (self._ancient_continuity_scene_score(scene_text, meta) > 0) else "weak"
             intent_groups = (
                 (("obelisk", "stele", "stela"), ("obelisk", "stele", "stela", "monument")),
                 (("tomb", "burial", "grave"), ("tomb", "tomba", "tombe", "burial", "grave", "mausoleum", "catacomb", "katakomb", "stele", "stela", "obelisk")),
@@ -3488,8 +3472,14 @@ class HybridMediaFetcher:
             )
             active_groups = [asset_markers for scene_markers, asset_markers in intent_groups if any(marker in scene for marker in scene_markers)]
             if active_groups:
-                return all(any(marker in asset for marker in asset_markers) for asset_markers in active_groups)
-        return True
+                return "match" if (all(any(marker in asset for marker in asset_markers) for asset_markers in active_groups)) else "weak"
+        return "match"
+
+
+    def _asset_matches_scene_intent(self, niche_id: str, scene_text: str, url: str, meta: Dict[str, str]) -> bool:
+        """True only for a clean match. Callers wanting the middle ground ask
+        :meth:`_asset_scene_verdict` instead."""
+        return self._asset_scene_verdict(niche_id, scene_text, url, meta) == "match"
 
     def _brain_reuse_semantic_score(self, scene_text: str, meta: Dict[str, str]) -> int:
         """Prefer the closest eligible real asset when a long scene must reuse one."""
@@ -4176,6 +4166,19 @@ class HybridMediaFetcher:
         artist_counts = media_memory.get("artist_counts", {})
         recent_lead_artists = media_memory.get("recent_lead_artists", set())
 
+        # Clean matches first, loose ones behind them, never-use dropped. The
+        # loop below takes the first candidate that survives every other check,
+        # so ordering here is what makes a loose match a last resort rather
+        # than an equal. Ties keep provider order, so a build stays repeatable.
+        ranked: list[tuple[str, Dict[str, str]]] = []
+        loose: list[tuple[str, Dict[str, str]]] = []
+        for url, meta in candidates:
+            verdict = self._asset_scene_verdict(niche_id, scene_text, url, meta)
+            if verdict == "blocked":
+                continue
+            (ranked if verdict == "match" else loose).append((url, meta))
+        candidates = ranked + loose
+
         for url, meta in candidates:
             if self._deadline_timeout(deadline, 0.2) is None:
                 break
@@ -4198,8 +4201,6 @@ class HybridMediaFetcher:
             if asset_identity and asset_identity in seen_urls:
                 continue
             if not self.allow_unprovenanced_media and not self._has_source_page_provenance(meta):
-                continue
-            if not self._asset_matches_scene_intent(niche_id, scene_text, url, meta):
                 continue
             if niche_id == "brain_lens":
                 searchable_asset = re.sub(

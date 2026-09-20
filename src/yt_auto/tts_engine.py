@@ -239,6 +239,63 @@ class NarrationEngine:
         except Exception:
             return False
 
+    # A provider can change its output format without notice. One did: it
+    # started returning raw PCM with no file header, the video builder could
+    # not read it, and 18 builds failed before anyone connected the two. So
+    # the bytes are inspected rather than trusted, and headerless audio is
+    # wrapped rather than thrown away.
+    AUDIO_MAGIC = (
+        (b"RIFF", "wav"),
+        (b"ID3", "mp3"),
+        (b"\xff\xfb", "mp3"),
+        (b"\xff\xf3", "mp3"),
+        (b"\xff\xf2", "mp3"),
+        (b"OggS", "ogg"),
+        (b"fLaC", "flac"),
+    )
+
+    @classmethod
+    def audio_format_of(cls, body: bytes) -> str:
+        """The container these bytes are in, or "raw" when there is no header."""
+        if not body:
+            return "empty"
+        head = bytes(body[:12])
+        for magic, name in cls.AUDIO_MAGIC:
+            if head.startswith(magic):
+                return name
+        if head[4:8] == b"ftyp":
+            return "mp4"
+        return "raw"
+
+    @staticmethod
+    def wrap_pcm_as_wav(body: bytes, *, sample_rate: int = 24000, channels: int = 1, width: int = 2) -> bytes:
+        """Put a WAV header on raw PCM so an ordinary reader can open it."""
+        import struct
+
+        byte_rate = sample_rate * channels * width
+        return b"".join((
+            b"RIFF",
+            struct.pack("<I", 36 + len(body)),
+            b"WAVEfmt ",
+            struct.pack("<IHHIIHH", 16, 1, channels, sample_rate, byte_rate, channels * width, width * 8),
+            b"data",
+            struct.pack("<I", len(body)),
+            body,
+        ))
+
+    @classmethod
+    def readable_audio(cls, body: bytes, *, sample_rate: int = 24000) -> bytes | None:
+        """Bytes an audio reader can open, or None when there is nothing usable."""
+        kind = cls.audio_format_of(body)
+        if kind == "empty":
+            return None
+        if kind == "raw":
+            # Too short to be speech: almost certainly an error page, not audio.
+            if len(body) < 2048:
+                return None
+            return cls.wrap_pcm_as_wav(body, sample_rate=sample_rate)
+        return body
+
     def _render_http_tts(self, text: str, out_path: Path, target_voice: str) -> bool:
         """Render using a local OpenAI-compatible TTS server, e.g. Kokoro/Chatterbox FastAPI wrappers.
 
@@ -266,9 +323,12 @@ class NarrationEngine:
         try:
             with urllib.request.urlopen(request, timeout=int(os.getenv("YT_TTS_API_TIMEOUT", "180"))) as response:
                 body = response.read()
-            if not body:
+            usable = self.readable_audio(
+                body, sample_rate=int(os.getenv("YT_TTS_API_SAMPLE_RATE", "24000"))
+            )
+            if usable is None:
                 return False
-            out_path.write_bytes(body)
+            out_path.write_bytes(usable)
             return out_path.exists() and out_path.stat().st_size > 1024
         except (urllib.error.URLError, TimeoutError, OSError, ValueError):
             return False
@@ -392,6 +452,75 @@ class NarrationEngine:
         except Exception:
             return False
 
+    # Deepgram Aura. Ranked first among the paid-tier voices: its free credit
+    # lasts years at this volume rather than days, and it needs no card.
+    DEEPGRAM_ENDPOINT = "https://api.deepgram.com/v1/speak"
+    DEEPGRAM_DEFAULT_MODEL = "aura-asteria-en"
+
+    def _render_deepgram(self, text: str, out_path: Path, api_key: str, model: str = "") -> bool:
+        """One Deepgram call. Returns True when it wrote usable audio."""
+        if not api_key or not str(text or "").strip():
+            return False
+        url = f"{self.DEEPGRAM_ENDPOINT}?model={model or self.DEEPGRAM_DEFAULT_MODEL}"
+        request = urllib.request.Request(
+            url,
+            data=json.dumps({"text": text}).encode("utf-8"),
+            headers={
+                "Authorization": f"Token {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg, audio/wav, application/octet-stream",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=int(os.getenv("YT_TTS_API_TIMEOUT", "180"))) as response:
+                body = response.read()
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            return False
+        # Deepgram normally sends a container, but the same format surprise
+        # that broke 18 builds elsewhere is cheap to guard against here too.
+        usable = self.readable_audio(body)
+        if usable is None:
+            return False
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(usable)
+        return out_path.exists() and out_path.stat().st_size > 1024
+
+    def _render_via_key_store(self, text: str, out_path: Path) -> str:
+        """Try the stored keys in order. Returns the backend that worked, or "".
+
+        The order lives in api_keys: the same key a few times, then the next
+        key, then the next provider. Edge stays the caller's fallback.
+        """
+        try:
+            from yt_auto.api_keys import KeyStore, render_with_rotation
+        except Exception:
+            return ""
+        store = KeyStore.load(Path.cwd())
+        if store.merge_environment():
+            try:
+                store.save(Path.cwd())
+            except OSError:
+                pass
+        if not store.ordered_providers():
+            return ""
+
+        used: list[str] = []
+
+        def render(provider: str, key, attempt: int) -> bool:
+            if provider != "deepgram":
+                # Only Deepgram speaks here for now; the others are held for
+                # script writing and are skipped rather than failed, so they
+                # do not burn a key's attempts.
+                return False
+            if self._render_deepgram(text, out_path, key.value, key.model):
+                used.append(f"deepgram-{key.model or self.DEEPGRAM_DEFAULT_MODEL}")
+                return True
+            return False
+
+        ok, _ = render_with_rotation(store, render)
+        return used[0] if ok and used else ""
+
     def _render_with_backend(
         self,
         text: str,
@@ -419,6 +548,12 @@ class NarrationEngine:
         if backend_id and backend_id not in {"piper-en_US-lessac-medium", "offline-pyttsx3"}:
             asyncio.run(self._render_edge(text=text, out_path=out_path, voice=backend_id))
             return backend_id
+
+        # Stored cloud keys first: they are off this machine, so they leave the
+        # four cores free for encoding, which local engines do not.
+        cloud = self._render_via_key_store(text=text, out_path=out_path)
+        if cloud:
+            return cloud
 
         if self.backend_preference in {"http", "api", "local-api", "kokoro", "chatterbox"}:
             if self._render_http_tts(text=text, out_path=out_path, target_voice=target_voice):

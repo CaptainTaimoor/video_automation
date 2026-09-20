@@ -563,6 +563,7 @@
       <a href="#/queue" data-route="queue">Ready Queue</a>
       <a href="#/channels" data-route="channels">Channels</a>
       <a href="#/analytics/ancient_history" data-route="analytics">Analytics</a>
+      <a href="#/system" data-route="system">System</a>
       <a href="#/settings" data-route="settings">Controls</a>
     </nav>
 
@@ -658,6 +659,20 @@
         <button class="btn good" type="button" onclick="refreshAnalytics()">Refresh numbers</button>
       </div>
       <div id="analyticsRoot"></div>
+    </section>
+
+    <section id="page-system" class="page">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>System</h2>
+            <div class="micro">Disk, saved footage, and the voice actually being used.</div>
+          </div>
+        </div>
+        <div class="inside">
+          <div id="systemRows" class="rows"></div>
+        </div>
+      </article>
     </section>
 
     <section id="page-settings" class="page">
@@ -824,6 +839,7 @@
         a.classList.toggle("active", r === page || (page === "home" && r === "home"));
       });
       if (page === "today") loadToday();
+      if (page === "system") loadSystem();
       if (page === "queue") loadQueue(false);
       if (page === "settings") loadKeys();
       if (page === "analytics") loadAnalytics(route.channel);
@@ -1444,6 +1460,63 @@
           + '</div>';
       }).join("");
       $("todayGrid").innerHTML = cards || '<div class="empty">Nothing planned for today yet.</div>';
+    }
+
+    /* --- System ------------------------------------------------------- */
+    async function loadSystem() {
+      try {
+        const response = await fetch("/api/system", { cache: "no-store" });
+        renderSystem(await response.json());
+      } catch (error) {
+        $("systemRows").innerHTML = '<div class="empty">Could not load: ' + clean(error.message || error) + '</div>';
+      }
+    }
+
+    function sysRow(label, value, note) {
+      return '<div class="row"><div><div class="rtitle">' + clean(label) + '</div>'
+        + (note ? '<div class="upload-sub">' + clean(note) + '</div>' : "")
+        + '</div><div class="rmeta">' + clean(value) + '</div></div>';
+    }
+
+    function renderSystem(data) {
+      const rows = [];
+      const disk = data.disk || {};
+      if (disk.free_gb !== undefined) {
+        rows.push(sysRow("Disk free", disk.free_gb + " GB",
+          disk.used_gb === undefined ? (disk.used_pct + "% of " + disk.total_gb + " GB used") : ""));
+      }
+
+      const lib = data.library || {};
+      if (lib.files !== undefined) {
+        const gb = (lib.bytes / (1024 * 1024 * 1024)).toFixed(2);
+        const cap = (lib.max_bytes / (1024 * 1024 * 1024)).toFixed(0);
+        const per = Object.keys(lib.by_channel || {}).map(k => k + " " + lib.by_channel[k]).join(", ");
+        rows.push(sysRow("Saved footage", lib.files + " files", gb + " GB of " + cap + " GB" + (per ? " - " + per : "")));
+      } else if (lib.error) {
+        rows.push(sysRow("Saved footage", "unavailable", lib.error));
+      }
+
+      const keys = data.voice_keys || {};
+      Object.keys(keys).forEach(provider => {
+        if (typeof keys[provider] === "number") {
+          rows.push(sysRow("Keys - " + provider, keys[provider] + "", keys[provider] ? "" : "none yet"));
+        }
+      });
+
+      const shipped = data.voices_shipped || {};
+      const names = Object.keys(shipped);
+      if (names.length) {
+        rows.push(sysRow("Voice actually used", names.map(n => n + " x" + shipped[n]).join(", "), "last 25 builds"));
+      } else {
+        rows.push(sysRow("Voice actually used", "no recent builds", "nothing has rendered yet"));
+      }
+
+      const configured = data.configured_voices || {};
+      Object.keys(configured).forEach(channel => {
+        rows.push(sysRow("Voice configured - " + channel, (configured[channel] || []).join(", ") || "none"));
+      });
+
+      $("systemRows").innerHTML = rows.join("") || '<div class="empty">Nothing to report.</div>';
     }
 
     /* --- Narration API keys ------------------------------------------- */
