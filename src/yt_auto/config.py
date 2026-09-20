@@ -106,6 +106,7 @@ def load_config(path: Path) -> AppConfig:
 
     app = AppCoreConfig(
         timezone=app_raw["timezone"],
+        visuals=dict(app_raw.get("visuals") or {}),
         min_duration_seconds=int(app_raw["min_duration_seconds"]),
         max_duration_seconds=int(app_raw["max_duration_seconds"]),
         image_count_per_video=int(app_raw["image_count_per_video"]),

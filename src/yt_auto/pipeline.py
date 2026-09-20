@@ -104,6 +104,7 @@ class ShortsFactory:
             stable_horde_key=os.getenv("STABLE_HORDE_KEY", ""),
             pixabay_api_key=os.getenv("PIXABAY_API_KEY", ""),
             pexels_api_key=os.getenv("PEXELS_API_KEY", ""),
+            visuals=getattr(self.config.app, "visuals", None),
         )
         self.video_builder = VideoBuilder(
             min_duration=self.config.app.min_duration_seconds,
@@ -1942,7 +1943,19 @@ class ShortsFactory:
         ai_sources = [s for s in sources if s.get("source") in {"stable_horde", "pollinations_ai"}]
         if len(real_sources) >= 1 or len(ai_sources) >= 2:
             return
-        raise RuntimeError("Visual quality gate failed: not enough usable visuals found.")
+        # Say what was actually found. "Not enough usable visuals" on its own
+        # sent people looking for a network fault when the real answer was in
+        # the counts -- it took hours to find that once.
+        from collections import Counter
+
+        tally = Counter(str(source.get("source") or "unknown") for source in sources)
+        breakdown = ", ".join(f"{count} {name}" for name, count in tally.most_common()) or "nothing"
+        raise RuntimeError(
+            "Visual quality gate failed: not enough usable visuals found. "
+            f"Collected {len(sources)} ({breakdown}); needs 1 real source or 2 generated. "
+            "A run of generated-only sources usually means the stock and archive "
+            "searches returned nothing for this subject."
+        )
 
     def _fetch_candidate_visuals(
         self,

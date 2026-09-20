@@ -193,6 +193,9 @@ class AppCoreConfig:
     schedule_interval_hours: int = 2
     schedule_uploads: bool = True
     upload_gap_check_minutes: int = 10
+    # app.visuals from settings.yaml: scene and fetch budgets, how many
+    # searches run at once, stock pages, and the reusable footage library.
+    visuals: dict = field(default_factory=dict)
 
 
 @dataclass

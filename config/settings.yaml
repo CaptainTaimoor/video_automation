@@ -49,6 +49,22 @@
     openai_compatible_timeout_seconds: 90
     openai_compatible_disable_thinking: true
     timeout_seconds: 90
+  visuals:
+    # How long one scene may spend finding and downloading footage. A clip can
+    # take 30-60s on a slow line and a Short needs about six, so too small a
+    # budget makes the scene give up and use a generated card instead.
+    scene_deadline_seconds: 110
+    # Ceiling for all of a Short's scenes together.
+    fetch_deadline_seconds: 420
+    # Searches run together rather than one after another; this caps how many
+    # at once, so a burst does not get us rate-limited.
+    search_workers: 4
+    # How many pages of stock results to read. Page one is the most popular
+    # clips, which the anti-repeat rules mostly discard.
+    stock_pages: 3
+    # Verified footage is kept here and reused instead of re-downloaded.
+    library_enabled: true
+    library_max_gb: 8
   subtitles:
     enabled: true
     max_words_per_caption: 4

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import os
 import io
@@ -34,6 +35,9 @@ class HybridMediaFetcher:
     # most popular clips -- exactly the ones the anti-repeat rules throw out
     # for having been used already. A scene could see twenty candidates and
     # keep four. Reading a few pages widens the pool at one request each.
+    # Four at a time: enough to hide the waiting, few enough that a provider
+    # does not start rate-limiting us for a burst.
+    PROVIDER_SEARCH_WORKERS = 4
     STOCK_SEARCH_PAGES = 3
     STOCK_PAGE_SIZE = 20
     # API metadata for these assets is too vague to expose the off-topic context
@@ -62,7 +66,21 @@ class HybridMediaFetcher:
         "lachish_relief,_british_museum_3.jpg": ("CC BY-SA 4.0", "Mike Peel"),
     }
 
-    def __init__(self, stable_horde_key: str | None = None, pixabay_api_key: str | None = None, pexels_api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        stable_horde_key: str | None = None,
+        pixabay_api_key: str | None = None,
+        pexels_api_key: str | None = None,
+        visuals: object | None = None,
+    ) -> None:
+        # app.visuals from settings.yaml when the caller has it. An env var
+        # still wins, so a one-off run can be tuned without editing config.
+        def setting(name, fallback):
+            value = getattr(visuals, name, None) if visuals is not None else None
+            if value is None and isinstance(visuals, dict):
+                value = visuals.get(name)
+            return fallback if value is None else value
+
         self.stable_horde_key = (stable_horde_key or "").strip()
         self.pixabay_api_key = (pixabay_api_key or "").strip()
         self.pexels_api_key = (pexels_api_key or "").strip()
@@ -71,10 +89,31 @@ class HybridMediaFetcher:
 
         self.short_query_limit = self._env_int("YT_VISUAL_SHORT_QUERY_LIMIT", 4, 1, 8)
         self.long_query_limit = self._env_int("YT_VISUAL_LONG_QUERY_LIMIT", 4, 1, 10)
-        self.short_scene_budget_seconds = self._env_float("YT_VISUAL_SHORT_SCENE_DEADLINE_SECONDS", 75.0, 5.0, 180.0)
+        # A clip can take 30-60s to download on a slow line and a Short needs
+        # about six of them, so 75s could not finish even one; the scene ran
+        # out of time and fell back to a generated card.
+        self.short_scene_budget_seconds = self._env_float(
+            "YT_VISUAL_SHORT_SCENE_DEADLINE_SECONDS",
+            float(setting("scene_deadline_seconds", 110.0)),
+            5.0,
+            240.0,
+        )
         self.long_scene_budget_seconds = self._env_float("YT_VISUAL_LONG_SCENE_DEADLINE_SECONDS", 120.0, 10.0, 300.0)
         self.provider_budget_seconds = self._env_float("YT_VISUAL_PROVIDER_DEADLINE_SECONDS", 18.0, 2.0, 60.0)
-        self.short_fetch_budget_seconds = self._env_float("YT_VISUAL_SHORT_FETCH_DEADLINE_SECONDS", 360.0, 30.0, 900.0)
+        self.search_workers = self._env_int(
+            "YT_VISUAL_SEARCH_WORKERS", int(setting("search_workers", self.PROVIDER_SEARCH_WORKERS)), 1, 8
+        )
+        self.stock_pages = self._env_int(
+            "YT_VISUAL_STOCK_PAGES", int(setting("stock_pages", self.STOCK_SEARCH_PAGES)), 1, 5
+        )
+        self.library_enabled = bool(setting("library_enabled", True))
+        self.library_max_bytes = int(float(setting("library_max_gb", 8)) * 1024 * 1024 * 1024)
+        self.short_fetch_budget_seconds = self._env_float(
+            "YT_VISUAL_SHORT_FETCH_DEADLINE_SECONDS",
+            float(setting("fetch_deadline_seconds", 420.0)),
+            30.0,
+            900.0,
+        )
         self.long_fetch_budget_seconds = self._env_float("YT_VISUAL_LONG_FETCH_DEADLINE_SECONDS", 900.0, 60.0, 2400.0)
         self.min_source_short_edge = self._env_int("YT_VISUAL_MIN_SOURCE_SHORT_EDGE", 720, 256, 2160)
         self.allow_unprovenanced_media = str(os.getenv("YT_ALLOW_UNPROVENANCED_MEDIA", "0")).lower() in {"1", "true", "yes", "on"}
@@ -472,7 +511,8 @@ class HybridMediaFetcher:
         if wanted <= 8:
             return [(1, wanted)]
         per_page = min(self.STOCK_PAGE_SIZE, max(8, wanted))
-        pages = min(self.STOCK_SEARCH_PAGES, max(1, -(-wanted // per_page) + 1))
+        cap = getattr(self, "stock_pages", self.STOCK_SEARCH_PAGES)
+        pages = min(cap, max(1, -(-wanted // per_page) + 1))
         return [(page, per_page) for page in range(1, pages + 1)]
 
     def _pexels_photo_search(self, query: str, limit: int = 4, orientation: str = "portrait", deadline: float | None = None) -> List[Tuple[str, Dict[str, str]]]:
@@ -4060,15 +4100,33 @@ class HybridMediaFetcher:
                     candidates.extend(seed_candidates)
                     providers = []
 
-        for provider, kwargs in providers:
-            remaining = self._deadline_timeout(deadline, self.provider_budget_seconds)
-            if remaining is None:
-                break
+        # These searches are independent HTTP calls that mostly sit waiting on
+        # someone else's server. Run one after another they added up to most of
+        # a scene's budget, and the scene then gave up and used a generated
+        # card. Run together they cost about as long as the slowest one.
+        #
+        # Results are collected in the providers' own order, not the order the
+        # replies happen to arrive, so the preferred source still comes first
+        # and a build stays reproducible.
+        remaining = self._deadline_timeout(deadline, self.provider_budget_seconds)
+        if remaining is not None and providers:
             provider_deadline = time.monotonic() + remaining
-            try:
-                candidates.extend(provider(**kwargs, deadline=provider_deadline))
-            except Exception:
-                continue
+            workers = min(getattr(self, "search_workers", self.PROVIDER_SEARCH_WORKERS), len(providers))
+
+            def run(entry):
+                provider, kwargs = entry
+                try:
+                    return provider(**kwargs, deadline=provider_deadline)
+                except Exception:
+                    return []
+
+            if workers > 1:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    for batch in list(pool.map(run, providers)):
+                        candidates.extend(batch)
+            else:
+                for entry in providers:
+                    candidates.extend(run(entry))
 
         if niche_id == "ancient_history":
             strict_terms = self._strict_ancient_terms(query, subject=subject)
