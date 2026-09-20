@@ -20,6 +20,16 @@ from yt_auto.source_registry import (
 )
 
 
+# Words that carry no subject, so a headline search is not dragged off target
+# by the framing around the thing the headline is actually about.
+_HEADLINE_FILLER = {
+    "why", "how", "what", "when", "where", "who", "the", "and", "for", "with",
+    "still", "matters", "really", "actually", "explained", "inside", "about",
+    "behind", "secrets", "story", "truth", "history", "historians", "reveals",
+    "that", "this", "from", "into", "than", "then", "your", "you",
+}
+
+
 class SourceSafeResearchExhaustedError(RuntimeError):
     """Raised when no remaining topic has enough verified, concrete research."""
 
@@ -1465,6 +1475,32 @@ class ContentResearcher:
                 break
         return urls
 
+    def _wikipedia_search_title(self, term: str) -> str:
+        """The closest real article title, or "".
+
+        Topic titles are written as headlines -- "Why Nazca Lines still matters
+        to historians" -- and no encyclopedia has a page under that name. Asked
+        for the exact title and told no, the planner concluded the subject had
+        no source, rejected it, and proposed the same headline again: twelve
+        times in a row on one build. Searching for the words inside the
+        headline finds the page the headline is about.
+        """
+        words = [w for w in re.findall(r"[A-Za-z][A-Za-z'-]{2,}", str(term or "")) if w.lower() not in _HEADLINE_FILLER]
+        query = " ".join(words[:6]).strip()
+        if not query:
+            return ""
+        try:
+            response = self.session.get(
+                "https://en.wikipedia.org/w/api.php",
+                params={"action": "query", "format": "json", "list": "search", "srsearch": query, "srlimit": 1},
+                timeout=20,
+            )
+            response.raise_for_status()
+            hits = response.json().get("query", {}).get("search", []) or []
+        except Exception:
+            return ""
+        return str(hits[0].get("title") or "") if hits else ""
+
     def wikipedia_summary(self, term: str) -> dict | None:
         data: dict = {}
         lookup_term = self.history_wikipedia_aliases.get(self._normalize_subject(term), term)
@@ -1481,6 +1517,10 @@ class ContentResearcher:
                 continue
 
         if not data.get("extract"):
+            # Last resort: the title may be a headline rather than a page name.
+            searched = self._wikipedia_search_title(lookup_term)
+            if searched and searched.lower() != str(lookup_term or "").lower():
+                lookup_term = searched
             endpoint = "https://en.wikipedia.org/w/api.php"
             params = {
                 "action": "query",

@@ -569,8 +569,13 @@ class ScriptWriter:
 
     def _target_words(self, channel: ChannelConfig, content_kind: str) -> int:
         if content_kind == "video":
+            # Derived from the configured duration, with no fixed floor.
+            # A hardcoded 1250-word minimum meant the duration setting did
+            # nothing: shortening a channel to 4-6 minutes still produced a
+            # nine-minute script, which the length check then rejected. The
+            # only floor left is the one below which a video is not a video.
             min_s = int(getattr(channel.videos, "min_duration_seconds", 480) or 480)
-            return max(1250, self._target_words_for_duration(min_s, wpm=165))
+            return max(320, self._target_words_for_duration(min_s, wpm=165))
         # shorts — aim for the middle of the 50-59s window
         min_s = int(getattr(channel.shorts, "min_duration_seconds", 50) or 50)
         mid_s = max(

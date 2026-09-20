@@ -1358,6 +1358,18 @@
       return tab.items.map(queueItemRow).join("");
     }
 
+    // What the drawn list actually depends on. The page refreshes on a timer
+    // and a redraw replaces every button, so a click landing just after one
+    // hit an element that no longer existed and did nothing. Redrawing only
+    // on real change keeps the button under the pointer alive.
+    function queueSignature(queue) {
+      return (queue.items || [])
+        .map(i => `${i.id}:${i.status}:${i.attempts || 0}:${i.retry_state || ""}`)
+        .join("|");
+    }
+
+    let lastQueueSignature = null;
+
     function renderQueue(queue) {
       lastQueue = queue;
       const enabled = !!queue.enabled;
@@ -1389,9 +1401,16 @@
         </button>`).join("");
 
       const active = tabs.find(t => t.key === activeQueueTab);
-      $("queueRows").innerHTML = tabs.length
-        ? renderQueueTabBody(active)
-        : `<div class="empty">${enabled ? "Nothing queued yet — tap Prep today." : "Turn Ready Queue ON, then tap Prep today."}</div>`;
+      const signature = queueSignature(queue) + "|" + activeQueueTab;
+      if (signature !== lastQueueSignature) {
+        const host = $("queueRows");
+        const keepScroll = host.scrollTop;
+        lastQueueSignature = signature;
+        host.innerHTML = tabs.length
+          ? renderQueueTabBody(active)
+          : `<div class="empty">${enabled ? "Nothing queued yet — tap Prep today." : "Turn Ready Queue ON, then tap Prep today."}</div>`;
+        host.scrollTop = keepScroll;
+      }
 
       const problems = (tabs.find(t => t.key === "problems") || {}).count || 0;
       const ready = (tabs.find(t => t.key === "ready") || {}).count || 0;

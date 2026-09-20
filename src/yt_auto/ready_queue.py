@@ -258,6 +258,32 @@ def cancel_item(state_dir: Path, item_id: str) -> dict[str, Any] | None:
     return update_item(state_dir, item_id, status="cancelled", error=None)
 
 
+# A finished video whose upload failed is worth keeping: the file is good and
+# only the network was not. Marking it failed sent it back to be rebuilt from
+# a new topic, or cancelled at midnight -- a night of encoding thrown away by
+# a dropped connection.
+MAX_UPLOAD_ATTEMPTS = 3
+
+
+def note_upload_failure(state_dir: Path, item_id: str, error: str) -> dict[str, Any] | None:
+    """Record a failed upload without losing the rendered video."""
+    item = get_item(state_dir, item_id)
+    if not item:
+        return None
+    attempts = int(item.get("upload_attempts") or 0) + 1
+    video = Path(str(item.get("video_path") or ""))
+    keep = video.exists() and attempts < MAX_UPLOAD_ATTEMPTS
+    return update_item(
+        state_dir,
+        item_id,
+        # "rendered" keeps it in the upload queue for another try; only a
+        # missing file or a run of failures gives up on it.
+        status="rendered" if keep else "failed",
+        upload_attempts=attempts,
+        error=str(error)[:360],
+    )
+
+
 def retry_item(state_dir: Path, item_id: str) -> dict[str, Any] | None:
     item = get_item(state_dir, item_id)
     if not item:
