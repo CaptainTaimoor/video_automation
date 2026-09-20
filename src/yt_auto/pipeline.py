@@ -1465,7 +1465,7 @@ class ShortsFactory:
                 raise ValueError(
                     f"Rejected overfilled long script: {long_word_count} words; maximum is {maximum_words}"
                 )
-            repetition_issue = self._long_script_repetition_issue(topic)
+            repetition_issue = self._long_script_repetition_issue(topic, channel)
             if repetition_issue:
                 raise ValueError(f"Rejected repetitive long script: {repetition_issue}")
         angle_issue = self._recent_angle_issue(channel, topic)
@@ -3622,14 +3622,31 @@ class ShortsFactory:
         self._validate_topic_quality(channel, polished, recent_titles)
         return polished
 
-    def _long_script_repetition_issue(self, topic: TopicCandidate) -> str | None:
+    # Roughly one structured section per this many spoken words, measured
+    # from the nine-minute scripts that wanted twelve.
+    LONG_WORDS_PER_SECTION = 100
+    MIN_LONG_SECTIONS = 6
+
+    def _long_script_repetition_issue(
+        self,
+        topic: TopicCandidate,
+        channel: ChannelConfig | None = None,
+    ) -> str | None:
         beats = [
             re.sub(r"\s+", " ", beat or "").strip()
             for beat in (topic.narration_beats or [])
             if re.sub(r"\s+", " ", beat or "").strip()
         ]
-        if len(beats) < 12:
-            return f"long video has only {len(beats)} structured sections"
+        # How many sections a script needs depends on how long it is.
+        # Twelve was right for nine minutes and unreachable at four, so a
+        # shortened channel rejected its own correctly-sized scripts as
+        # unstructured.
+        needed = self.MIN_LONG_SECTIONS
+        if channel is not None:
+            target = int(self.script_writer._target_words(channel, "video"))
+            needed = max(self.MIN_LONG_SECTIONS, round(target / self.LONG_WORDS_PER_SECTION))
+        if len(beats) < needed:
+            return f"long video has only {len(beats)} structured sections; needs {needed}"
         normalized = [re.sub(r"[^a-z0-9]+", " ", beat.lower()).strip() for beat in beats]
         if len(set(normalized)) != len(normalized):
             return "long video repeats an entire narration section"
@@ -3729,7 +3746,7 @@ class ShortsFactory:
             issues.append("long video narration is too dense for the 10-minute limit")
             score -= 18
         if content_kind == "video":
-            repetition_issue = self._long_script_repetition_issue(topic)
+            repetition_issue = self._long_script_repetition_issue(topic, channel)
             if repetition_issue:
                 issues.append(repetition_issue)
                 blocking_issues.append(repetition_issue)
