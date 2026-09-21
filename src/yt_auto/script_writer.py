@@ -3730,6 +3730,36 @@ class ScriptWriter:
             )
         raise RuntimeError(f"unsupported named openai-compatible provider: {provider}")
 
+    # A rate limit worth waiting out rather than routing around. Longer than
+    # this and the next provider, slow as it is, is the better bet.
+    MAX_RATE_LIMIT_WAIT_SECONDS = 12.0
+
+    @staticmethod
+    def _retry_after_seconds(response) -> float | None:
+        """How long the provider asked us to wait, if it said."""
+        raw = ""
+        for header in ("retry-after", "x-ratelimit-reset-requests",
+                       "x-ratelimit-reset-tokens"):
+            raw = str(response.headers.get(header) or "").strip()
+            if raw:
+                break
+        if not raw:
+            return None
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            pass
+        # Groq writes these as "1m26.4s" or "9h59m2.4s".
+        match = re.fullmatch(
+            r"(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", raw, flags=re.IGNORECASE
+        )
+        if not match or not any(match.groups()):
+            return None
+        hours, minutes, seconds = match.groups()
+        return (float(hours or 0) * 3600.0
+                + float(minutes or 0) * 60.0
+                + float(seconds or 0))
+
     def _named_model_ladder(self, provider: str) -> list[str]:
         """Every model to try on a named provider, in order."""
         _, first, _ = self._named_openai_compatible_settings(provider)
@@ -3806,7 +3836,9 @@ class ScriptWriter:
             "temperature": float(
                 self.CREATIVE_TEMPERATURE if temperature is None else temperature
             ),
-            "max_tokens": max(256, int(max_output_tokens)),
+            "max_tokens": max(
+                256, min(self.NAMED_PROVIDER_TOKEN_CEILING, int(max_output_tokens))
+            ),
         }
         if response_mime_type == "application/json":
             payload["response_format"] = {"type": "json_object"}
@@ -3820,6 +3852,27 @@ class ScriptWriter:
             ),
             allow_redirects=False,
         )
+        if response.status_code == 429:
+            # Groq allows thirty requests a minute against a thousand a day,
+            # so a burst hits the per-minute limit with the day barely
+            # touched -- 987 of 1000 left when this was measured. Falling
+            # through on that costs minutes: the next provider's fastest free
+            # model takes 59 seconds and its slowest takes 313, against three
+            # seconds here. Waiting the few seconds the header asks for is
+            # far cheaper than leaving.
+            wait = self._retry_after_seconds(response)
+            if wait is not None and wait <= self.MAX_RATE_LIMIT_WAIT_SECONDS:
+                time.sleep(wait)
+                response = requests.post(
+                    endpoint,
+                    headers=headers,
+                    json=payload,
+                    timeout=min(
+                        120,
+                        max(5, int(getattr(self.cfg, "openai_compatible_timeout_seconds", 90) or 90)),
+                    ),
+                    allow_redirects=False,
+                )
         if response.status_code in {401, 403, 429, 500, 502, 503, 504}:
             detail = self._redact_keys(
                 f"{response.status_code}: {response.text[:180]}",
@@ -3856,6 +3909,19 @@ class ScriptWriter:
         "quality_review",
         "topic_scoring",
     })
+
+    # Groq's free tier allows eight thousand tokens a minute, and max_tokens
+    # is reserved against that budget whether or not the model uses it. The
+    # rewrite budget was raised to 5,400 so OpenRouter's free models would
+    # have room to think before answering -- their thinking is billed even
+    # when reasoning.exclude hides it -- and that same number reserves two
+    # thirds of Groq's minute on a single call. Two rewrites in a row then
+    # answer 429 with 999 of 1000 daily requests still unused.
+    #
+    # Groq's gpt-oss models return the answer and nothing else, so they need
+    # roughly the size of the answer. Keeping the two budgets apart lets each
+    # provider have what it actually needs.
+    NAMED_PROVIDER_TOKEN_CEILING = 1400
 
     # How many times one provider is asked before the chain moves on.
     PROVIDER_ATTEMPTS = 2

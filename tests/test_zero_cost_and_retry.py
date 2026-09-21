@@ -192,3 +192,51 @@ class TemperatureTests(unittest.TestCase):
                 "p", "a:free", "https://openrouter.ai/api", "k", temperature=0.2
             )
         self.assertAlmostEqual(captured["temperature"], 0.2)
+
+
+class RateLimitWaitTests(unittest.TestCase):
+    """A short rate limit is cheaper to wait out than to route around.
+
+    Groq allows 30 requests a minute against 1,000 a day, so a burst trips
+    the per-minute limit with the day barely touched. Leaving on that costs
+    minutes: the next provider's fastest free model takes 59 seconds and its
+    slowest 313, against three seconds on Groq.
+    """
+
+    class Reply:
+        def __init__(self, headers):
+            self.headers = headers
+
+    def parse(self, headers):
+        return ScriptWriter._retry_after_seconds(self.Reply(headers))
+
+    def test_a_plain_seconds_header_is_read(self):
+        self.assertEqual(self.parse({"retry-after": "3"}), 3.0)
+
+    def test_groqs_own_duration_format_is_read(self):
+        self.assertAlmostEqual(
+            self.parse({"x-ratelimit-reset-requests": "1m26.4s"}), 86.4
+        )
+
+    def test_hours_are_read_too(self):
+        self.assertAlmostEqual(
+            self.parse({"x-ratelimit-reset-tokens": "9h59m2.4s"}), 35942.4
+        )
+
+    def test_no_header_means_no_opinion(self):
+        self.assertIsNone(self.parse({}))
+
+    def test_nonsense_does_not_crash(self):
+        self.assertIsNone(self.parse({"retry-after": "soon"}))
+
+    def test_a_short_wait_is_inside_the_cap(self):
+        self.assertLessEqual(self.parse({"retry-after": "3"}),
+                             ScriptWriter.MAX_RATE_LIMIT_WAIT_SECONDS)
+
+    def test_a_minute_long_wait_is_not_worth_waiting_for(self):
+        self.assertGreater(self.parse({"x-ratelimit-reset-requests": "1m26.4s"}),
+                           ScriptWriter.MAX_RATE_LIMIT_WAIT_SECONDS)
+
+    def test_the_cap_is_shorter_than_the_alternative(self):
+        # The fallback provider's best free model was timed at 59 seconds.
+        self.assertLess(ScriptWriter.MAX_RATE_LIMIT_WAIT_SECONDS, 59)
