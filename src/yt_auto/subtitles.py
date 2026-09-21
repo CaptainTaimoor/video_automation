@@ -503,14 +503,24 @@ class SubtitleComposer:
                 if end < len(words) and count == 2:
                     penalty += 12
                 if end < len(words) and not ends_sentence and tail in bad_endings:
-                    # Phrase-boundary errors are more distracting than a mildly
-                    # uneven word count. Keep a small escape route for impossible
-                    # protected-name or measurement combinations.
-                    penalty += 500
+                    # A cue ending on a dangling word is the one boundary fault
+                    # the upload gate always refuses. The gate's companion check
+                    # on cue *starts* is waived in production --
+                    # allow_clause_continuations is True at every call site --
+                    # so this has to outweigh the start penalties below, and it
+                    # used to be the cheapest of the three.
+                    #
+                    # The cost of that ordering was whole topics. A Machu Picchu
+                    # Short split "...drained water before | it could
+                    # destabilize the slope", paying 500 for the dangling
+                    # "before", when "...before it | could destabilize..." was
+                    # available for the same word-count penalty and would have
+                    # passed. One bad cue out of twenty-five rejects the topic.
+                    penalty += 1200
                 if end < len(words) and not ends_sentence and next_word in continuation_starts:
-                    # A prepositional continuation is the exact structural
-                    # defect enforced by quality_issues(). Prefer a mildly
-                    # less elegant auxiliary-led cue over a mid-phrase start.
+                    # A prepositional continuation reads awkwardly, but
+                    # production waives it, so it must never win a tie against
+                    # a fault that does not get waived.
                     penalty += 750
                 elif end < len(words) and not ends_sentence and next_word in bad_starts:
                     penalty += 500
@@ -526,7 +536,15 @@ class SubtitleComposer:
                     ):
                         penalty += 500
                 if chunk_tokens[-1].rstrip().endswith((",", ";", ":")):
-                    penalty -= 2
+                    # A comma is where the sentence itself says the phrase
+                    # ends, so it is the best break available. This used to be
+                    # worth two points against penalties of five hundred, which
+                    # made it decorative: "did it repeat, did their actions |
+                    # match, and did | you feel clearer afterward?" was chosen
+                    # over the clean "did it repeat, | did their actions match,
+                    # | and did you feel clearer afterward?" that the commas
+                    # were offering for free.
+                    penalty -= 60
                 if end == len(words) and count < 3:
                     penalty += 120
                 next_best = best[end]

@@ -100,11 +100,20 @@ class TheRateAndTheGateAgreeTests(unittest.TestCase):
         )
         return worst / target
 
-    def test_the_old_rate_really_did_fail(self):
-        self.assertGreater(
-            self.required_stretch(self.MEASURED[1.10]),
-            VideoBuilder.MAX_LONG_BEAT_STRETCH,
-        )
+    def test_the_old_rate_had_no_headroom(self):
+        # It needed 8.52% against an 8.5% ceiling and died three builds
+        # running. A later caption-splitter change shaved it to 8.29%, which
+        # clears the limit by two hundredths of a point -- close enough that
+        # any change in wording puts it back over. The point of the fix is
+        # headroom, so what is pinned here is how little the old rate had.
+        old_stretch = self.required_stretch(self.MEASURED[1.10])
+        self.assertGreater(old_stretch, 1.08)
+
+    def test_the_configured_rate_has_real_headroom(self):
+        cfg = load_config(ROOT / "config" / "settings.yaml")
+        channel = next(c for c in cfg.channels if c.id == "ancient_history")
+        stretch = self.required_stretch(self.MEASURED[channel.videos.voice_speed])
+        self.assertLess(stretch, 1.05)
 
     def test_the_configured_rate_fits_with_room_to_spare(self):
         cfg = load_config(ROOT / "config" / "settings.yaml")
