@@ -110,5 +110,140 @@ class AnswerReadingTests(unittest.TestCase):
         self.assertTrue(ScriptWriter._looks_like_prompt_echo({}))
 
 
+
+class LadderSeesTheValidatorTests(unittest.TestCase):
+    """A 200 with unusable text must move the ladder on, not end the provider.
+
+    Free models answer with a moderation header, with their own thinking, or
+    with a beats array the token cap cut in half. All three are HTTP 200, so
+    with the check applied only above the ladder the first model decided the
+    whole run: the provider went on cooldown and the five behind it were never
+    asked. Every script in that run then came from the template writer.
+    """
+
+    def build(self, replies):
+        writer = ScriptWriter.__new__(ScriptWriter)
+        writer.cfg = SimpleNamespace(
+            openai_compatible_url="https://openrouter.ai/api",
+            openai_compatible_model="first:free",
+            openai_compatible_models=["first:free", "second:free", "third:free"],
+            openai_compatible_api_key_env="OPENROUTER_API_KEY",
+        )
+        self.asked = []
+
+        def fake_once(prompt, model, base_url, api_key, **kwargs):
+            self.asked.append(model)
+            outcome = replies[model]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        writer._openai_compatible_settings = lambda: (
+            "https://openrouter.ai/api", "first:free", "k"
+        )
+        writer._generate_openai_compatible_once = fake_once
+        return writer
+
+    @staticmethod
+    def wants_two_beats(raw: str) -> bool:
+        import json
+
+        try:
+            beats = json.loads(raw).get("beats")
+        except Exception:
+            return False
+        return isinstance(beats, list) and len(beats) == 2
+
+    def test_a_moderation_header_moves_the_ladder_on(self):
+        writer = self.build({
+            "first:free": "User Safety: safe",
+            "second:free": '{"beats": ["a", "b"]}',
+            "third:free": '{"beats": ["c", "d"]}',
+        })
+        got = writer._generate_openai_compatible(
+            "p", validator=self.wants_two_beats
+        )
+        self.assertEqual(got, '{"beats": ["a", "b"]}')
+        self.assertEqual(self.asked, ["first:free", "second:free"])
+
+    def test_an_answer_cut_off_by_the_token_cap_moves_the_ladder_on(self):
+        writer = self.build({
+            "first:free": '{"beats": ["a", "b"',
+            "second:free": '{"beats": ["only one"]}',
+            "third:free": '{"beats": ["c", "d"]}',
+        })
+        got = writer._generate_openai_compatible(
+            "p", validator=self.wants_two_beats
+        )
+        self.assertEqual(got, '{"beats": ["c", "d"]}')
+        self.assertEqual(self.asked, ["first:free", "second:free", "third:free"])
+
+    def test_the_first_usable_answer_stops_the_ladder(self):
+        writer = self.build({
+            "first:free": '{"beats": ["a", "b"]}',
+            "second:free": AssertionError("must not be asked"),
+            "third:free": AssertionError("must not be asked"),
+        })
+        writer._generate_openai_compatible("p", validator=self.wants_two_beats)
+        self.assertEqual(self.asked, ["first:free"])
+
+    def test_without_a_validator_the_first_reply_is_taken(self):
+        writer = self.build({
+            "first:free": "User Safety: safe",
+            "second:free": '{"beats": ["a", "b"]}',
+            "third:free": '{"beats": ["c", "d"]}',
+        })
+        self.assertEqual(writer._generate_openai_compatible("p"), "User Safety: safe")
+
+    def test_every_model_failing_the_check_is_reported_as_a_failure(self):
+        writer = self.build({
+            "first:free": "nope",
+            "second:free": "also nope",
+            "third:free": "still nope",
+        })
+        with self.assertRaises(RuntimeError) as caught:
+            writer._generate_openai_compatible("p", validator=self.wants_two_beats)
+        self.assertIn("unusable answer", str(caught.exception))
+        self.assertEqual(self.asked, ["first:free", "second:free", "third:free"])
+
+    def test_a_validator_that_raises_counts_as_unusable(self):
+        def explodes(_raw):
+            raise ValueError("bad validator")
+
+        writer = self.build({
+            "first:free": "anything",
+            "second:free": "anything",
+            "third:free": "anything",
+        })
+        with self.assertRaises(RuntimeError):
+            writer._generate_openai_compatible("p", validator=explodes)
+        self.assertEqual(self.asked, ["first:free", "second:free", "third:free"])
+
+
+class RewriteTokenBudgetTests(unittest.TestCase):
+    """The reply has to fit, or the beat count check reads a cut-off answer."""
+
+    def test_a_short_gets_more_than_the_old_flat_budget(self):
+        self.assertGreater(ScriptWriter._rewrite_token_budget(9), 512)
+
+    def test_a_long_video_gets_far_more_than_a_short(self):
+        self.assertGreater(
+            ScriptWriter._rewrite_token_budget(25),
+            ScriptWriter._rewrite_token_budget(9) * 2,
+        )
+
+    def test_the_budget_grows_with_the_beat_count(self):
+        budgets = [ScriptWriter._rewrite_token_budget(n) for n in (7, 9, 14, 25)]
+        self.assertEqual(budgets, sorted(budgets))
+        self.assertEqual(len(set(budgets)), len(budgets))
+
+    def test_a_tiny_script_still_leaves_room_to_think(self):
+        self.assertGreaterEqual(ScriptWriter._rewrite_token_budget(1), 512)
+
+    def test_a_nonsense_beat_count_does_not_crash(self):
+        self.assertGreaterEqual(ScriptWriter._rewrite_token_budget(0), 512)
+
+    def test_the_budget_is_capped_so_one_call_cannot_run_away(self):
+        self.assertLessEqual(ScriptWriter._rewrite_token_budget(10_000), 4000)
 if __name__ == "__main__":
     unittest.main()

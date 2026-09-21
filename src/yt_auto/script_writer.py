@@ -3887,6 +3887,7 @@ class ScriptWriter:
         prompt: str,
         max_output_tokens: int = 700,
         response_mime_type: str | None = None,
+        validator: Callable[[str], bool] | None = None,
     ) -> str:
         base_url, model, api_key = self._openai_compatible_settings()
         ladder = self._openai_compatible_models() or ([model] if model else [])
@@ -3894,9 +3895,16 @@ class ScriptWriter:
             raise RuntimeError("AI_GATEWAY_URL and AI_GATEWAY_MODEL are not configured")
         if len(ladder) > 1:
             errors: list[str] = []
+            # The caller's validator has to be applied here, inside the ladder.
+            # Applied only above it, a first model that answers 200 with
+            # unusable text -- a moderation header, its own thinking, a JSON
+            # array cut off by the token cap -- ends the whole provider and
+            # puts it on cooldown, and the five models behind it are never
+            # asked. A free model produces that kind of reply often enough
+            # that the ladder is the only thing making the provider usable.
             for candidate in ladder:
                 try:
-                    return self._generate_openai_compatible_once(
+                    generated = self._generate_openai_compatible_once(
                         prompt,
                         candidate,
                         base_url,
@@ -3907,6 +3915,17 @@ class ScriptWriter:
                 except Exception as exc:
                     errors.append(f"{self._safe_model_label(candidate)}: {exc}")
                     continue
+                if validator is not None:
+                    try:
+                        usable = bool(validator(generated))
+                    except Exception:
+                        usable = False
+                    if not usable:
+                        errors.append(
+                            f"{self._safe_model_label(candidate)}: unusable answer"
+                        )
+                        continue
+                return generated
             raise RuntimeError("every gateway model failed: " + "; ".join(errors[-4:]))
         model = ladder[0]
         return self._generate_openai_compatible_once(
@@ -4132,6 +4151,7 @@ class ScriptWriter:
                 prompt,
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
+                validator=validator,
             ),
             "groq": lambda: self._generate_named_openai_compatible(
                 "groq",
@@ -4410,6 +4430,20 @@ class ScriptWriter:
             "The beats array must have the same number of items as the existing beats."
         )
 
+    @staticmethod
+    def _rewrite_token_budget(beat_count: int) -> int:
+        """Room for the number of beats actually asked for.
+
+        A flat 400 was fine for a seven-beat short and far too small for a
+        long video's twenty-plus, so the reply stopped mid-array, the JSON
+        never closed, and the beat-count check read a truncated answer as a
+        bad one. 60 tokens covers a beat comfortably; the 300 on top is the
+        JSON scaffolding, the optional title, and the thinking a reasoning
+        model does before it starts writing.
+        """
+        beats = max(1, int(beat_count or 1))
+        return min(4000, max(512, beats * 60 + 300))
+
     def _rewrite_scene_plan_with_ai(
         self,
         channel: ChannelConfig,
@@ -4440,7 +4474,7 @@ class ScriptWriter:
 
         raw = self._generate_ai(
             prompt,
-            max_output_tokens=400,
+            max_output_tokens=self._rewrite_token_budget(expected_beat_count),
             response_mime_type="application/json",
             purpose="scene_rewrite",
             validator=valid_scene_payload,
