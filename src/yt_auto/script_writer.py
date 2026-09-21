@@ -4342,6 +4342,27 @@ class ScriptWriter:
                 })
                 errors.append(f"{candidate}: {message}")
         self._record_provider_attempts(attempted)
+        if not errors:
+            # Nothing was tried: every provider was still inside the cooldown
+            # a previous failure put it in. Reported as
+            # "All configured AI providers failed: " with nothing after the
+            # colon, twelve times in one run, which reads like a bug in the
+            # logger rather than a provider outage.
+            cooling = [
+                str(item.get("provider") or "?")
+                for item in attempted
+                if item.get("status") == "cooldown"
+            ]
+            wait = max(0, int(getattr(self.cfg, "provider_cooldown_seconds", 180) or 0))
+            raise RuntimeError(
+                "No AI provider was available: "
+                + (
+                    f"{', '.join(cooling)} still cooling down after an earlier "
+                    f"failure (up to {wait}s)"
+                    if cooling
+                    else "none configured"
+                )
+            )
         raise RuntimeError("All configured AI providers failed: " + "; ".join(errors[-4:]))
 
     def _json_from_ai(self, raw: str) -> dict:
