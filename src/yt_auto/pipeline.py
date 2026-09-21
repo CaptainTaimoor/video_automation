@@ -1219,6 +1219,12 @@ class ShortsFactory:
             return "opening hook ends on a dangling connector"
         return None
 
+    # How many times a subject may appear in the recent run window before a
+    # new topic on it is refused. Ancient History repeats itself far more than
+    # Brain Lens does -- 13 duplicated titles against 2 -- because its subject
+    # pool is a fixed set of famous sites.
+    SUBJECT_REPEAT_LIMIT = {"ancient_history": 1, "brain_lens": 2}
+
     def _recent_angle_issue(self, channel: ChannelConfig, topic: TopicCandidate, limit: int = 35) -> str | None:
         target = f"{topic.title} {topic.subject}".lower()
         if channel.id == "ancient_history":
@@ -1270,6 +1276,34 @@ class ShortsFactory:
                     break
             if count >= threshold:
                 return f"overused recent angle: {angle}"
+
+        # The table above is hand-written, and it only protects what someone
+        # remembered to add. Ancient History has 77 published videos and 13
+        # titles shared by more than one of them -- "Inside Tikal: Maya Kings,
+        # Reservoirs, and Jungle Temples" is live five times. Every one of
+        # those subjects is missing from the table; the ones in it, petra and
+        # nazca, are correctly refused. So the subject is also checked against
+        # itself, whatever it happens to be.
+        subject = re.sub(r"[^a-z0-9 ]+", " ", str(topic.subject or "").lower())
+        subject = re.sub(r"\s+", " ", subject).strip()
+        if len(subject) >= 4 and subject not in angle_thresholds:
+            repeat_limit = self.SUBJECT_REPEAT_LIMIT.get(channel.id, 2)
+            seen = 0
+            checked = 0
+            for run in reversed(self._read_run_log()):
+                if run.get("channel") != channel.id:
+                    continue
+                checked += 1
+                run_subject = re.sub(
+                    r"[^a-z0-9 ]+", " ", str(run.get("subject") or "").lower()
+                )
+                run_subject = re.sub(r"\s+", " ", run_subject).strip()
+                if run_subject and run_subject == subject:
+                    seen += 1
+                if checked >= limit:
+                    break
+            if seen >= repeat_limit:
+                return f"subject already covered {seen} times recently: {subject}"
         return None
 
     def _visual_signatures(self, url: str) -> set[str]:
