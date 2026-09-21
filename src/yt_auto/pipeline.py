@@ -6451,6 +6451,26 @@ class ShortsFactory:
                     )
                 else:
                     continue
+            # The planner is handed avoid_titles and can still return
+            # something already on it. One Ancient Short run spent seven of
+            # twenty attempts on "What the surviving record reveals about
+            # Nazca Lines", researching and rejecting it each time, and then
+            # failed for want of attempts.
+            #
+            # Re-asking does not help: measured, the planner returned Nazca
+            # three times in a row, twenty-eight seconds apart. It is
+            # deterministic. So drop the proposal here instead, before the
+            # research, the AI repair and the quality gates are paid for.
+            proposed = {
+                str(candidate.title or "").strip().lower(),
+                str(candidate.subject or "").strip().lower(),
+            } - {""}
+            if proposed and (proposed & avoid_titles):
+                self.logger.warning(
+                    channel.id,
+                    f"Skipping an already-refused proposal: {candidate.title}",
+                )
+                continue
             if not candidate.source_urls:
                 context_source = self.topic_planner.research._default_source_url(
                     candidate.subject or candidate.title
