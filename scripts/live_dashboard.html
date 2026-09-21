@@ -157,7 +157,8 @@
     .refresh-ring {
       display: inline-grid;
       place-items: center;
-      width: 26px; height: 26px;
+      width: 24px; height: 24px;
+      line-height: 1;
       border-radius: 50%;
       font-size: 10.5px;
       font-weight: 650;
@@ -509,8 +510,13 @@
 
     /* ---------- responsive --------------------------------------------------------- */
     @media (max-width: 900px) {
-      .shell { width: calc(100vw - 20px); padding-top: var(--sp-5); }
-      .hero { flex-direction: column; gap: var(--sp-4); }
+      .shell { width: calc(100vw - 20px); padding-top: var(--sp-4); }
+      .hero { flex-direction: column; gap: var(--sp-3); padding-bottom: var(--sp-4); margin-bottom: var(--sp-4); }
+      /* The strapline explains the page to a first-time reader and costs three
+         lines on a phone, where the person already knows what they opened. */
+      .hero .sub { display: none; }
+      .hero h1 { font-size: 22px; }
+      .system-strip { gap: var(--sp-2) var(--sp-4); padding: 10px 12px; }
       .toolbar { width: 100%; }
       .bottom, .tgrid { grid-template-columns: 1fr; }
       .inside, .panel-head { padding: var(--sp-4); }
