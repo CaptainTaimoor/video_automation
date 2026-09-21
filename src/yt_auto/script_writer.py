@@ -2096,6 +2096,52 @@ class ScriptWriter:
         target = int(self._target_words(channel, "video"))
         return max(self.MIN_LONG_FACTS, round(target / self.LONG_WORDS_PER_FACT))
 
+    # Subjects arrive as bare strings and get dropped straight into prose, so
+    # "Dead Sea Scrolls" produced "What survived from Dead Sea Scrolls" in a
+    # finished video. A name takes no article; a common-noun head does. The
+    # list stays short on purpose -- writing "the Tikal" would be as wrong as
+    # the sentence it replaces, so anything not recognised is left bare.
+    _ARTICLE_HEADS = frozenset(
+        """
+        aqueduct arena army bath bridge calendar canal casts cemetery city
+        civilization code collapse colosseum column conquest delta dynasty
+        empire fort fortress frieze garden gate head hoard inscription island
+        kingdom library line machine manuscript mask mausoleum mechanism mine
+        mosaic mound mystery necropolis network obelisk oracle painting palace
+        papyri papyrus peninsula plague plateau pyramid quarry region relief
+        road route ruins sanctuary scroll seal settlement shipwreck siege site
+        sphinx statue stelae stele stone tablet temple tomb treasure valley
+        wall ziggurat
+        """.split()
+    )
+
+    @classmethod
+    def _subject_phrase(cls, subject: str) -> str:
+        """The subject as prose: "the Dead Sea Scrolls", but plain "Tikal"."""
+        name = str(subject or "").strip()
+        if not name:
+            return name
+        lowered = name.lower()
+        if lowered.startswith("the "):
+            return name
+        if re.search(r"['’]s\s", lowered):
+            # A possessive already determines the noun: "Hadrian's Wall",
+            # "Axum's Giant Stelae". "The Hadrian's Wall" is worse than none.
+            return name
+        if " of " in lowered:
+            # "the Code of Hammurabi", "the Oracle of Delphi".
+            return f"the {name}"
+        head = re.sub(r"[^a-z]", "", lowered.split()[-1])
+        if not head:
+            return name
+        if head in cls._ARTICLE_HEADS:
+            return f"the {name}"
+        if head.endswith("s") and head[:-1] in cls._ARTICLE_HEADS:
+            return f"the {name}"
+        if head.endswith("es") and head[:-2] in cls._ARTICLE_HEADS:
+            return f"the {name}"
+        return name
+
     def _history_long_video_plan(
         self,
         channel: ChannelConfig,
@@ -2148,6 +2194,8 @@ class ScriptWriter:
             )
         if "lachish" in subject.lower():
             return self._lachish_long_video_plan(channel, topic, subject)
+
+        subject_phrase = self._subject_phrase(subject)
 
         category_context = {
             "war": "Military events become clearer when terrain, supply, timing, and command decisions are treated as constraints rather than dramatic decoration.",
@@ -2323,59 +2371,59 @@ class ScriptWriter:
         crosschecks = [
             (
                 "Put the dates in order",
-                f"Chronology is the first control for {subject}. Arrange the verified clues from earliest to latest, then separate the event itself from later memory, rebuilding, excavation, and modern interpretation. A cause must come before its claimed effect, and two similar remains should not be treated as contemporary until dating supports that link. This simple sequence prevents generations of change from collapsing into one cinematic moment.",
+                f"Chronology is the first control for {subject_phrase}. Arrange the verified clues from earliest to latest, then separate the event itself from later memory, rebuilding, excavation, and modern interpretation. A cause must come before its claimed effect, and two similar remains should not be treated as contemporary until dating supports that link. This simple sequence prevents generations of change from collapsing into one cinematic moment.",
             ),
             (
                 "Map the physical setting",
-                f"Geography tests what was possible around {subject}. Place the site, route, coast, river, pass, farmland, desert, or urban center on a map and measure the distances connecting them. Terrain affects movement, communication, defense, food, and access to materials. When a written account ignores those limits, the landscape becomes an independent witness that can support the story or expose a practical contradiction.",
+                f"Geography tests what was possible around {subject_phrase}. Place the site, route, coast, river, pass, farmland, desert, or urban center on a map and measure the distances connecting them. Terrain affects movement, communication, defense, food, and access to materials. When a written account ignores those limits, the landscape becomes an independent witness that can support the story or expose a practical contradiction.",
             ),
             (
                 "Read excavated evidence",
-                f"Excavated evidence for {subject} needs context, not just a dramatic close-up. Record where an object was found, the layer or structure around it, signs of repair or reuse, and the method used to date it. An isolated artifact may prove contact or technique; a repeated pattern across secure contexts can support a wider conclusion about organization, behavior, or change.",
+                f"Excavated evidence for {subject_phrase} needs context, not just a dramatic close-up. Record where an object was found, the layer or structure around it, signs of repair or reuse, and the method used to date it. An isolated artifact may prove contact or technique; a repeated pattern across secure contexts can support a wider conclusion about organization, behavior, or change.",
             ),
             (
                 "Interrogate written sources",
-                f"Written evidence about {subject} must be read as an action by an author. Identify when it was produced, who was expected to hear or see it, what authority it served, and how the text survived. Praise, accusation, prophecy, law, and commemoration can preserve facts while shaping their meaning. Comparing those claims with archaeology keeps eloquent language from becoming automatic proof.",
+                f"Written evidence about {subject_phrase} must be read as an action by an author. Identify when it was produced, who was expected to hear or see it, what authority it served, and how the text survived. Praise, accusation, prophecy, law, and commemoration can preserve facts while shaping their meaning. Comparing those claims with archaeology keeps eloquent language from becoming automatic proof.",
             ),
             (
                 "Measure labor and supply",
-                f"Large claims about {subject} become testable through logistics. Ask how people, food, tools, animals, fuel, stone, metal, water, or messages reached the required place and how long the effort had to continue. The answer does not need an invented workforce total. Even broad constraints can reveal whether the evidence reflects a brief emergency, a ceremonial display, or administration capable of sustained coordination.",
+                f"Large claims about {subject_phrase} become testable through logistics. Ask how people, food, tools, animals, fuel, stone, metal, water, or messages reached the required place and how long the effort had to continue. The answer does not need an invented workforce total. Even broad constraints can reveal whether the evidence reflects a brief emergency, a ceremonial display, or administration capable of sustained coordination.",
             ),
             (
                 "Recover ordinary experience",
-                f"Elite decisions are only one layer of {subject}. Follow the consequences into homes, workshops, farms, roads, markets, camps, sanctuaries, and burial grounds where ordinary routines left different traces. This does not authorize imaginary personal stories. It asks which material changes would be expected if policy, conflict, ritual, trade, disease, or construction truly altered daily work and survival.",
+                f"Elite decisions are only one layer of {subject_phrase}. Follow the consequences into homes, workshops, farms, roads, markets, camps, sanctuaries, and burial grounds where ordinary routines left different traces. This does not authorize imaginary personal stories. It asks which material changes would be expected if policy, conflict, ritual, trade, disease, or construction truly altered daily work and survival.",
             ),
             (
                 "Identify organized power",
-                f"Power around {subject} should be described through observable coordination rather than titles alone. Look for controlled access, standardized work, collected resources, protected routes, repeated messages, or the ability to maintain a project after its first display. Then ask who benefited and who absorbed the cost. That comparison makes authority visible without assuming every monument or text represents unanimous consent.",
+                f"Power around {subject_phrase} should be described through observable coordination rather than titles alone. Look for controlled access, standardized work, collected resources, protected routes, repeated messages, or the ability to maintain a project after its first display. Then ask who benefited and who absorbed the cost. That comparison makes authority visible without assuming every monument or text represents unanimous consent.",
             ),
             (
                 "Trace wider connections",
-                f"No ancient case existed in isolation, so test whether {subject} connects to neighboring regions through materials, styles, coins, texts, ships, roads, migration, or shared techniques. Similarity by itself is not proof of direct contact; chronology and route must agree. When they do, a local clue can reveal a larger network of exchange, competition, diplomacy, or movement.",
+                f"No ancient case existed in isolation, so test whether {subject_phrase} connects to neighboring regions through materials, styles, coins, texts, ships, roads, migration, or shared techniques. Similarity by itself is not proof of direct contact; chronology and route must agree. When they do, a local clue can reveal a larger network of exchange, competition, diplomacy, or movement.",
             ),
             (
                 "Compare rival explanations",
-                f"A strong documentary gives {subject} a genuine competing explanation. State what each account predicts, then compare those predictions with the dated remains and the source record. The goal is not to manufacture controversy. It is to show why one explanation currently covers more evidence, where another still fits, and which missing discovery could shift the balance.",
+                f"A strong documentary gives {subject_phrase} a genuine competing explanation. State what each account predicts, then compare those predictions with the dated remains and the source record. The goal is not to manufacture controversy. It is to show why one explanation currently covers more evidence, where another still fits, and which missing discovery could shift the balance.",
             ),
             (
                 "Account for preservation",
-                f"What survives from {subject} is not a neutral sample of the past. Stone, metal, fired clay, dry caves, sealed burials, and monumental inscriptions may endure while wood, cloth, food, speech, and ordinary movement disappear. Later rebuilding and excavation add another filter. Recognizing that imbalance prevents absence from being mistaken for proof that an activity, group, or belief never existed.",
+                f"What survives from {subject_phrase} is not a neutral sample of the past. Stone, metal, fired clay, dry caves, sealed burials, and monumental inscriptions may endure while wood, cloth, food, speech, and ordinary movement disappear. Later rebuilding and excavation add another filter. Recognizing that imbalance prevents absence from being mistaken for proof that an activity, group, or belief never existed.",
             ),
             (
                 "Separate finding from story",
-                f"Modern interpretation of {subject} has its own chronology. Record when major finds were made, which methods were available, and which political or popular stories shaped early conclusions. New dating, remote sensing, residue analysis, or contextual excavation can revise an older narrative without making the entire record worthless. Good history shows exactly which claim changed and which evidence remained stable.",
+                f"Modern interpretation of {subject_phrase} has its own chronology. Record when major finds were made, which methods were available, and which political or popular stories shaped early conclusions. New dating, remote sensing, residue analysis, or contextual excavation can revise an older narrative without making the entire record worthless. Good history shows exactly which claim changed and which evidence remained stable.",
             ),
             (
                 "Define the lasting change",
-                f"The final test for {subject} is consequence. Distinguish the immediate outcome from changes that lasted across later generations, and separate documented influence from resemblance created by hindsight. A responsible conclusion can be dramatic without becoming absolute: it names what changed, who experienced it, which evidence supports that judgment, and where the record still refuses a simple ending.",
+                f"The final test for {subject_phrase} is consequence. Distinguish the immediate outcome from changes that lasted across later generations, and separate documented influence from resemblance created by hindsight. A responsible conclusion can be dramatic without becoming absolute: it names what changed, who experienced it, which evidence supports that judgment, and where the record still refuses a simple ending.",
             ),
             (
                 "Check every historical label",
-                f"Modern labels can make {subject} look more unified than it was. Check whether names for peoples, borders, religions, offices, and periods came from contemporary sources or later historians. A useful label can organize evidence without proving that everyone inside it shared one identity or political goal. This vocabulary check removes anachronism before it quietly reshapes motive, territory, and allegiance.",
+                f"Modern labels can make {subject_phrase} look more unified than it was. Check whether names for peoples, borders, religions, offices, and periods came from contemporary sources or later historians. A useful label can organize evidence without proving that everyone inside it shared one identity or political goal. This vocabulary check removes anachronism before it quietly reshapes motive, territory, and allegiance.",
             ),
             (
                 "Build one secure evidence chain",
-                f"Finish the investigation of {subject} by tracing one complete chain: a dated source or object, the action or condition it documents, and a consequence supported by separate evidence. Mark every step that remains inferential. This method is less flashy than stacking mysteries, but it gives the audience a conclusion they can inspect and shows exactly why the final claim deserves confidence.",
+                f"Finish the investigation of {subject_phrase} by tracing one complete chain: a dated source or object, the action or condition it documents, and a consequence supported by separate evidence. Mark every step that remains inferential. This method is less flashy than stacking mysteries, but it gives the audience a conclusion they can inspect and shows exactly why the final claim deserves confidence.",
             ),
         ]
 
@@ -2395,12 +2443,12 @@ class ScriptWriter:
             or normalized_opening in normalized_points
         ):
             fallback_hooks = [
-                f"The dramatic version of {subject} starts at the climax.",
-                f"The most familiar image of {subject} hides the network that made it possible.",
-                f"{subject} looks inevitable in hindsight, but every major turning point was once an open choice.",
-                f"What survived from {subject} is only the part that stone, metal, climate, and power allowed us to see.",
-                f"The famous moment in {subject} began generations before anyone knew how the story would end.",
-                f"One object, ruin, or battle made {subject} memorable, but it cannot explain the whole transformation alone.",
+                f"The dramatic version of {subject_phrase} starts at the climax.",
+                f"The most familiar image of {subject_phrase} hides the network that made it possible.",
+                f"{subject_phrase} looks inevitable in hindsight, but every major turning point was once an open choice.",
+                f"What survived from {subject_phrase} is only the part that stone, metal, climate, and power allowed us to see.",
+                f"The famous moment in {subject_phrase} began generations before anyone knew how the story would end.",
+                f"One object, ruin, or battle made {subject_phrase} memorable, but it cannot explain the whole transformation alone.",
             ]
             hook_index = sum(ord(character) for character in subject.lower()) % len(fallback_hooks)
             opening_line = fallback_hooks[hook_index]
@@ -2409,13 +2457,13 @@ class ScriptWriter:
             self._long_scene(
                 channel.id,
                 subject,
-                f"{opening_line} That is the familiar edge of the story, not the whole of it. The deeper question is how geography, resources, institutions, rival decisions, and ordinary people carried {subject} toward that moment. Follow those pressures in sequence and the famous image stops being an isolated legend; it becomes the visible result of choices that could still have ended differently.",
+                f"{opening_line} That is the familiar edge of the story, not the whole of it. The deeper question is how geography, resources, institutions, rival decisions, and ordinary people carried {subject_phrase} toward that moment. Follow those pressures in sequence and the famous image stops being an isolated legend; it becomes the visible result of choices that could still have ended differently.",
                 "The turning point has a backstory",
             ),
             self._long_scene(
                 channel.id,
                 subject,
-                f"Begin where the people inside {subject} had to begin: with the physical setting and the first dated traces. Then move through expansion, pressure, conflict, adaptation, collapse, or survival without skipping the links between them. Objects, buildings, inscriptions, landscapes, and written accounts will not always agree. Those disagreements are useful because they reveal which parts are secure, which depend on later memory, and where the strongest competing explanation still survives.",
+                f"Begin where the story of {subject_phrase} has to begin: with the physical setting and the first dated traces. Then move through expansion, pressure, conflict, adaptation, collapse, or survival without skipping the links between them. Objects, buildings, inscriptions, landscapes, and written accounts will not always agree. Those disagreements are useful because they reveal which parts are secure, which depend on later memory, and where the strongest competing explanation still survives.",
                 "Begin with place and chronology",
             ),
         ]
@@ -2462,11 +2510,11 @@ class ScriptWriter:
         synthesis_sections = [
             (
                 "Test the strongest rival account",
-                f"The cleanest explanation of {subject} is not automatically the strongest one. Put the leading account beside its best rival and ask what each predicts about dates, routes, damage, settlement, written testimony, and human behavior. The better explanation should cover more of those independent traces with fewer unsupported assumptions. Where both still fit, the disagreement belongs in the conclusion instead of being hidden for the sake of a smoother story.",
+                f"The cleanest explanation of {subject_phrase} is not automatically the strongest one. Put the leading account beside its best rival and ask what each predicts about dates, routes, damage, settlement, written testimony, and human behavior. The better explanation should cover more of those independent traces with fewer unsupported assumptions. Where both still fit, the disagreement belongs in the conclusion instead of being hidden for the sake of a smoother story.",
             ),
             (
                 "Follow the consequences forward",
-                f"Now follow {subject} beyond its famous turning point. Separate the immediate result from the institutions, routes, memories, technologies, communities, or political limits that survived into the next generation. That longer view often reverses the simple verdict of victory or defeat. It shows whether the event transformed a system, interrupted it briefly, or created a new problem that later rulers inherited without fully understanding its origin.",
+                f"Now follow {subject_phrase} beyond its famous turning point. Separate the immediate result from the institutions, routes, memories, technologies, communities, or political limits that survived into the next generation. That longer view often reverses the simple verdict of victory or defeat. It shows whether the event transformed a system, interrupted it briefly, or created a new problem that later rulers inherited without fully understanding its origin.",
             ),
         ]
         # Mild Phase-1 skeleton variation: rotate synthesis + crosscheck order by
@@ -2489,15 +2537,15 @@ class ScriptWriter:
         out.extend(body[:16])
         closing_variants = [
             (
-                f"The remaining uncertainty around {subject} is not a failure of the story. It is a boundary around what the sources can support. Strong history marks that boundary clearly, compares rival explanations, and avoids filling silence with invented certainty. That honesty makes the confirmed evidence more powerful, not less dramatic. It also identifies the next inscription, layer, date, or scientific test that could genuinely change the conclusion.",
+                f"The remaining uncertainty around {subject_phrase} is not a failure of the story. It is a boundary around what the sources can support. Strong history marks that boundary clearly, compares rival explanations, and avoids filling silence with invented certainty. That honesty makes the confirmed evidence more powerful, not less dramatic. It also identifies the next inscription, layer, date, or scientific test that could genuinely change the conclusion.",
                 "What remains uncertain",
-                f"The lasting importance of {subject} is not one isolated fact. It is the relationship between physical evidence, organized power, human choices, and the consequences that followed. Once those layers are kept together, the past stops looking like a legend and starts looking like people solving problems under pressure with imperfect information. Return to the opening clue and notice how much more precisely its meaning can now be stated.",
+                f"The lasting importance of {subject_phrase} is not one isolated fact. It is the relationship between physical evidence, organized power, human choices, and the consequences that followed. Once those layers are kept together, the past stops looking like a legend and starts looking like people solving problems under pressure with imperfect information. Return to the opening clue and notice how much more precisely its meaning can now be stated.",
                 "Why it still matters",
             ),
             (
-                f"What we still cannot prove about {subject} belongs in the conclusion. Mark the gaps, keep rival explanations visible, and refuse invented certainty where the sources are silent. That restraint makes the confirmed evidence sharper and shows which discovery would actually change the claim.",
+                f"What we still cannot prove about {subject_phrase} belongs in the conclusion. Mark the gaps, keep rival explanations visible, and refuse invented certainty where the sources are silent. That restraint makes the confirmed evidence sharper and shows which discovery would actually change the claim.",
                 "Name the open questions",
-                f"The reason {subject} still matters is the chain connecting evidence, power, ordinary lives, and later consequences. Keep those layers together and the opening clue stops looking like a legend. It becomes a decision made under pressure, with imperfect information, that still shaped later choices.",
+                f"The reason {subject_phrase} still matters is the chain connecting evidence, power, ordinary lives, and later consequences. Keep those layers together and the opening clue stops looking like a legend. It becomes a decision made under pressure, with imperfect information, that still shaped later choices.",
                 "Return to the opening clue",
             ),
         ]

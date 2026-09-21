@@ -120,5 +120,48 @@ class NoRepeatedSentenceTests(unittest.TestCase):
         self.assertGreater(defined, 1, "the repeat pool is still only defined, never used")
 
 
+class SubjectReadsAsEnglishTests(unittest.TestCase):
+    """The subject is dropped straight into prose, so it has to carry its
+    article. A finished video said "What survived from Dead Sea Scrolls"."""
+
+    def test_a_common_noun_head_takes_an_article(self):
+        for name in ("Dead Sea Scrolls", "Nazca Lines", "Terracotta Army",
+                     "Nubian Pyramids", "Pompeii Plaster Casts"):
+            with self.subTest(name=name):
+                self.assertEqual(ScriptWriter._subject_phrase(name), f"the {name}")
+
+    def test_a_place_or_person_name_takes_none(self):
+        for name in ("Tikal", "Carthage", "Petra", "Machu Picchu",
+                     "Angkor Wat", "Hatshepsut", "Xerxes", "Axum"):
+            with self.subTest(name=name):
+                self.assertEqual(ScriptWriter._subject_phrase(name), name)
+
+    def test_an_of_phrase_takes_an_article(self):
+        self.assertEqual(
+            ScriptWriter._subject_phrase("Code of Hammurabi"), "the Code of Hammurabi"
+        )
+
+    def test_a_possessive_already_determines_the_noun(self):
+        for name in ("Hadrian's Wall", "Axum's Giant Stelae", "Petra's Rock-Cut City"):
+            with self.subTest(name=name):
+                self.assertEqual(ScriptWriter._subject_phrase(name), name)
+
+    def test_an_article_is_never_doubled(self):
+        self.assertEqual(ScriptWriter._subject_phrase("the Indus Valley"), "the Indus Valley")
+
+    def test_an_empty_subject_does_not_become_a_bare_the(self):
+        self.assertEqual(ScriptWriter._subject_phrase(""), "")
+        self.assertEqual(ScriptWriter._subject_phrase("   "), "")
+
+    def test_the_narration_uses_the_article_form(self):
+        narration = NoRepeatedSentenceTests().build(NoRepeatedSentenceTests.ALL_ONE_CATEGORY)
+        self.assertIn("the dead sea scrolls", narration.lower())
+        self.assertNotIn("from dead sea scrolls", narration.lower())
+
+    def test_the_opening_no_longer_puts_people_inside_a_document(self):
+        narration = NoRepeatedSentenceTests().build(NoRepeatedSentenceTests.ALL_ONE_CATEGORY)
+        self.assertNotIn("the people inside", narration.lower())
+
+
 if __name__ == "__main__":
     unittest.main()
