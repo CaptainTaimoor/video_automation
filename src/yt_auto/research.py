@@ -4,6 +4,7 @@ import html
 import os
 import random
 import re
+import time
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,44 @@ _HEADLINE_FILLER = {
 }
 
 
+# Wikimedia asks callers to identify themselves and give a way to be reached.
+# The repository stands in for a contact address so no personal email is put
+# into an outbound header.
+WIKIMEDIA_USER_AGENT = (
+    "yt-auto/1.0 (+https://github.com/CaptainTaimoor/video_automation) python-requests"
+)
+
+# A 429 is a request to wait, not an answer about the subject. Retrying a
+# couple of times costs seconds; treating it as "no source" costs the build.
+RATE_LIMIT_RETRIES = 2
+RATE_LIMIT_BACKOFF_SECONDS = 2.0
+
+
+def _respect_rate_limits(response, *args, **kwargs):
+    """Retry a throttled request once or twice before giving up on it."""
+    if response.status_code != 429:
+        return response
+    request = response.request
+    session = getattr(response, "connection", None)
+    for attempt in range(1, RATE_LIMIT_RETRIES + 1):
+        wait = RATE_LIMIT_BACKOFF_SECONDS * attempt
+        try:
+            wait = max(wait, float(response.headers.get("Retry-After", 0) or 0))
+        except (TypeError, ValueError):
+            pass
+        time.sleep(min(wait, 10.0))
+        try:
+            import requests
+
+            retried = requests.Session().send(request, timeout=25)
+        except Exception:
+            return response
+        if retried.status_code != 429:
+            return retried
+        response = retried
+    return response
+
+
 class SourceSafeResearchExhaustedError(RuntimeError):
     """Raised when no remaining topic has enough verified, concrete research."""
 
@@ -37,7 +76,12 @@ class SourceSafeResearchExhaustedError(RuntimeError):
 class ContentResearcher:
     def __init__(self) -> None:
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "yt-auto/1.0"})
+        # Wikimedia's policy asks for a descriptive agent with a contact route,
+        # and throttles generic ones. "yt-auto/1.0" was being answered with
+        # HTTP 429 -- which this code read as "this topic has no source",
+        # rejected the subject, and then proposed the same one again.
+        self.session.headers.update({"User-Agent": WIKIMEDIA_USER_AGENT})
+        self.session.hooks.setdefault("response", []).append(_respect_rate_limits)
         self._history_detail_cache: dict[str, List[str]] = {}
         self._source_validation_cache: dict[str, bool] = {}
         self.history_fact_overrides = {
