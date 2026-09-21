@@ -1223,6 +1223,11 @@ class ShortsFactory:
     # new topic on it is refused. Ancient History repeats itself far more than
     # Brain Lens does -- 13 duplicated titles against 2 -- because its subject
     # pool is a fixed set of famous sites.
+    # How many times to ask the planner for a title it has not already been
+    # refused, before settling for whatever it offers. Small on purpose: the
+    # point is to skip a stuck repeat cheaply, not to loop on a thin pool.
+    PLAN_RETRIES_FOR_A_FRESH_TITLE = 4
+
     SUBJECT_REPEAT_LIMIT = {"ancient_history": 1, "brain_lens": 2}
 
     def _recent_angle_issue(self, channel: ChannelConfig, topic: TopicCandidate, limit: int = 35) -> str | None:
@@ -6430,14 +6435,36 @@ class ShortsFactory:
                         "Switching to curated continuity fallback after repeated AI topic failures.",
                     )
                 else:
-                    candidate = self.topic_planner.plan(
-                        channel,
-                        style_bias=style_bias,
-                        term_bias=term_bias,
-                        avoid_titles=avoid_titles,
-                        content_kind=content_kind,
-                        dna=dna,
-                    )
+                    # The planner is given avoid_titles but can still come back
+                    # with something already refused this pass. One Ancient
+                    # Short run spent seven of its twenty attempts re-proposing
+                    # "What the surviving record reveals about Nazca Lines",
+                    # researching and rejecting it each time, and then failed
+                    # for want of attempts. Ask again instead of burning one.
+                    candidate = None
+                    for _ in range(self.PLAN_RETRIES_FOR_A_FRESH_TITLE):
+                        proposal = self.topic_planner.plan(
+                            channel,
+                            style_bias=style_bias,
+                            term_bias=term_bias,
+                            avoid_titles=avoid_titles,
+                            content_kind=content_kind,
+                            dna=dna,
+                        )
+                        already_seen = {
+                            str(proposal.title or "").strip().lower(),
+                            str(proposal.subject or "").strip().lower(),
+                        } - {""}
+                        if not already_seen or not (already_seen & avoid_titles):
+                            candidate = proposal
+                            break
+                        self.logger.warning(
+                            channel.id,
+                            f"Planner repeated an already-rejected title: {proposal.title}",
+                        )
+                        candidate = proposal
+                    if candidate is None:
+                        continue
             except SourceSafeResearchExhaustedError as exc:
                 self.logger.warning(
                     channel.id,
