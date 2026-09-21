@@ -1939,8 +1939,11 @@ class VideoBuilder:
             beat_number = required_scales.index(max_required_scale) + 1
             raise LongCaptionPreflightError(
                 "long caption preflight failed before visual encoding: "
-                f"beat {beat_number} requires {(max_required_scale - 1.0) * 100:.1f}% stretch, "
-                f"above the safe {((self.MAX_LONG_BEAT_STRETCH - 1.0) * 100):.1f}% per-beat limit"
+                # Two decimals, because one of these read "requires 8.5%
+                # stretch, above the safe 8.5% limit" and gave whoever saw it
+                # nothing to act on.
+                f"beat {beat_number} requires {(max_required_scale - 1.0) * 100:.2f}% stretch, "
+                f"above the safe {((self.MAX_LONG_BEAT_STRETCH - 1.0) * 100):.2f}% per-beat limit"
             )
         total_acceleration = raw_duration / requested_duration
         if total_acceleration > self.MAX_LONG_NARRATION_ACCELERATION + 0.0001:
