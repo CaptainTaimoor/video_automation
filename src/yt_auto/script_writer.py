@@ -3710,10 +3710,19 @@ class ScriptWriter:
         message = choices[0].get("message") or {}
         text = str(message.get("content") or "").strip()
         if not text:
+            # A model that reasons can leave the answer in "reasoning" with
+            # content empty. The JSON reader downstream already ignores the
+            # working around an answer, so handing it the thinking is better
+            # than discarding a reply that contains what was asked for.
+            text = str(message.get("reasoning") or "").strip()
+        if not text:
             raise RuntimeError(f"empty {provider} response")
         # Keep host in audit trail via last call details.
         _ = host
         return text
+
+    # Room for a model to think and still produce an answer.
+    MIN_GATEWAY_OUTPUT_TOKENS = 512
 
     def _openai_compatible_settings(self) -> tuple[str, str, str]:
         env_url = (os.getenv("AI_GATEWAY_URL") or "").strip()
@@ -3937,10 +3946,18 @@ class ScriptWriter:
             "messages": [{"role": "user", "content": provider_prompt}],
             "temperature": 0.72,
             "top_p": 0.92,
-            "max_tokens": max(96, int(max_output_tokens)),
+            # Several free models reason before answering and spend the token
+            # budget doing it. Asked for 60 tokens one filled all of them with
+            # its thinking, returned empty content and stopped on "length" --
+            # a working model that looked broken. The floor buys room to think
+            # and still answer.
+            "max_tokens": max(self.MIN_GATEWAY_OUTPUT_TOKENS, int(max_output_tokens)),
         }
         if disable_thinking:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
+            # OpenRouter's own switch, which the chat-template hint does not
+            # reach on every model.
+            payload["reasoning"] = {"exclude": True}
         if response_mime_type == "application/json":
             payload["response_format"] = {"type": "json_object"}
         response = requests.post(

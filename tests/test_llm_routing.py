@@ -268,7 +268,10 @@ class RoutedScriptWriterTests(unittest.TestCase):
         args, kwargs = post.call_args
         self.assertEqual(args[0], "https://api.example.com/gateway/v1/chat/completions")
         self.assertEqual(kwargs["json"]["model"], "free-combo")
-        self.assertEqual(kwargs["json"]["max_tokens"], 96)
+        # Free reasoning models spend their budget thinking before they
+        # answer: asked for 96 one returned empty content and stopped on
+        # "length". The floor buys room to think and still reply.
+        self.assertEqual(kwargs["json"]["max_tokens"], ScriptWriter.MIN_GATEWAY_OUTPUT_TOKENS)
         self.assertTrue(kwargs["json"]["messages"][0]["content"].startswith("/no_think\n"))
         self.assertEqual(
             kwargs["json"]["chat_template_kwargs"],
