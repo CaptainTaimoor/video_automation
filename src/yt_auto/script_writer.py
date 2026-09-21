@@ -3793,6 +3793,8 @@ class ScriptWriter:
         return text
 
     # Room for a model to think and still produce an answer.
+    last_repair_outcome: str = ""
+
     MIN_GATEWAY_OUTPUT_TOKENS = 512
 
     def _openai_compatible_settings(self) -> tuple[str, str, str]:
@@ -4891,12 +4893,19 @@ class ScriptWriter:
         avoid_titles: set[str] | None = None,
         dna: dict | None = None,
     ) -> TopicCandidate | None:
+        # Every way out of here used to be a bare None, and the caller logs
+        # nothing when it gets one. A run showed thirteen repair attempts,
+        # none accepted and none reported as failed -- a mechanism that was
+        # doing nothing at all, invisibly. The reason is recorded now.
+        self.last_repair_outcome = ""
         base = topic
         try:
             base = self._polish_scene_plan(channel, topic, content_kind="short")
-        except Exception:
+        except Exception as exc:
+            self.last_repair_outcome = f"polish before rewrite failed: {exc}"
             base = topic
         if not base.scene_plan:
+            self.last_repair_outcome = "no scene plan to rewrite"
             return None
         try:
             rewritten = self._rewrite_scene_plan_with_ai(
@@ -4913,9 +4922,14 @@ class ScriptWriter:
                 content_kind="short",
             )
             if issues:
+                self.last_repair_outcome = (
+                    "rewrite still fails editorial review: " + "; ".join(issues[:3])
+                )
                 return None
+            self.last_repair_outcome = "accepted"
             return polished
-        except Exception:
+        except Exception as exc:
+            self.last_repair_outcome = f"{exc.__class__.__name__}: {exc}"
             return None
 
     def improve(self, channel: ChannelConfig, topic: TopicCandidate,

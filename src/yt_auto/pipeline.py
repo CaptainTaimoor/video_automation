@@ -6633,6 +6633,16 @@ class ShortsFactory:
                             if len(scored_candidates) >= candidate_pool_size:
                                 break
                             continue
+                        # Declining is not the same as raising, and both used
+                        # to look identical from here: silence.
+                        self.logger.warning(
+                            channel.id,
+                            "AI provider repair declined: "
+                            + (
+                                getattr(self.script_writer, "last_repair_outcome", "")
+                                or "no reason recorded"
+                            ),
+                        )
                     except Exception as repair_exc:
                         self.logger.warning(
                             channel.id,
