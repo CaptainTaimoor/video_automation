@@ -71,6 +71,10 @@ class VideoBuilder:
     # artificial.  Long captions may use the small amount of headroom between
     # the generated narration and the configured maximum, but never more than
     # this bounded correction.
+    # Every music bed is levelled to this before the mix gain is applied, so
+    # one track cannot sit twice as loud under the narration as the next.
+    MUSIC_BED_LUFS = -20.0
+
     MAX_LONG_NARRATION_STRETCH = 1.08
     MAX_LONG_BEAT_STRETCH = 1.085
     MAX_LONG_NARRATION_ACCELERATION = 1.10
@@ -1172,7 +1176,17 @@ class VideoBuilder:
         if music_path and music_path.exists():
             inputs.extend(["-stream_loop", "-1", "-i", str(music_path)])
             filters.append(
-                "[1:a]aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB,"
+                # Levelled before the gain, not after. music_volume is a fixed
+                # multiplier, so without this the bed's own mastering decides
+                # the mix: the tracks in assets/music span -13 to -26 LUFS, a
+                # 12 dB swing, and whichever one _pick_music happened to draw
+                # would set how loud the music sat under the voice. Worse, the
+                # loudnorm on the mix below would then pull the narration down
+                # to compensate for a hot bed. Levelling here makes the gain
+                # mean one thing for every track, including any the channel
+                # owner drops in later.
+                f"[1:a]loudnorm=I={self.MUSIC_BED_LUFS:.0f}:TP=-2.0:LRA=11,"
+                "aresample=48000:async=1:first_pts=0,asetpts=N/SR/TB,"
                 f"atrim=0:{duration_text},apad=pad_dur={duration_text},"
                 f"atrim=0:{duration_text},volume={music_volume:.3f}[bg]"
             )
