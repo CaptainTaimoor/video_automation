@@ -164,6 +164,7 @@ def load_config(path: Path) -> AppConfig:
             ),
             daily_min=int(video_raw.get("daily_min", 0) or 0),
             daily_max=int(video_raw.get("daily_max", 0) or 0),
+            voice_speed=float(video_raw.get("voice_speed", 0) or 0),
         )
 
         fb_config = None

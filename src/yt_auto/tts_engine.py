@@ -23,7 +23,13 @@ except Exception:  # YAML pronunciations are optional.
 
 
 class NarrationEngine:
-    def __init__(self, voices: List[str], voice_mode: str = "mix", backend_preference: str = "") -> None:
+    def __init__(
+        self,
+        voices: List[str],
+        voice_mode: str = "mix",
+        backend_preference: str = "",
+        speed_override: float = 0.0,
+    ) -> None:
         self.voices = voices or ["en-US-JennyNeural"]
         self.voice_mode = (voice_mode or "mix").lower()
         self.backend_preference = (backend_preference or os.getenv("YT_TTS_BACKEND") or "edge").strip().lower()
@@ -48,6 +54,16 @@ class NarrationEngine:
         configured_kokoro_voice, _, configured_speed = configured_kokoro_spec.partition("@")
         self.kokoro_voice = (configured_kokoro_voice or os.getenv("YT_KOKORO_VOICE") or "af_heart").strip()
         self.kokoro_speed = float(configured_speed or os.getenv("YT_KOKORO_SPEED", "0.98"))
+        if speed_override and speed_override > 0:
+            # A long video can ask for a slower read than the channel's Shorts
+            # use. Speaking rate and the caption gate are the same setting seen
+            # from two sides: at 1.10 the Ancient read puts 18.4 characters a
+            # second on screen against a 17.0 limit, which needs 8.52% stretch
+            # against an 8.5% ceiling, and that is why three long builds in a
+            # row died on the same beat. Trimming the script does not help --
+            # fewer characters take proportionally less time, so the rate is
+            # unchanged. Only the read speed moves it.
+            self.kokoro_speed = float(speed_override)
         self.allow_edge_fallback = os.getenv("YT_ALLOW_EDGE_TTS_FALLBACK", "").strip().lower() in {"1", "true", "yes", "on"}
 
     def _default_piper_executable(self) -> Path | None:

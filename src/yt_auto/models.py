@@ -76,6 +76,9 @@ class ContentProfile:
     # schedule_times is the fallback when no range is configured.
     daily_min: int = 0
     daily_max: int = 0
+    # Narration speed for this kind of video, overriding the rate in the
+    # channel's voice string. 0 keeps the channel's own rate.
+    voice_speed: float = 0.0
 
 
 @dataclass

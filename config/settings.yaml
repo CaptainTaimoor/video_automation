@@ -172,6 +172,13 @@ channels:
         max_duration_seconds: 360
         target_width: 1920
         target_height: 1080
+        # Slower than the Shorts read below, because speaking rate and the
+        # 17 CPS caption gate are one setting seen from two sides. At 1.10
+        # this channel's vocabulary puts 18.4 characters a second on screen,
+        # which needs 8.52% narration stretch against an 8.5% ceiling -- three
+        # long builds in a row died on that. Measured on the same beat:
+        # 1.10 -> +8.52% (fails), 1.05 -> +5.48%, 1.00 -> +2.42%.
+        voice_speed: 1.0
     voice_mode: single
     tts_backend: kokoro
     voices:

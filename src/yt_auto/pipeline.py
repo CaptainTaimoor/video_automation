@@ -4543,6 +4543,7 @@ class ShortsFactory:
         caption_word_counts = [SubtitleComposer.visible_word_count(line) for line in caption_lines]
         caption_max_words = max(caption_word_counts, default=0)
         caption_average_words = round(sum(caption_word_counts) / max(1, len(caption_word_counts)), 2)
+        caption_average_limit = 6.4 if content_kind == "video" else 4.8
         orphan_captions = sum(1 for count in caption_word_counts if count <= 1)
         dangling_caption_pattern = re.compile(
             r"\b(?:a|an|the|of|to|under|more|first|how|because|larger|less|is|are|was|were)[,;:]?$",
@@ -4575,6 +4576,16 @@ class ShortsFactory:
                     issues.append(caption_issue)
                 blocking_issues.append(caption_issue)
                 score -= 18
+            elif caption_average_words > caption_average_limit:
+                # This costs 18 points of the captions subscore below, and
+                # said nothing: a Short averaging 4.92 words against a 4.8
+                # target came back scored 82 with an empty issue list, while
+                # the very same number was also being listed as a strength.
+                # Not blocking -- the captions are legal, just dense.
+                issues.append(
+                    f"captions average {caption_average_words} words; "
+                    f"target is {caption_average_limit}"
+                )
             else:
                 strengths.append(f"captions average {caption_average_words} words")
         if orphan_captions:
@@ -4681,7 +4692,7 @@ class ShortsFactory:
         else:
             if caption_max_words > (8 if content_kind == "video" else 6):
                 captions_subscore -= 40
-            if caption_average_words > (6.4 if content_kind == "video" else 4.8):
+            if caption_average_words > caption_average_limit:
                 captions_subscore -= 18
             captions_subscore -= min(18, orphan_captions * 6)
             captions_subscore -= min(36, awkward_captions * 12)
@@ -6910,6 +6921,7 @@ class ShortsFactory:
                     selected_channel.voices,
                     selected_channel.voice_mode,
                     getattr(selected_channel, "tts_backend", ""),
+                    speed_override=float(getattr(profile, "voice_speed", 0) or 0),
                 )
                 voice_id, durations = voice_engine.synthesize_beats(
                     beats=beats,
