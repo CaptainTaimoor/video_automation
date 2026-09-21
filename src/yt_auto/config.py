@@ -81,6 +81,9 @@ def load_config(path: Path) -> AppConfig:
                 int(script_writer_raw.get("openai_compatible_timeout_seconds", 90)),
             ),
         ),
+        openai_compatible_zero_cost_only=bool(
+            script_writer_raw.get("openai_compatible_zero_cost_only", True)
+        ),
         openai_compatible_disable_thinking=bool(
             script_writer_raw.get("openai_compatible_disable_thinking", False)
         ),

@@ -13,16 +13,16 @@
     # Prefer qwen2.5:7b for Ollama full scripts; never rely on llama3.2:3b for
     # narration drafts. No provider tokens are stored in this file.
     provider: routed
-    # OpenRouter leads because it is the only one that is actually available.
-    # Gemini's free quota lets roughly one call through and then answers 429
-    # for the rest of the day, and with it first every run spent its first
-    # call discovering that, then put the whole chain on cooldown. It stays in
-    # the order as a second opinion, not as the default.
+    # Ordered by how many calls each one will actually serve in a day.
+    # Gemini is last and nearly decorative: its own 429 names the quota,
+    # "GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 20". Twenty
+    # calls a day against roughly 250 needed. Groq's free tier is 14,400 a
+    # day on Llama 3.3 70B, and Ollama is local and uncapped.
     provider_order:
       - openai_compatible
-      - gemini
       - groq
       - ollama
+      - gemini
     # Long enough to stop hammering a provider that is genuinely down, short
     # enough that a nine-model ladder is not sidelined by one bad minute.
     provider_cooldown_seconds: 90
@@ -35,7 +35,9 @@
     ollama_timeout_seconds: 90
     # Account catalog (Sep 2026): llama-3.3-70b-versatile is not on this key.
     # Prefer gpt-oss-120b for narration; gpt-oss-20b is the fast shorts alternate.
-    groq_model: openai/gpt-oss-120b
+    # 14,400 calls a day on the free tier. gpt-oss-120b sits on the same
+    # account but is capped at 1,000, so it is the wrong pick for volume.
+    groq_model: llama-3.3-70b-versatile
     groq_url: https://api.groq.com/openai/v1
     groq_api_key_env: GROQ_API_KEY
     # If Groq returns model_not_found, list models with the same key and update
@@ -79,6 +81,11 @@
       - inclusionai/ling-3.0-flash-fin:free
       - nex-agi/nex-n2.5-mini:free
       - openrouter/free
+    # Every gateway call carries max_price 0 and refuses provider fallback,
+    # so a model that stops being free is refused by OpenRouter rather than
+    # quietly billed. Tested: a paid model is refused, a free one answers at
+    # cost 0. Set false only to deliberately allow paid models.
+    openai_compatible_zero_cost_only: true
     openai_compatible_api_key_env: OPENROUTER_API_KEY
     openai_compatible_allowed_hosts:
       - openrouter.ai

@@ -3793,9 +3793,16 @@ class ScriptWriter:
         return text
 
     # Room for a model to think and still produce an answer.
+    # How many times one provider is asked before the chain moves on.
+    PROVIDER_ATTEMPTS = 2
+
     last_repair_outcome: str = ""
 
     MIN_GATEWAY_OUTPUT_TOKENS = 512
+
+    def _zero_cost_only(self) -> bool:
+        """Whether a gateway call may be allowed to cost anything."""
+        return bool(getattr(self.cfg, "openai_compatible_zero_cost_only", True))
 
     def _openai_compatible_settings(self) -> tuple[str, str, str]:
         env_url = (os.getenv("AI_GATEWAY_URL") or "").strip()
@@ -4052,6 +4059,17 @@ class ScriptWriter:
             payload["reasoning"] = {"exclude": True}
         if response_mime_type == "application/json":
             payload["response_format"] = {"type": "json_object"}
+        if self._zero_cost_only():
+            # A ":free" model can stop being free, and the account already
+            # shows real spend against its credits. This makes the refusal the
+            # gateway's job rather than ours: a paid endpoint comes back
+            # "No endpoints found that satisfy the max price for this request"
+            # and the ladder moves on. Verified against a paid model, which
+            # was refused, and a free one, which answered at cost 0.
+            payload["provider"] = {
+                "max_price": {"prompt": 0, "completion": 0},
+                "allow_fallbacks": False,
+            }
         response = requests.post(
             endpoint,
             headers=headers,
@@ -4281,7 +4299,23 @@ class ScriptWriter:
                 })
                 continue
             try:
-                generated = str(generate() or "").strip()
+                # Two tries before moving on. A free provider's first failure
+                # is often a momentary 429, and giving up on the whole
+                # provider for that sent runs to the template writer with
+                # every other provider still untried.
+                generated = ""
+                last_attempt_error: Exception | None = None
+                for _ in range(max(1, self.PROVIDER_ATTEMPTS)):
+                    try:
+                        generated = str(generate() or "").strip()
+                    except Exception as attempt_exc:
+                        last_attempt_error = attempt_exc
+                        continue
+                    if generated:
+                        last_attempt_error = None
+                        break
+                if last_attempt_error is not None:
+                    raise last_attempt_error
                 if not generated:
                     raise RuntimeError("empty response")
                 if validator is not None:

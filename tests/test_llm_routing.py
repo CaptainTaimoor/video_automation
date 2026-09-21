@@ -752,7 +752,9 @@ class RoutedScriptWriterTests(unittest.TestCase):
         self.assertEqual(writer_cfg.provider_order[0], "openai_compatible")
         self.assertEqual(writer_cfg.ollama_timeout_seconds, 90)
         self.assertEqual(writer_cfg.ollama_model, "qwen2.5:7b")
-        self.assertEqual(writer_cfg.groq_model, "openai/gpt-oss-120b")
+        # Groq's free tier is 14,400 calls a day on Llama 3.3 70B and only
+        # 1,000 on gpt-oss-120b, on the same account. Volume decides this one.
+        self.assertEqual(writer_cfg.groq_model, "llama-3.3-70b-versatile")
         # openrouter.ai leads: the gateway moved there for the free models,
         # and a host missing from this list has every call refused.
         self.assertEqual(

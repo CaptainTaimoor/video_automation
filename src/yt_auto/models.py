@@ -156,6 +156,9 @@ class ScriptWriterConfig:
     )
     openai_compatible_timeout_seconds: int = 90
     openai_compatible_disable_thinking: bool = False
+    # Every gateway call carries max_price 0, so a model that stops being
+    # free is refused by the gateway instead of quietly billed.
+    openai_compatible_zero_cost_only: bool = True
     groq_model: str = "openai/gpt-oss-120b"
     groq_url: str = "https://api.groq.com/openai/v1"
     groq_api_key_env: str = "GROQ_API_KEY"
