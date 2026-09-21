@@ -160,6 +160,9 @@ class ScriptWriterConfig:
     # free is refused by the gateway instead of quietly billed.
     openai_compatible_zero_cost_only: bool = True
     groq_model: str = "openai/gpt-oss-120b"
+    # Free-tier request limits are per model, so a second and third name is a
+    # second and third day's worth of calls.
+    groq_models: List[str] = field(default_factory=list)
     groq_url: str = "https://api.groq.com/openai/v1"
     groq_api_key_env: str = "GROQ_API_KEY"
     mistral_model: str = "mistral-small-latest"

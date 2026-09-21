@@ -741,20 +741,27 @@ class RoutedScriptWriterTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         writer_cfg = load_config(root / "config" / "settings.yaml").app.script_writer
         # The order is a live operational choice, so this pins what matters
-        # rather than the exact list: every provider stays reachable, and the
-        # one that is actually available leads. Gemini's free quota lets
-        # roughly one call through per day, and with it first every run spent
-        # its first call finding that out and then cooled the whole chain.
+        # rather than the exact list: every provider stays reachable, the
+        # fastest one leads, and the 20-calls-a-day one is last.
         self.assertEqual(
             sorted(writer_cfg.provider_order),
             ["gemini", "groq", "ollama", "openai_compatible"],
         )
-        self.assertEqual(writer_cfg.provider_order[0], "openai_compatible")
-        self.assertEqual(writer_cfg.ollama_timeout_seconds, 90)
+        # Measured on the real rewrite prompt: groq 3.4s, best free
+        # OpenRouter model 59.1s.
+        self.assertEqual(writer_cfg.provider_order[0], "groq")
+        self.assertEqual(writer_cfg.provider_order[-1], "gemini")
+        # A local 7B model is read off disk into a 4 GB card before it can
+        # answer anything; at 90s the first call timed out every time.
+        self.assertGreaterEqual(writer_cfg.ollama_timeout_seconds, 180)
         self.assertEqual(writer_cfg.ollama_model, "qwen2.5:7b")
-        # Groq's free tier is 14,400 calls a day on Llama 3.3 70B and only
-        # 1,000 on gpt-oss-120b, on the same account. Volume decides this one.
-        self.assertEqual(writer_cfg.groq_model, "llama-3.3-70b-versatile")
+        # Checked against the account's own model list rather than an
+        # article: Groq serves thirteen models on this key and every Llama
+        # one is gone, so llama-3.3-70b-versatile answers 404. Each name
+        # here answered the real prompt in under five seconds.
+        self.assertEqual(writer_cfg.groq_model, "openai/gpt-oss-120b")
+        self.assertIn(writer_cfg.groq_model, writer_cfg.groq_models)
+        self.assertGreaterEqual(len(writer_cfg.groq_models), 2)
         # openrouter.ai leads: the gateway moved there for the free models,
         # and a host missing from this list has every call refused.
         self.assertEqual(

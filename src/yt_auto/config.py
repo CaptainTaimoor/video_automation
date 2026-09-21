@@ -59,8 +59,11 @@ def load_config(path: Path) -> AppConfig:
             if str(item).strip()
         ],
         provider_cooldown_seconds=max(0, int(script_writer_raw.get("provider_cooldown_seconds", 180))),
+        # A local 7B model has to be read off disk into VRAM before it can
+        # answer, and on a 4 GB card that first call alone took longer than
+        # the old 90-second ceiling. The cap is the whole call, not the wait.
         ollama_timeout_seconds=min(
-            180,
+            600,
             max(15, int(script_writer_raw.get("ollama_timeout_seconds", 90))),
         ),
         openai_compatible_url=str(script_writer_raw.get("openai_compatible_url", "")),
@@ -88,6 +91,7 @@ def load_config(path: Path) -> AppConfig:
             script_writer_raw.get("openai_compatible_disable_thinking", False)
         ),
         groq_model=str(script_writer_raw.get("groq_model", "openai/gpt-oss-120b")),
+        groq_models=list(script_writer_raw.get("groq_models", []) or []),
         groq_url=str(script_writer_raw.get("groq_url", "https://api.groq.com/openai/v1")),
         groq_api_key_env=str(script_writer_raw.get("groq_api_key_env", "GROQ_API_KEY")),
         mistral_model=str(script_writer_raw.get("mistral_model", "mistral-small-latest")),

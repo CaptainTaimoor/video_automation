@@ -3730,6 +3730,15 @@ class ScriptWriter:
             )
         raise RuntimeError(f"unsupported named openai-compatible provider: {provider}")
 
+    def _named_model_ladder(self, provider: str) -> list[str]:
+        """Every model to try on a named provider, in order."""
+        _, first, _ = self._named_openai_compatible_settings(provider)
+        configured = getattr(self.cfg, f"{provider}_models", None) or []
+        ladder = [str(name).strip() for name in configured if str(name).strip()]
+        if first and first not in ladder:
+            ladder.insert(0, first)
+        return ladder
+
     def _generate_named_openai_compatible(
         self,
         provider: str,
@@ -3738,7 +3747,48 @@ class ScriptWriter:
         response_mime_type: str | None = None,
         temperature: float | None = None,
     ) -> str:
+        # Groq's free tier counts requests per model, so a second name is a
+        # second allowance rather than a spare tyre. Walking the ladder here
+        # keeps one exhausted model from ending the provider.
+        ladder = self._named_model_ladder(provider)
+        if len(ladder) > 1:
+            errors: list[str] = []
+            for candidate in ladder:
+                try:
+                    return self._generate_named_once(
+                        provider,
+                        candidate,
+                        prompt,
+                        max_output_tokens=max_output_tokens,
+                        response_mime_type=response_mime_type,
+                        temperature=temperature,
+                    )
+                except Exception as exc:
+                    errors.append(f"{self._safe_model_label(candidate)}: {exc}")
+                    continue
+            raise RuntimeError(
+                f"every {provider} model failed: " + "; ".join(errors[-3:])
+            )
+        return self._generate_named_once(
+            provider,
+            ladder[0] if ladder else "",
+            prompt,
+            max_output_tokens=max_output_tokens,
+            response_mime_type=response_mime_type,
+            temperature=temperature,
+        )
+
+    def _generate_named_once(
+        self,
+        provider: str,
+        model_override: str,
+        prompt: str,
+        max_output_tokens: int = 700,
+        response_mime_type: str | None = None,
+        temperature: float | None = None,
+    ) -> str:
         base_url, model, api_key = self._named_openai_compatible_settings(provider)
+        model = (model_override or model).strip()
         if not base_url or not model:
             raise RuntimeError(f"{provider} url/model is not configured")
         if not api_key:

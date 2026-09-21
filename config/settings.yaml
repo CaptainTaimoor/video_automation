@@ -13,14 +13,24 @@
     # Prefer qwen2.5:7b for Ollama full scripts; never rely on llama3.2:3b for
     # narration drafts. No provider tokens are stored in this file.
     provider: routed
-    # Ordered by how many calls each one will actually serve in a day.
-    # Gemini is last and nearly decorative: its own 429 names the quota,
-    # "GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 20". Twenty
-    # calls a day against roughly 250 needed. Groq's free tier is 14,400 a
-    # day on Llama 3.3 70B, and Ollama is local and uncapped.
+    # Ordered by measured speed on the real rewrite prompt, then by how many
+    # calls each will serve in a day:
+    #
+    #   groq  openai/gpt-oss-120b     3.4s
+    #   groq  openai/gpt-oss-20b      3.5s
+    #   or    nemotron-3-super       59.1s
+    #   or    nex-n2.5-pro          116.4s
+    #   or    nemotron-3-ultra      313.6s
+    #
+    # Groq is twenty times faster than the best free OpenRouter model and
+    # answers correctly, so it leads. Gemini is last and nearly decorative:
+    # its own 429 names the quota,
+    # "GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 20" -- twenty
+    # calls a day against roughly 250 needed. Ollama is local and uncapped but
+    # slow, so it sits above Gemini as the one that can never run out.
     provider_order:
-      - openai_compatible
       - groq
+      - openai_compatible
       - ollama
       - gemini
     # Long enough to stop hammering a provider that is genuinely down, short
@@ -32,12 +42,21 @@
     ollama_url: http://localhost:11434/api/generate
     # Leave enough time for a cold local-model start, while keeping the final
     # fallback bounded so an unavailable daemon cannot stall a build forever.
-    ollama_timeout_seconds: 90
+    # A 7B model loads off disk into a 4 GB card before it answers; the
+    # first call needs minutes, later ones seconds.
+    ollama_timeout_seconds: 300
     # Account catalog (Sep 2026): llama-3.3-70b-versatile is not on this key.
     # Prefer gpt-oss-120b for narration; gpt-oss-20b is the fast shorts alternate.
-    # 14,400 calls a day on the free tier. gpt-oss-120b sits on the same
-    # account but is capped at 1,000, so it is the wrong pick for volume.
-    groq_model: llama-3.3-70b-versatile
+    # Checked against the account's own model list, not an article: Groq
+    # serves thirteen models here and every Llama one is gone. These three
+    # answered the real prompt correctly in 3.4s, 3.5s and 4.9s, and the
+    # free tier counts requests per model, so three names is three
+    # allowances.
+    groq_model: openai/gpt-oss-120b
+    groq_models:
+      - openai/gpt-oss-120b
+      - openai/gpt-oss-20b
+      - groq/compound-mini
     groq_url: https://api.groq.com/openai/v1
     groq_api_key_env: GROQ_API_KEY
     # If Groq returns model_not_found, list models with the same key and update
@@ -67,20 +86,14 @@
     # and nothing else -- the mystery answer that cost an earlier run its
     # scripts.
     openai_compatible_models:
-      # Ordered by what answered the real rewrite prompt, and how dearly.
-      # nano-omni did it in 180 tokens; the next two needed 3147 and 3749.
-      - nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
-      - nvidia/nemotron-3-ultra-550b-a55b:free
-      - nex-agi/nex-n2.5-pro:free
+      # Only the three that answered the real prompt correctly, fastest
+      # first: 59.1s, 116.4s, 313.6s. The others returned nothing at all on
+      # it however much budget they were given, and every one of them cost
+      # ten to ninety seconds to find that out -- which is how a single
+      # rewrite took 199 seconds.
       - nvidia/nemotron-3-super-120b-a12b:free
-      - inclusionai/ling-3.0-flash-vl:free
-      # These three answered a short prompt and return nothing at all on the
-      # real one, spending the whole budget on thinking. Kept last as a
-      # lottery ticket rather than removed: free models come back.
-      - liquid/lfm-2.5-2.6b:free
-      - inclusionai/ling-3.0-flash-fin:free
-      - nex-agi/nex-n2.5-mini:free
-      - openrouter/free
+      - nex-agi/nex-n2.5-pro:free
+      - nvidia/nemotron-3-ultra-550b-a55b:free
     # Every gateway call carries max_price 0 and refuses provider fallback,
     # so a model that stops being free is refused by OpenRouter rather than
     # quietly billed. Tested: a paid model is refused, a free one answers at
