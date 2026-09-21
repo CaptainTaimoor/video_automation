@@ -2421,12 +2421,35 @@ class ScriptWriter:
         ]
         body: list[ScenePlanItem] = []
         category_counts: dict[str, int] = {}
+        # A script that says the same sentence twice reads as padding, and a
+        # modulo index guarantees it: the "writing" pool holds three lines, and
+        # a Dead Sea Scrolls script whose facts are all about texts drew six
+        # from it. Two sentences appeared word for word twice in the same
+        # narration, and the script gate scored it 100. repeat_category_contexts
+        # was written for exactly this -- a clue of a type already covered --
+        # and was never wired in.
+        used_lines: set[str] = set()
+
+        def unused(*pools: list[str]) -> str:
+            for pool in pools:
+                for line in pool:
+                    if line not in used_lines:
+                        used_lines.add(line)
+                        return line
+            # Every pool spent. Repeating beats returning nothing, and with
+            # twenty-odd lines against a dozen or so facts this is unreachable
+            # in practice.
+            return pools[0][0] if pools and pools[0] else ""
+
         for index, point in enumerate(points):
             category = self._history_fact_category(point)
             category_counts[category] = category_counts.get(category, 0) + 1
             context_options = category_context_variants.get(category, [category_context["evidence"]])
-            context = context_options[(category_counts[category] - 1) % len(context_options)]
-            lens = primary_lenses[index % len(primary_lenses)]
+            start = (category_counts[category] - 1) % len(context_options)
+            rotated = context_options[start:] + context_options[:start]
+            context = unused(rotated, repeat_category_contexts)
+            lens_start = index % len(primary_lenses)
+            lens = unused(primary_lenses[lens_start:] + primary_lenses[:lens_start])
             caption = self._captionize(point) or f"Evidence clue {index + 1}"
             body.append(
                 self._long_scene(
