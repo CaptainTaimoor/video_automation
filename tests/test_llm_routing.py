@@ -740,10 +740,16 @@ class RoutedScriptWriterTests(unittest.TestCase):
     def test_workspace_config_has_safe_gateway_and_cold_start_defaults(self) -> None:
         root = Path(__file__).resolve().parents[1]
         writer_cfg = load_config(root / "config" / "settings.yaml").app.script_writer
+        # The order is a live operational choice, so this pins what matters
+        # rather than the exact list: every provider stays reachable, and the
+        # one that is actually available leads. Gemini's free quota lets
+        # roughly one call through per day, and with it first every run spent
+        # its first call finding that out and then cooled the whole chain.
         self.assertEqual(
-            writer_cfg.provider_order,
-            ["gemini", "groq", "openai_compatible", "ollama"],
+            sorted(writer_cfg.provider_order),
+            ["gemini", "groq", "ollama", "openai_compatible"],
         )
+        self.assertEqual(writer_cfg.provider_order[0], "openai_compatible")
         self.assertEqual(writer_cfg.ollama_timeout_seconds, 90)
         self.assertEqual(writer_cfg.ollama_model, "qwen2.5:7b")
         self.assertEqual(writer_cfg.groq_model, "openai/gpt-oss-120b")
