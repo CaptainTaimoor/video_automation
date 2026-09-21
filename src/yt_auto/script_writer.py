@@ -4591,15 +4591,17 @@ class ScriptWriter:
         avoid_str = ", ".join(list(avoid_titles or [])[:14])
         dna_context = self._dna_context(dna)
         creative_frame = self._creative_frame(channel, topic)
-        target_words = (
-            f"{self._BRAIN_SHORT_MIN_WORDS}-{self._BRAIN_SHORT_MAX_WORDS}"
-            if content_kind == "short" and channel.id == "brain_lens"
-            else (
-                f"{self._ANCIENT_SHORT_MIN_WORDS}-{self._ANCIENT_SHORT_MAX_WORDS}"
-                if content_kind == "short"
-                else "150-240"
-            )
-        )
+        if content_kind == "short" and channel.id == "brain_lens":
+            target_words = f"{self._BRAIN_SHORT_MIN_WORDS}-{self._BRAIN_SHORT_MAX_WORDS}"
+        elif content_kind == "short":
+            target_words = f"{self._ANCIENT_SHORT_MIN_WORDS}-{self._ANCIENT_SHORT_MAX_WORDS}"
+        else:
+            # A flat "150-240" here was left over from an older format and told
+            # the model to write a fifth of a long video. The channel's own
+            # target is around 775 words for a four-to-six minute script, and
+            # the gate rejects anything under 658.
+            long_target = int(self._target_words(channel, "video"))
+            target_words = f"{int(long_target * 0.9)}-{int(long_target * 1.1)}"
         beat_limit = (
             "20 words for beat 1, 24 words for every other beat"
             if content_kind == "short"
@@ -5093,10 +5095,38 @@ class ScriptWriter:
             "1", "true", "yes", "on"
         }:
             return self._polish_scene_plan(channel, topic, content_kind=content_kind)
-        # Deterministic behavior-first planning is fast and has hard editorial
-        # guarantees. Free models remain valuable as scorers/reviewers after a
-        # candidate passes those gates, but must not stall every rejected idea.
+        # Shorts used to skip the rewrite entirely and go straight to the
+        # deterministic planner, because a free model could take minutes and
+        # stall every rejected idea. That was true when the ladder was full of
+        # models that answer nothing; it is not true now that Groq returns a
+        # correct rewrite in about three seconds.
+        #
+        # The cost of skipping it was the whole Shorts pipeline. Over two days
+        # of planning: Brain Lens long, which uses the rewrite, passed 82% of
+        # attempts; Brain Lens short passed 10% and Ancient short passed none
+        # at all, rejected for exactly the things a rewrite fixes -- a hook
+        # with no concrete clue, a beat that will not split into clean
+        # captions, a script under its own word floor.
+        #
+        # Nothing is weakened by this: the rewrite's output still goes through
+        # _polish_scene_plan and every editorial gate behind it. The gates
+        # simply get a better draft to judge, and a failure falls back to the
+        # deterministic plan exactly as before.
         if content_kind == "short" and channel.id in {"brain_lens", "ancient_history"}:
+            if topic.scene_plan and self._ai_enabled():
+                try:
+                    rewritten = self._rewrite_scene_plan_with_ai(
+                        channel=channel,
+                        topic=topic,
+                        content_kind=content_kind,
+                        avoid_titles=avoid_titles,
+                        dna=dna,
+                    )
+                except Exception:
+                    rewritten = topic
+                return self._polish_scene_plan(
+                    channel, rewritten, content_kind=content_kind
+                )
             return self._polish_scene_plan(channel, topic, content_kind=content_kind)
         if topic.scene_plan and self._ai_enabled():
             if content_kind == "video":
