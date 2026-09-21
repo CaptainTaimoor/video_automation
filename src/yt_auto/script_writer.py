@@ -4531,12 +4531,20 @@ class ScriptWriter:
         A flat 400 was fine for a seven-beat short and far too small for a
         long video's twenty-plus, so the reply stopped mid-array, the JSON
         never closed, and the beat-count check read a truncated answer as a
-        bad one. 60 tokens covers a beat comfortably; the 300 on top is the
-        JSON scaffolding, the optional title, and the thinking a reasoning
-        model does before it starts writing.
+        bad one.
+
+        Scaling it by beat count was still an order of magnitude short. The
+        rewrite prompt is eight hundred tokens of instructions, and a
+        reasoning model thinks its way through all of them before writing a
+        word -- that thinking is billed against max_tokens even when
+        reasoning.exclude keeps it out of the reply. Measured on the real
+        seven-beat prompt, the models that answered correctly spent 2273,
+        3147 and 3749 tokens; at 720 every one of them returned empty with
+        finish_reason "length", which read as nine dead models and an
+        exhausted free tier.
         """
         beats = max(1, int(beat_count or 1))
-        return min(4000, max(512, beats * 60 + 300))
+        return min(9000, max(5000, beats * 200 + 4000))
 
     def _rewrite_scene_plan_with_ai(
         self,

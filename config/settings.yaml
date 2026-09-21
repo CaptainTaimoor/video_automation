@@ -50,7 +50,7 @@
     # raises the free daily request limit. The Hugging Face router answered
     # 402 on every call, which is why this moved.
     openai_compatible_url: https://openrouter.ai/api
-    openai_compatible_model: nvidia/nemotron-3-super-120b-a12b:free
+    openai_compatible_model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
     # Tried in turn when the one above is busy. Every entry was checked on
     # 2026-09-21 against the real beat-rewrite task and returned the exact
     # beat count asked for.
@@ -65,14 +65,19 @@
     # and nothing else -- the mystery answer that cost an earlier run its
     # scripts.
     openai_compatible_models:
-      - nvidia/nemotron-3-super-120b-a12b:free
+      # Ordered by what answered the real rewrite prompt, and how dearly.
+      # nano-omni did it in 180 tokens; the next two needed 3147 and 3749.
+      - nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
       - nvidia/nemotron-3-ultra-550b-a55b:free
       - nex-agi/nex-n2.5-pro:free
+      - nvidia/nemotron-3-super-120b-a12b:free
       - inclusionai/ling-3.0-flash-vl:free
+      # These three answered a short prompt and return nothing at all on the
+      # real one, spending the whole budget on thinking. Kept last as a
+      # lottery ticket rather than removed: free models come back.
+      - liquid/lfm-2.5-2.6b:free
       - inclusionai/ling-3.0-flash-fin:free
       - nex-agi/nex-n2.5-mini:free
-      - nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
-      - liquid/lfm-2.5-2.6b:free
       - openrouter/free
     openai_compatible_api_key_env: OPENROUTER_API_KEY
     openai_compatible_allowed_hosts:

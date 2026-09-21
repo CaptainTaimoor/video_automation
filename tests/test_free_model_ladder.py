@@ -226,10 +226,10 @@ class RewriteTokenBudgetTests(unittest.TestCase):
     def test_a_short_gets_more_than_the_old_flat_budget(self):
         self.assertGreater(ScriptWriter._rewrite_token_budget(9), 512)
 
-    def test_a_long_video_gets_far_more_than_a_short(self):
+    def test_a_long_video_gets_more_than_a_short(self):
         self.assertGreater(
             ScriptWriter._rewrite_token_budget(25),
-            ScriptWriter._rewrite_token_budget(9) * 2,
+            ScriptWriter._rewrite_token_budget(9),
         )
 
     def test_the_budget_grows_with_the_beat_count(self):
@@ -244,6 +244,13 @@ class RewriteTokenBudgetTests(unittest.TestCase):
         self.assertGreaterEqual(ScriptWriter._rewrite_token_budget(0), 512)
 
     def test_the_budget_is_capped_so_one_call_cannot_run_away(self):
-        self.assertLessEqual(ScriptWriter._rewrite_token_budget(10_000), 4000)
+        self.assertLessEqual(ScriptWriter._rewrite_token_budget(10_000), 9000)
+
+    def test_the_budget_covers_what_a_reasoning_model_actually_spends(self):
+        # Measured on the real seven-beat rewrite prompt: the models that
+        # answered correctly spent 2273, 3147 and 3749 tokens, all of it on
+        # thinking through eight hundred tokens of instructions before
+        # writing. At 720 every one returned empty on finish_reason "length".
+        self.assertGreater(ScriptWriter._rewrite_token_budget(7), 3749)
 if __name__ == "__main__":
     unittest.main()
