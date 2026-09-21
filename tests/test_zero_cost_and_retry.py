@@ -129,3 +129,66 @@ class ProviderRetryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TemperatureTests(unittest.TestCase):
+    """Write creatively, judge consistently."""
+
+    def test_writing_gets_room_to_surprise(self):
+        for purpose in ("scene_rewrite", "title_generation", "script_draft",
+                        "script_expansion"):
+            with self.subTest(purpose=purpose):
+                self.assertEqual(
+                    ScriptWriter._temperature_for(purpose),
+                    ScriptWriter.CREATIVE_TEMPERATURE,
+                )
+
+    def test_judging_is_near_deterministic(self):
+        for purpose in ("quality_review", "topic_scoring"):
+            with self.subTest(purpose=purpose):
+                self.assertEqual(
+                    ScriptWriter._temperature_for(purpose),
+                    ScriptWriter.ANALYTICAL_TEMPERATURE,
+                )
+
+    def test_a_score_is_colder_than_a_draft(self):
+        # A video that passes at 92 on Monday must not be held at 86 on
+        # Tuesday because the scorer felt creative.
+        self.assertLess(
+            ScriptWriter.ANALYTICAL_TEMPERATURE,
+            ScriptWriter.CREATIVE_TEMPERATURE,
+        )
+
+    def test_an_unknown_purpose_is_treated_as_writing(self):
+        self.assertEqual(
+            ScriptWriter._temperature_for("something_new"),
+            ScriptWriter.CREATIVE_TEMPERATURE,
+        )
+
+    def test_a_blank_purpose_does_not_crash(self):
+        self.assertEqual(
+            ScriptWriter._temperature_for(""), ScriptWriter.CREATIVE_TEMPERATURE
+        )
+
+    def test_the_gateway_sends_the_temperature_it_was_given(self):
+        made = writer()
+        captured = {}
+
+        class Reply:
+            status_code = 200
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": "hi"}}]}
+            @staticmethod
+            def raise_for_status():
+                return None
+
+        def fake_post(url, headers=None, json=None, timeout=None, allow_redirects=None):
+            captured.update(json or {})
+            return Reply()
+
+        with patch("yt_auto.script_writer.requests.post", fake_post):
+            made._generate_openai_compatible_once(
+                "p", "a:free", "https://openrouter.ai/api", "k", temperature=0.2
+            )
+        self.assertAlmostEqual(captured["temperature"], 0.2)

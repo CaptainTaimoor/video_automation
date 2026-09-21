@@ -3682,7 +3682,7 @@ class ScriptWriter:
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.8,
+                "temperature": self._temperature_for(call_purpose),
                 "top_p": 0.92,
                 "num_predict": max(300, int(max_output_tokens)),
             },
@@ -3736,6 +3736,7 @@ class ScriptWriter:
         prompt: str,
         max_output_tokens: int = 700,
         response_mime_type: str | None = None,
+        temperature: float | None = None,
     ) -> str:
         base_url, model, api_key = self._named_openai_compatible_settings(provider)
         if not base_url or not model:
@@ -3752,7 +3753,9 @@ class ScriptWriter:
         payload: dict[str, object] = {
             "model": model,
             "messages": messages,
-            "temperature": 0.7,
+            "temperature": float(
+                self.CREATIVE_TEMPERATURE if temperature is None else temperature
+            ),
             "max_tokens": max(256, int(max_output_tokens)),
         }
         if response_mime_type == "application/json":
@@ -3793,12 +3796,31 @@ class ScriptWriter:
         return text
 
     # Room for a model to think and still produce an answer.
+    # One temperature for every call was wrong in both directions. Writing a
+    # hook wants room to surprise; scoring a finished video wants the same
+    # answer twice, and a drifting score means a video that passes at 92 on
+    # Monday is held at 86 on Tuesday for no reason anyone can see.
+    CREATIVE_TEMPERATURE = 0.85
+    ANALYTICAL_TEMPERATURE = 0.2
+    ANALYTICAL_PURPOSES = frozenset({
+        "quality_review",
+        "topic_scoring",
+    })
+
     # How many times one provider is asked before the chain moves on.
     PROVIDER_ATTEMPTS = 2
 
     last_repair_outcome: str = ""
 
     MIN_GATEWAY_OUTPUT_TOKENS = 512
+
+    @classmethod
+    def _temperature_for(cls, purpose: str) -> float:
+        """Creative for writing, near-deterministic for judging."""
+        name = str(purpose or "").strip().lower()
+        if name in cls.ANALYTICAL_PURPOSES:
+            return cls.ANALYTICAL_TEMPERATURE
+        return cls.CREATIVE_TEMPERATURE
 
     def _zero_cost_only(self) -> bool:
         """Whether a gateway call may be allowed to cost anything."""
@@ -3968,6 +3990,7 @@ class ScriptWriter:
         max_output_tokens: int = 700,
         response_mime_type: str | None = None,
         validator: Callable[[str], bool] | None = None,
+        temperature: float | None = None,
     ) -> str:
         base_url, model, api_key = self._openai_compatible_settings()
         ladder = self._openai_compatible_models() or ([model] if model else [])
@@ -3991,6 +4014,7 @@ class ScriptWriter:
                         api_key,
                         max_output_tokens=max_output_tokens,
                         response_mime_type=response_mime_type,
+                        temperature=temperature,
                     )
                 except Exception as exc:
                     errors.append(f"{self._safe_model_label(candidate)}: {exc}")
@@ -4015,6 +4039,7 @@ class ScriptWriter:
             api_key,
             max_output_tokens=max_output_tokens,
             response_mime_type=response_mime_type,
+            temperature=temperature,
         )
 
     def _generate_openai_compatible_once(
@@ -4025,6 +4050,7 @@ class ScriptWriter:
         api_key: str,
         max_output_tokens: int = 700,
         response_mime_type: str | None = None,
+        temperature: float | None = None,
     ) -> str:
         self._validate_openai_compatible_endpoint(base_url, model)
 
@@ -4043,7 +4069,9 @@ class ScriptWriter:
         payload: dict = {
             "model": model,
             "messages": [{"role": "user", "content": provider_prompt}],
-            "temperature": 0.72,
+            "temperature": float(
+                self.CREATIVE_TEMPERATURE if temperature is None else temperature
+            ),
             "top_p": 0.92,
             # Several free models reason before answering and spend the token
             # budget doing it. Asked for 60 tokens one filled all of them with
@@ -4153,6 +4181,7 @@ class ScriptWriter:
         prompt: str,
         max_output_tokens: int = 700,
         response_mime_type: str | None = None,
+        temperature: float | None = None,
     ) -> str:
         key = self._gemini_key()
         if not key:
@@ -4163,7 +4192,9 @@ class ScriptWriter:
         self._validate_gemini_endpoint(base_url, model)
         endpoint = f"{base_url}/{model}:generateContent"
         generation_config = {
-            "temperature": 0.72,
+            "temperature": float(
+                self.CREATIVE_TEMPERATURE if temperature is None else temperature
+            ),
             "topP": 0.92,
             "maxOutputTokens": max_output_tokens,
         }
@@ -4232,29 +4263,37 @@ class ScriptWriter:
             str(purpose or "").strip().lower(),
         ).strip("_")[:64] or "unspecified"
 
+        # One temperature per purpose, the same across every provider, so a
+        # score does not change meaning because the chain fell through to a
+        # different one.
+        call_temperature = self._temperature_for(call_purpose)
         generators = {
             "gemini": lambda: self._generate_gemini(
                 prompt,
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
+                temperature=call_temperature,
             ),
             "openai_compatible": lambda: self._generate_openai_compatible(
                 prompt,
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
                 validator=validator,
+                temperature=call_temperature,
             ),
             "groq": lambda: self._generate_named_openai_compatible(
                 "groq",
                 prompt,
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
+                temperature=call_temperature,
             ),
             "mistral": lambda: self._generate_named_openai_compatible(
                 "mistral",
                 prompt,
                 max_output_tokens=max_output_tokens,
                 response_mime_type=response_mime_type,
+                temperature=call_temperature,
             ),
             "ollama": lambda: self._generate_ollama(
                 prompt,
