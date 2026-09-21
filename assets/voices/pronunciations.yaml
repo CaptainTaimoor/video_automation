@@ -24,3 +24,13 @@ terms:
   Attachment style: uh TACH munt style
   Limerence: LIM er uns
   Situationship: sit choo AY shun ship
+
+# Phonemes for Kokoro, which speaks a name written as [Name](/phonemes/)
+# instead of guessing at it. The respellings under `terms:` above cannot be
+# reused here: Kokoro's G2P reads "NAHZ kah" as the letters N-A-H-Z, so the
+# capitals come out as an initialism. Write IPA instead, and only for a name
+# Kokoro actually gets wrong -- it already handles most of them.
+ipa:
+  Angkor Wat: ˈæŋkɔːr wˈɑːt
+  Harappa: hərˈʌpə
+  Sagrada Familia: səɡrˈɑːdə fəmˈiːliːə

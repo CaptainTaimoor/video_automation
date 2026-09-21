@@ -172,6 +172,78 @@ class NarrationEngine:
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
+    # Kokoro understands a name written as [Name](/phonemes/) and speaks the
+    # phonemes instead of guessing. The respelling table above cannot be used
+    # for it: fed "NAHZ kah", the G2P reads the capitals as an initialism and
+    # says "en-ay-aych-zee kah", which is why it is switched off for Kokoro.
+    #
+    # Only names Kokoro actually gets wrong belong here. Checked against the
+    # live G2P, it already handles Tikal, stelae, Thermopylae, Xerxes, Petra,
+    # Lascaux, Mohenjo-Daro, Euphrates, Knossos, Nefertiti, Hatshepsut and
+    # amygdala correctly, and an override would only risk making them worse.
+    KOKORO_PHONEMES: dict[str, str] = {
+        # Said "GOH-bkli teep": a vowel dropped and the final one lost.
+        "Gobekli Tepe": "ɡəbˈɛkliː tˈɛpeɪ",
+        "Göbekli Tepe": "ɡəbˈɛkliː tˈɛpeɪ",
+        # Said "tih-OT-ih-hyoo-a-kuhn".
+        "Teotihuacan": "tˌeɪoʊtiːwəkˈɑːn",
+        "Teotihuacán": "tˌeɪoʊtiːwəkˈɑːn",
+        # Said "yaks MYOO-tuhl"; Tikal's own name for itself.
+        "Yax Mutal": "jˈɑːʃ muːtˈɑːl",
+        # Said "kay-AY-a-wil" with two stresses in one word.
+        "Jasaw Chan K'awiil": "ʤˈɑːsɑːw ʧˈɑːn kəwˈiːl",
+        # Said "NAZ-kuh".
+        "Nazca": "nˈɑːskɑː",
+        "Nasca": "nˈɑːskɑː",
+        # Said "AK-sum".
+        "Axum": "ˈɑːksuːm",
+        "Aksum": "ˈɑːksuːm",
+        # Stress on the first syllable instead of the second.
+        "Chichen Itza": "ʧiːʧˈɛn iːtsˈɑː",
+        "Chichén Itzá": "ʧiːʧˈɛn iːtsˈɑː",
+        # Said "PIK-oo": the second ch disappears.
+        "Machu Picchu": "mˈɑːtʃuː pˈiːktʃuː",
+    }
+
+    def _kokoro_phoneme_overrides(self) -> dict[str, str]:
+        """Built-in names plus anything under `ipa:` in the voices file."""
+        overrides = dict(self.KOKORO_PHONEMES)
+        path = Path.cwd() / "assets" / "voices" / "pronunciations.yaml"
+        if not yaml or not path.exists():
+            return overrides
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            extra = data.get("ipa") if isinstance(data, dict) else None
+            if isinstance(extra, dict):
+                for term, phonemes in extra.items():
+                    clean_term = str(term or "").strip()
+                    clean_phonemes = str(phonemes or "").strip().strip("/")
+                    if clean_term and clean_phonemes:
+                        overrides[clean_term] = clean_phonemes
+        except Exception:
+            return overrides
+        return overrides
+
+    def _with_kokoro_phonemes(self, text: str) -> str:
+        """Mark up the names Kokoro mispronounces, leaving the rest alone."""
+        marked = str(text or "")
+        if not marked.strip() or "](/" in marked:
+            # Already marked up; wrapping a second time would nest the syntax
+            # and Kokoro would read the brackets out loud.
+            return marked
+        overrides = self._kokoro_phoneme_overrides()
+        # Longest first, so "Chichen Itza" wins over a bare "Itza" entry.
+        for term in sorted(overrides, key=len, reverse=True):
+            phonemes = overrides[term]
+            pattern = rf"(?<![\w/])({re.escape(term)})(?![\w/])"
+            marked = re.sub(
+                pattern,
+                lambda match: f"[{match.group(1)}](/{phonemes}/)",
+                marked,
+                flags=re.IGNORECASE,
+            )
+        return marked
+
     def _load_pronunciation_overrides(self) -> dict[str, str]:
         path = Path.cwd() / "assets" / "voices" / "pronunciations.yaml"
         if not yaml or not path.exists():
@@ -339,7 +411,11 @@ class NarrationEngine:
         out_dir.mkdir(parents=True, exist_ok=True)
         input_path = out_dir / "kokoro_input.json"
         manifest_path = out_dir / "kokoro_manifest.json"
-        input_path.write_text(json.dumps(texts, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Applied here rather than in _normalize_text because that text also
+        # feeds Piper, Edge and pyttsx3 when Kokoro is unavailable, and those
+        # would read the markup out as punctuation.
+        spoken = [self._with_kokoro_phonemes(item) for item in texts]
+        input_path.write_text(json.dumps(spoken, ensure_ascii=False, indent=2), encoding="utf-8")
         command = [
             str(self.kokoro_python),
             str(self.kokoro_script),

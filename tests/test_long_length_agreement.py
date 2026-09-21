@@ -87,5 +87,45 @@ class WorkspaceConfigTests(unittest.TestCase):
         self.assertLessEqual(VideoBuilder.SHORT_CAPTION_TARGET_CPS, SubtitleComposer.DEFAULT_MAX_CPS)
 
 
+class PacingFloorFollowsDurationTests(unittest.TestCase):
+    """The builder's "is this a real script" floor is the third partner.
+
+    It was a flat 850, written when long videos ran eight to ten minutes. At
+    four to six the writer aims at 775, so every correctly sized script read
+    as a stub, pacing normalization switched off, and a finished build was
+    thrown away over a beat needing 8.7% stretch where 8.5% was allowed.
+    """
+
+    @staticmethod
+    def pacing_floor(min_seconds: int) -> int:
+        return max(1, int(min_seconds * VideoBuilder.MIN_LONG_NARRATION_WPM / 60.0))
+
+    def test_a_script_the_gate_accepts_is_never_treated_as_a_stub(self):
+        for mn, mx in ((240, 360), (300, 420), (480, 600), (600, 900)):
+            with self.subTest(duration=(mn, mx)):
+                gate_low, _ = factory()._long_word_window(channel(mn, mx))
+                self.assertLessEqual(
+                    self.pacing_floor(mn),
+                    gate_low,
+                    "a script long enough to pass the editorial gate would "
+                    "still lose pacing normalization",
+                )
+
+    def test_the_writers_own_target_keeps_pacing_on(self):
+        for mn, mx in ((240, 360), (300, 420), (480, 600)):
+            with self.subTest(duration=(mn, mx)):
+                ch = channel(mn, mx)
+                target = factory().script_writer._target_words(ch, "video")
+                self.assertGreaterEqual(target, self.pacing_floor(mn))
+
+    def test_the_floor_rises_with_the_configured_length(self):
+        floors = [self.pacing_floor(mn) for mn in (240, 300, 480, 600)]
+        self.assertEqual(floors, sorted(floors))
+        self.assertEqual(len(set(floors)), len(floors))
+
+    def test_a_genuine_stub_is_still_refused_pacing(self):
+        self.assertGreater(self.pacing_floor(240), 200)
+
+
 if __name__ == "__main__":
     unittest.main()

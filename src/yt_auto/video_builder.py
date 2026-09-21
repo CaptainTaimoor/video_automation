@@ -1788,9 +1788,24 @@ class VideoBuilder:
         if not beat_segments:
             raise LongCaptionPreflightError("no narration beat timeline was generated for the long video")
         # Thin or malformed inputs must not use pacing normalization to disguise
-        # a script-length failure. Production long scripts already require at
-        # least 850 words in the editorial gate.
-        pacing_enabled = bool(narration_word_count and narration_word_count >= 850)
+        # a script-length failure -- but "thin" has to mean thin for THIS
+        # channel. A flat 850 was written when long videos ran eight to ten
+        # minutes. At four to six the writer aims at 775 words and the
+        # editorial gate accepts 658, so every correctly sized script fell
+        # under the flat floor, pacing switched off, and the builder lost the
+        # one mechanism that absorbs a beat running slightly long. A finished
+        # 25-minute build was thrown away over a beat needing 8.7% where 8.5%
+        # was allowed.
+        #
+        # The fewest words a valid long video can hold is its shortest
+        # permitted duration spoken at the slowest permitted pace. Below that
+        # the script really is a stub.
+        pacing_word_floor = max(
+            1, int(min_duration * self.MIN_LONG_NARRATION_WPM / 60.0)
+        )
+        pacing_enabled = bool(
+            narration_word_count and narration_word_count >= pacing_word_floor
+        )
         if raw_duration > max_duration + 0.001 and not pacing_enabled:
             raise LongCaptionPreflightError(
                 "long caption preflight failed before visual encoding: "
