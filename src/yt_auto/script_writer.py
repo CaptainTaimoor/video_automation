@@ -4619,6 +4619,29 @@ class ScriptWriter:
             else "For a short, structure the beats as: micro-drama, immediate emotional consequence, psychology reveal, "
             "pattern proof, reframe, practical power move, memorable loop payoff."
         )
+        # These two gates are keyword searches, not judgements, so the prompt
+        # has to ask for the keywords. Told only to "turn at the midpoint", a
+        # model can write a perfect contrast using none of the words the check
+        # looks for and be refused for it. The short-sentence rule makes that
+        # more likely, because the subordinating conjunctions the check wants
+        # are exactly what long sentences are built from.
+        turn_rule = (
+            "The middle beats must make the turn explicit with at least one of "
+            "these words: but, because, instead, so, yet, while, then, which, "
+            "prove, trace, confirm, reveal. A contrast the reader can feel but "
+            "the wording does not carry will be rejected. "
+        )
+        payoff_rule = (
+            "The final beat must name what the viewer gains, using at least "
+            "one of: answer, boundary, clarity, confidence, consent, "
+            "consistency, effort, mutual, pattern, reciprocity, respect, safe, "
+            "trust. "
+            if channel.id == "brain_lens"
+            else "The final beat must return to the subject by name and state "
+            "the consequence that changes what the opening clue meant. Never "
+            "end on a summary of what was already said. "
+        )
+
         return (
             "You are a senior YouTube Shorts creative director. Rewrite the script beats for retention, not hype. "
             "Use only the facts already present; do not invent new facts. "
@@ -4646,13 +4669,7 @@ class ScriptWriter:
             "Keep every sentence under 14 words, and put a comma where the "
             "phrase naturally breaks. Captions are cut to six words, so a long "
             "unbroken clause cannot be split without stranding a preposition. "
-            "The midpoint of the script must turn: a contrast, a consequence, "
-            "or a reframe that changes how the opening reads. Do not simply "
-            "restate the opening in other words. "
-            "The final beat must land a payoff the viewer can use or feel: for "
-            "Brain Lens a concrete next action or a relational insight, for "
-            "Ancient History the consequence that changes what the opening "
-            "clue meant. Never end on a summary of what was already said. "
+            f"{turn_rule}{payoff_rule}"
             "Every 3-4 seconds add a new reveal, contrast, consequence, or question. Keep each beat necessary; remove repeated explanations. "
             "Avoid generic openings like 'to understand', 'there is a fascinating reason', 'modern psychology', "
             "'historians keep coming back', 'the archive is full', 'have you ever', and 'did you know'. "
