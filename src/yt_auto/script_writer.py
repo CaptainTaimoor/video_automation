@@ -4634,6 +4634,25 @@ class ScriptWriter:
             "For Brain Lens, the payoff should make the viewer feel more attractive through calm, boundaries, confidence, or understanding, never through manipulation or humiliation. "
             "Do not reuse the same sentence rhythm across beats; mix short punches with one vivid longer line. "
             "Display text should be clean caption phrases, never broken fragments or vague labels. "
+            # The three rules below are the three things the gate rejected most
+            # often across two days of planning. They were all implied
+            # somewhere in this prompt and none of them were stated plainly.
+            #
+            # Sentence length is the one that mattered most: captions are cut
+            # to six words, and a clause like "the power and artistry of an
+            # early Mesoamerican culture" has no clean break anywhere inside
+            # it, so the whole topic was refused. Asking for shorter sentences
+            # fixes at the source what no splitter can fix afterwards.
+            "Keep every sentence under 14 words, and put a comma where the "
+            "phrase naturally breaks. Captions are cut to six words, so a long "
+            "unbroken clause cannot be split without stranding a preposition. "
+            "The midpoint of the script must turn: a contrast, a consequence, "
+            "or a reframe that changes how the opening reads. Do not simply "
+            "restate the opening in other words. "
+            "The final beat must land a payoff the viewer can use or feel: for "
+            "Brain Lens a concrete next action or a relational insight, for "
+            "Ancient History the consequence that changes what the opening "
+            "clue meant. Never end on a summary of what was already said. "
             "Every 3-4 seconds add a new reveal, contrast, consequence, or question. Keep each beat necessary; remove repeated explanations. "
             "Avoid generic openings like 'to understand', 'there is a fascinating reason', 'modern psychology', "
             "'historians keep coming back', 'the archive is full', 'have you ever', and 'did you know'. "
