@@ -124,6 +124,16 @@
     # Verified footage is kept here and reused instead of re-downloaded.
     library_enabled: true
     library_max_gb: 8
+    # The shared store of already-verified footage, on a mounted drive so the
+    # collection can outgrow this machine's disk. Checked before any provider:
+    # a build that finds what it needs here never waits on the network, which
+    # is what a scene running out of time used to do before drawing a card.
+    library_root: "G:/My Drive/YT Visual Library"
+    # How long an asset rests after a video uses it, so the same photograph
+    # does not appear twice in a fortnight of uploads.
+    reuse_cooldown_days: 15
+    # Unsplash is last in the order and paced at 40 calls an hour.
+    unsplash_enabled: true
   subtitles:
     enabled: true
     max_words_per_caption: 4

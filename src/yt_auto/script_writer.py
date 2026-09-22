@@ -4697,6 +4697,18 @@ class ScriptWriter:
             "prove, trace, confirm, reveal. A contrast the reader can feel but "
             "the wording does not carry will be rejected. "
         )
+        # The Ancient hook gate wants the subject named in beat 1, or one of
+        # nine evidence words. Eleven of twenty-five Ancient Short rejections
+        # were this rule, and the prompt never mentioned it -- the same gap
+        # that midpoint and payoff had.
+        hook_rule = (
+            "Beat 1 must name " + str(topic.subject or topic.title) + " directly, "
+            "or point at a surviving physical clue using one of these words: "
+            "archaeology, artifact, date, door, inscription, ruin, stone, tomb, "
+            "wall. A vivid opening that names neither will be rejected. "
+            if channel.id == "ancient_history"
+            else ""
+        )
         payoff_rule = (
             "The final beat must name what the viewer gains, using at least "
             "one of: answer, boundary, clarity, confidence, consent, "
@@ -4735,7 +4747,7 @@ class ScriptWriter:
             "Keep every sentence under 14 words, and put a comma where the "
             "phrase naturally breaks. Captions are cut to six words, so a long "
             "unbroken clause cannot be split without stranding a preposition. "
-            f"{turn_rule}{payoff_rule}"
+            f"{hook_rule}{turn_rule}{payoff_rule}"
             "Every 3-4 seconds add a new reveal, contrast, consequence, or question. Keep each beat necessary; remove repeated explanations. "
             "Avoid generic openings like 'to understand', 'there is a fascinating reason', 'modern psychology', "
             "'historians keep coming back', 'the archive is full', 'have you ever', and 'did you know'. "

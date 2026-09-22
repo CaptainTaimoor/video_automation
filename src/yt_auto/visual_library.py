@@ -1,38 +1,51 @@
-"""A local store of footage that already passed the checks.
+"""The shared store of footage that already passed the checks.
 
 Downloading during a build is the slow part. On a modest line one clip takes
 30-60 seconds and a Short needs about six, which is most of a scene's budget
 spent waiting -- and when the budget runs out the scene falls back to a
-generated card.
+generated card, which is what put grey slides into published videos.
 
-Anything that has already been downloaded and verified once is worth keeping.
-The library holds those files with the metadata that proved them, so a later
-build on a related subject reads from disk instead of asking a provider again.
+The library is the answer to that: anything downloaded and verified once is
+kept with the metadata that proved it, so a later build on a related subject
+reads a file instead of asking a provider again.
 
-It lives under ``.runtime`` (gitignored), is capped, and evicts the
-least-recently-used file when it gets too big. Losing the cache costs speed,
-never correctness: every entry is re-verifiable from its stored metadata.
+It lives wherever ``app.visuals.library_root`` points, which is normally a
+mounted Google Drive rather than the local disk -- the point is that the
+machine's own storage stays free while the collection grows past what a laptop
+would hold.
+
+The on-disk format is the one the collection already uses: ``catalog.csv`` for
+what is in it and ``usage.csv`` for what has been used where. Both are plain
+CSV on purpose. They are readable without this program, survive a rewrite of
+it, and a half-written row costs one asset rather than the index.
 """
 
 from __future__ import annotations
 
-import json
+import csv
+import os
 import re
-import shutil
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-DEFAULT_MAX_BYTES = 8 * 1024 * 1024 * 1024  # 8 GB, as configured on the old box
+# Long enough that a viewer will not notice a repeat, short enough that the
+# collection does not have to be enormous before the bot can run a full day.
+DEFAULT_REUSE_COOLDOWN_DAYS = 15
 
 # A term shorter than this matches too much to be worth indexing.
 MIN_TERM_LENGTH = 4
 
 _WORD = re.compile(r"[a-z0-9]{%d,}" % MIN_TERM_LENGTH)
 
-
-def library_root(root: Path | None = None) -> Path:
-    return Path(root or Path.cwd()) / ".runtime" / "visual_library"
+CATALOG_FIELDS = (
+    "file", "channel", "subject", "search_query", "tags", "kind", "source",
+    "license", "artist", "asset_title", "description", "source_page", "url",
+    "asset_id", "media_width", "media_height", "orientation",
+    "perceptual_hash", "added_at",
+)
+USAGE_FIELDS = ("url", "file", "channel", "subject", "run", "used_at")
 
 
 def terms_of(*texts: str) -> set[str]:
@@ -41,181 +54,284 @@ def terms_of(*texts: str) -> set[str]:
     return set(_WORD.findall(blob))
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_time(raw: str) -> datetime | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        stamp = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
+
 class VisualLibrary:
-    """Reusable verified media, indexed by channel and subject words."""
+    """Verified media on shared storage, indexed by channel and subject words."""
 
-    def __init__(self, root: Path | None = None, *, max_bytes: int = DEFAULT_MAX_BYTES) -> None:
-        self.base = library_root(root)
-        self.max_bytes = int(max_bytes)
+    def __init__(
+        self,
+        root: Path | str | None = None,
+        *,
+        reuse_cooldown_days: int = DEFAULT_REUSE_COOLDOWN_DAYS,
+    ) -> None:
+        self.base = Path(root) if root else Path.cwd() / ".runtime" / "visual_library"
+        self.reuse_cooldown_days = max(0, int(reuse_cooldown_days))
+        self._catalog: list[dict[str, str]] | None = None
+        self._used_at: dict[str, datetime] | None = None
 
-    # -- index ---------------------------------------------------------------
+    # -- paths ---------------------------------------------------------------
 
     @property
-    def index_path(self) -> Path:
-        return self.base / "index.json"
+    def catalog_path(self) -> Path:
+        return self.base / "catalog.csv"
 
-    def _load_index(self) -> dict[str, Any]:
-        try:
-            payload = json.loads(self.index_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {"entries": {}}
-        if not isinstance(payload.get("entries"), dict):
-            return {"entries": {}}
-        return payload
+    @property
+    def usage_path(self) -> Path:
+        return self.base / "usage.csv"
 
-    def _save_index(self, payload: dict[str, Any]) -> None:
-        self.base.mkdir(parents=True, exist_ok=True)
-        self.index_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    @property
+    def available(self) -> bool:
+        """Whether the store is actually reachable right now.
 
-    # -- writing -------------------------------------------------------------
-
-    def store(
-        self,
-        source_file: Path,
-        *,
-        channel_id: str,
-        meta: dict[str, str],
-        terms: Iterable[str] = (),
-        now: float | None = None,
-    ) -> Path | None:
-        """Copy a verified asset in. Returns its path in the library.
-
-        Storing is best-effort: a cache that cannot be written must never stop
-        a build that has already produced the file it needs.
+        A mounted drive can disappear between builds, and a missing library is
+        a slower build rather than a broken one, so every caller checks this
+        instead of handling an exception.
         """
-        source = Path(source_file)
-        if not source.exists() or not source.is_file():
-            return None
-        asset_id = str(meta.get("asset_id") or "").strip() or source.name
-        key = f"{channel_id}:{asset_id}"
-        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", key)[:120]
-        target = self.base / channel_id / f"{safe}{source.suffix.lower()}"
         try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if not target.exists():
-                shutil.copy2(source, target)
+            return self.catalog_path.is_file()
         except OSError:
-            return None
-
-        index = self._load_index()
-        indexed = set(terms_of(*terms)) | terms_of(
-            meta.get("asset_title", ""), meta.get("source_page", "")
-        )
-        index["entries"][key] = {
-            "path": str(target),
-            "channel": channel_id,
-            "terms": sorted(indexed),
-            "meta": dict(meta),
-            "stored_at": now or time.time(),
-            "used_at": now or time.time(),
-        }
-        try:
-            self._save_index(index)
-        except OSError:
-            return None
-        self.prune()
-        return target
+            return False
 
     # -- reading -------------------------------------------------------------
+
+    def catalog(self, refresh: bool = False) -> list[dict[str, str]]:
+        if self._catalog is not None and not refresh:
+            return self._catalog
+        rows: list[dict[str, str]] = []
+        try:
+            with self.catalog_path.open("r", encoding="utf-8", errors="replace",
+                                        newline="") as handle:
+                for row in csv.DictReader(handle):
+                    if str(row.get("file") or "").strip():
+                        rows.append(row)
+        except (OSError, csv.Error):
+            rows = []
+        self._catalog = rows
+        return rows
+
+    def used_at(self, refresh: bool = False) -> dict[str, datetime]:
+        """The last time each file was used, newest wins."""
+        if self._used_at is not None and not refresh:
+            return self._used_at
+        seen: dict[str, datetime] = {}
+        try:
+            with self.usage_path.open("r", encoding="utf-8", errors="replace",
+                                      newline="") as handle:
+                for row in csv.DictReader(handle):
+                    key = str(row.get("file") or "").strip()
+                    stamp = _parse_time(row.get("used_at", ""))
+                    if not key or stamp is None:
+                        continue
+                    if key not in seen or stamp > seen[key]:
+                        seen[key] = stamp
+        except (OSError, csv.Error):
+            seen = {}
+        self._used_at = seen
+        return seen
+
+    def rested(self, file_name: str, *, now: datetime | None = None) -> bool:
+        """Whether this asset has been out of use long enough to reuse."""
+        if self.reuse_cooldown_days <= 0:
+            return True
+        last = self.used_at().get(str(file_name or "").strip())
+        if last is None:
+            return True
+        return (now or _now()) - last >= timedelta(days=self.reuse_cooldown_days)
+
+    # -- lookup --------------------------------------------------------------
 
     def lookup(
         self,
         channel_id: str,
-        terms: Iterable[str],
-        *,
-        limit: int = 8,
-        now: float | None = None,
-    ) -> list[tuple[Path, dict[str, str]]]:
-        """Stored assets for this channel that share words with ``terms``.
+        *texts: str,
+        kind: str = "",
+        limit: int = 12,
+        exclude_files: Iterable[str] = (),
+        now: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Assets for this subject, best match first, rested ones only.
 
-        Ordered by how many words they share, so the closest match leads.
+        Ranked by how many subject words an asset shares with the request, so
+        a Tikal build prefers a Tikal photograph over a generic Maya one but
+        still finds the generic one when that is all there is.
         """
-        wanted = set(terms_of(*terms))
-        if not wanted:
+        if not self.available:
             return []
-        index = self._load_index()
-        scored: list[tuple[int, float, str, dict[str, Any]]] = []
-        for key, entry in (index.get("entries") or {}).items():
-            if str(entry.get("channel") or "") != channel_id:
+        wanted = terms_of(*texts)
+        skip = {str(name).strip() for name in exclude_files if str(name).strip()}
+        scored: list[tuple[int, float, dict[str, str]]] = []
+        for row in self.catalog():
+            if channel_id and str(row.get("channel") or "").strip() != channel_id:
                 continue
-            overlap = len(wanted & set(entry.get("terms") or ()))
-            if not overlap:
+            if kind and str(row.get("kind") or "").strip() != kind:
                 continue
-            path = Path(str(entry.get("path") or ""))
-            if not path.exists():
+            name = str(row.get("file") or "").strip()
+            if not name or name in skip:
                 continue
-            scored.append((overlap, float(entry.get("used_at") or 0.0), key, entry))
-
-        scored.sort(key=lambda row: (-row[0], -row[1]))
-        chosen = scored[: max(0, int(limit))]
-        if chosen:
-            moment = now or time.time()
-            for _, _, key, _ in chosen:
-                index["entries"][key]["used_at"] = moment
+            if not self.rested(name, now=now):
+                continue
+            path = self.base / name
             try:
-                self._save_index(index)
-            except OSError:
-                pass
-        return [(Path(entry["path"]), dict(entry.get("meta") or {})) for _, _, _, entry in chosen]
-
-    # -- housekeeping --------------------------------------------------------
-
-    def total_bytes(self) -> int:
-        total = 0
-        for entry in (self._load_index().get("entries") or {}).values():
-            try:
-                total += Path(str(entry.get("path") or "")).stat().st_size
+                if not path.is_file():
+                    continue
             except OSError:
                 continue
-        return total
-
-    def prune(self) -> int:
-        """Drop least-recently-used files until the library fits. Returns count."""
-        index = self._load_index()
-        entries = index.get("entries") or {}
-        sized: list[tuple[float, str, Path, int]] = []
-        total = 0
-        for key, entry in entries.items():
-            path = Path(str(entry.get("path") or ""))
-            try:
-                size = path.stat().st_size
-            except OSError:
+            have = terms_of(row.get("subject", ""), row.get("tags", ""),
+                            row.get("asset_title", ""), row.get("search_query", ""))
+            overlap = len(wanted & have)
+            if wanted and not overlap:
                 continue
-            total += size
-            sized.append((float(entry.get("used_at") or 0.0), key, path, size))
+            # A newer asset wins a tie: the collection grows towards what the
+            # channels actually cover.
+            added = _parse_time(row.get("added_at", ""))
+            scored.append((overlap, added.timestamp() if added else 0.0, row))
+        scored.sort(key=lambda item: (-item[0], -item[1]))
+        out: list[dict[str, Any]] = []
+        for _, _, row in scored[:max(0, int(limit))]:
+            entry = dict(row)
+            entry["path"] = self.base / str(row.get("file") or "")
+            out.append(entry)
+        return out
 
-        if total <= self.max_bytes:
-            return 0
+    # -- writing -------------------------------------------------------------
 
-        sized.sort(key=lambda row: row[0])  # oldest use first
-        removed = 0
-        for _, key, path, size in sized:
-            if total <= self.max_bytes:
-                break
-            try:
-                path.unlink()
-            except OSError:
-                pass
-            entries.pop(key, None)
-            total -= size
-            removed += 1
-        index["entries"] = entries
+    def _append(self, path: Path, fields: tuple[str, ...], row: dict[str, Any]) -> bool:
         try:
-            self._save_index(index)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fresh = not path.exists() or path.stat().st_size == 0
+            with path.open("a", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fields,
+                                        extrasaction="ignore")
+                if fresh:
+                    writer.writeheader()
+                writer.writerow({key: row.get(key, "") for key in fields})
+            return True
         except OSError:
-            return removed
-        return removed
+            return False
+
+    def record_use(self, entry: dict[str, Any], run_dir: Path | str = "") -> bool:
+        """Note that this asset went into a build, so it can rest afterwards."""
+        name = str(entry.get("file") or "").strip()
+        if not name:
+            return False
+        ok = self._append(self.usage_path, USAGE_FIELDS, {
+            "url": entry.get("url", ""),
+            "file": name,
+            "channel": entry.get("channel", ""),
+            "subject": entry.get("subject", ""),
+            "run": str(run_dir or ""),
+            "used_at": _now().isoformat(timespec="seconds"),
+        })
+        if ok and self._used_at is not None:
+            self._used_at[name] = _now()
+        return ok
+
+    def store(
+        self,
+        source_path: Path,
+        *,
+        channel_id: str,
+        subject: str,
+        meta: dict[str, Any],
+        kind: str = "image",
+        search_query: str = "",
+    ) -> str:
+        """Copy a verified asset in and catalogue it. Returns its library name."""
+        if not str(channel_id or "").strip():
+            return ""
+        try:
+            if not Path(source_path).is_file():
+                return ""
+        except OSError:
+            return ""
+        slug = re.sub(r"[^a-z0-9]+", "-", str(subject or "misc").lower()).strip("-")[:48]
+        slug = slug or "misc"
+        suffix = Path(source_path).suffix.lower() or ".jpg"
+        stem = re.sub(r"[^a-f0-9]", "", str(meta.get("perceptual_hash") or ""))[:14]
+        if not stem:
+            stem = "%x" % abs(hash((str(meta.get("url") or ""), time.time())))
+        name = f"{channel_id}/{slug}/{stem}{suffix}"
+        target = self.base / name
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                target.write_bytes(Path(source_path).read_bytes())
+        except OSError:
+            return ""
+        row = {
+            "file": name,
+            "channel": channel_id,
+            "subject": subject,
+            "search_query": search_query,
+            "tags": " ".join(sorted(terms_of(subject, search_query,
+                                             meta.get("asset_title", "")))),
+            "kind": kind,
+            "source": meta.get("source", ""),
+            "license": meta.get("license", ""),
+            "artist": meta.get("artist", ""),
+            "asset_title": meta.get("asset_title", ""),
+            "description": meta.get("description", ""),
+            "source_page": meta.get("source_page", ""),
+            "url": meta.get("url", ""),
+            "asset_id": meta.get("asset_id", ""),
+            "media_width": meta.get("media_width", ""),
+            "media_height": meta.get("media_height", ""),
+            "orientation": meta.get("orientation", ""),
+            "perceptual_hash": meta.get("perceptual_hash", ""),
+            "added_at": _now().isoformat(timespec="seconds"),
+        }
+        if not self._append(self.catalog_path, CATALOG_FIELDS, row):
+            return ""
+        if self._catalog is not None:
+            self._catalog.append(row)
+        return name
+
+    def has_asset(self, url: str = "", perceptual_hash: str = "") -> bool:
+        """Whether this exact asset is already held, to avoid fetching twice."""
+        url = str(url or "").strip()
+        digest = str(perceptual_hash or "").strip()
+        if not url and not digest:
+            return False
+        for row in self.catalog():
+            if url and str(row.get("url") or "").strip() == url:
+                return True
+            if digest and str(row.get("perceptual_hash") or "").strip() == digest:
+                return True
+        return False
+
+    # -- reporting -----------------------------------------------------------
 
     def stats(self) -> dict[str, Any]:
-        """What the dashboard shows: how much is stored and how big it is."""
-        entries = self._load_index().get("entries") or {}
+        rows = self.catalog()
         by_channel: dict[str, int] = {}
-        for entry in entries.values():
-            channel = str(entry.get("channel") or "unknown")
+        by_kind: dict[str, int] = {}
+        for row in rows:
+            channel = str(row.get("channel") or "?")
             by_channel[channel] = by_channel.get(channel, 0) + 1
+            kind = str(row.get("kind") or "?")
+            by_kind[kind] = by_kind.get(kind, 0) + 1
+        now = _now()
+        resting = sum(1 for row in rows if not self.rested(str(row.get("file") or ""), now=now))
         return {
-            "files": len(entries),
-            "bytes": self.total_bytes(),
-            "max_bytes": self.max_bytes,
+            "root": str(self.base),
+            "available": self.available,
+            "assets": len(rows),
             "by_channel": by_channel,
+            "by_kind": by_kind,
+            "resting": resting,
+            "reuse_cooldown_days": self.reuse_cooldown_days,
         }

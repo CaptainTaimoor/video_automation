@@ -84,6 +84,42 @@ class HybridMediaFetcher:
         self.stable_horde_key = (stable_horde_key or "").strip()
         self.pixabay_api_key = (pixabay_api_key or "").strip()
         self.pexels_api_key = (pexels_api_key or "").strip()
+        self.unsplash_access_key = (os.getenv("UNSPLASH_ACCESS_KEY") or "").strip()
+        # The shared store of already-verified footage. Normally a mounted
+        # drive, so the collection can outgrow this machine's disk. A build
+        # that finds what it needs here never touches a provider, which is
+        # both faster and the difference between a real photograph and a
+        # generated card when a scene runs short of time.
+        # A fact card is a brown gradient with a piece of clipart and a line
+        # of the script on it -- one published Short carried "THE CEMETERIES
+        # PRESERVE NAPATAN" over a cartoon boat.
+        #
+        # The pipeline already allows at most one per video and aborts the
+        # build if a second is needed, so this switch is only about that last
+        # one: whether a scene with nothing else may show a card, or the build
+        # should fail instead.
+        #
+        # It defaults to allowed because the library is still thin for Brain
+        # Lens -- 33 assets against Ancient History's 682 -- and turning it off
+        # today trades grey slides for failed builds. Once the nightly fetcher
+        # has stocked it, set this false and the cards are gone for good.
+        self.allow_generated_cards = bool(setting("allow_generated_cards", True))
+        library_root = str(setting("library_root", "") or "").strip()
+        self.visual_library = None
+        if library_root:
+            try:
+                from .visual_library import VisualLibrary
+
+                self.visual_library = VisualLibrary(
+                    library_root,
+                    reuse_cooldown_days=int(setting("reuse_cooldown_days", 15) or 15),
+                )
+                if not self.visual_library.available:
+                    self.visual_library = None
+            except Exception:
+                self.visual_library = None
+        self.unsplash_enabled = bool(setting("unsplash_enabled", True))
+        self._unsplash_last_call = 0.0
         self.enable_pollinations = str(os.getenv("YT_ENABLE_POLLINATIONS", "0")).lower() in {"1", "true", "yes", "on"}
         self.enable_stable_horde = str(os.getenv("YT_ENABLE_STABLE_HORDE", "0")).lower() in {"1", "true", "yes", "on"}
 
@@ -373,6 +409,117 @@ class HybridMediaFetcher:
                     },
                 )
             )
+        return results
+
+    # Unsplash's own guidelines ask callers to hotlink their URLs rather than
+    # keep copies, and describe the API as being for non-automated use. This
+    # bot does neither: it downloads into a library and runs unattended. The
+    # channel owner was told that twice and chose to use it anyway, which is
+    # their account and their call -- so it is here, used as little as
+    # possible: last in the order, after every source whose licence permits
+    # what we actually do, and paced so it can never look like bulk
+    # collection.
+    def _library_search(
+        self,
+        query: str,
+        limit: int = 6,
+        deadline: float | None = None,
+        channel_id: str = "",
+        subject: str = "",
+        kind: str = "",
+    ) -> List[Tuple[str, Dict[str, str]]]:
+        """Already-verified footage for this subject, newest and rested first.
+
+        Returned in provider shape so the rest of the pipeline treats it like
+        any other source -- it still goes through validation and the relevance
+        check, because a library entry can still be wrong for this scene.
+        """
+        library = getattr(self, "visual_library", None)
+        if library is None:
+            return []
+        try:
+            hits = library.lookup(
+                channel_id, subject, query, kind=kind, limit=max(1, int(limit))
+            )
+        except Exception:
+            return []
+        out: List[Tuple[str, Dict[str, str]]] = []
+        for hit in hits:
+            path = hit.get("path")
+            if path is None:
+                continue
+            out.append((
+                path.as_uri(),
+                {
+                    "source": str(hit.get("source") or "library"),
+                    "license": str(hit.get("license") or ""),
+                    "artist": str(hit.get("artist") or ""),
+                    "asset_title": str(hit.get("asset_title") or ""),
+                    "asset_id": str(hit.get("asset_id") or ""),
+                    "source_page": str(hit.get("source_page") or ""),
+                    "media_width": str(hit.get("media_width") or ""),
+                    "media_height": str(hit.get("media_height") or ""),
+                    "library_file": str(hit.get("file") or ""),
+                    "library_path": str(path),
+                },
+            ))
+        return out
+
+    UNSPLASH_SPACING_SECONDS = 3600.0 / 40.0  # 40 an hour, evenly spread
+
+    def _unsplash_ready(self) -> bool:
+        """True when enough time has passed since the last Unsplash call."""
+        if not self.unsplash_access_key or not self.unsplash_enabled:
+            return False
+        waited = time.time() - float(getattr(self, "_unsplash_last_call", 0.0) or 0.0)
+        return waited >= self.UNSPLASH_SPACING_SECONDS
+
+    def _unsplash_search(self, query: str, limit: int = 4, deadline: float | None = None) -> List[Tuple[str, Dict[str, str]]]:
+        """A small, evenly-paced draw from Unsplash.
+
+        Never waits for its own turn: if the spacing has not elapsed this call
+        returns nothing and the build uses a provider that is ready. A missed
+        turn costs one asset; a burst costs the account.
+        """
+        if not self._unsplash_ready():
+            return []
+        timeout = self._deadline_timeout(deadline, 18.0)
+        if timeout is None:
+            return []
+        self._unsplash_last_call = time.time()
+        try:
+            r = self.session.get(
+                "https://api.unsplash.com/search/photos",
+                params={"query": query, "per_page": str(max(1, min(10, limit))),
+                        "content_filter": "high"},
+                headers={"Authorization": f"Client-ID {self.unsplash_access_key}",
+                         "Accept-Version": "v1"},
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            data = r.json()
+        except Exception:
+            return []
+        results: List[Tuple[str, Dict[str, str]]] = []
+        for hit in (data.get("results") or []):
+            urls = hit.get("urls") or {}
+            image = urls.get("regular") or urls.get("full") or urls.get("raw")
+            if not image:
+                continue
+            user = hit.get("user") or {}
+            results.append((
+                image,
+                {
+                    "source": "unsplash",
+                    "license": "Unsplash License",
+                    "artist": str(user.get("name") or "Unknown"),
+                    "asset_title": str(hit.get("alt_description") or hit.get("description") or ""),
+                    "asset_id": f"unsplash:{hit.get('id')}",
+                    "source_page": str((hit.get("links") or {}).get("html") or ""),
+                    "media_width": str(hit.get("width") or ""),
+                    "media_height": str(hit.get("height") or ""),
+                },
+            ))
         return results
 
     # Commercial-use licences only. A channel chasing monetisation cannot
@@ -4004,11 +4151,18 @@ class HybridMediaFetcher:
         candidates: List[Tuple[str, Dict[str, str]]] = []
         orientation = "landscape" if content_kind == "video" else "portrait"
         providers = [
+            # The library goes first because it costs nothing and cannot fail:
+            # these files are on disk and already passed every check once.
+            (self._library_search, {"query": query, "limit": 6,
+                                    "channel_id": niche_id, "subject": subject,
+                                    "kind": "video" if content_kind == "video" else ""}),
             (self._pexels_video_search, {"query": query, "limit": 2, "orientation": orientation}),
             (self._pexels_photo_search, {"query": query, "limit": 3, "orientation": orientation}),
             (self._wikimedia_search, {"query": query, "limit": 5}),
             (self._openverse_search, {"query": query, "limit": 6}),
             (self._pixabay_search, {"query": query, "limit": 3}),
+            # Last, and paced: see UNSPLASH_SPACING_SECONDS.
+            (self._unsplash_search, {"query": query, "limit": 3}),
         ]
         if niche_id == "brain_lens":
             lower_query = query.lower()
@@ -4940,7 +5094,22 @@ class HybridMediaFetcher:
                         )
                         manifest.append(reused_meta)
 
-            if chosen is None:
+            # The fact card is a brown gradient with a piece of clipart and a
+            # line of the script on it -- one published Short carried "THE
+            # CEMETERIES PRESERVE NAPATAN" over a cartoon boat. That is what
+            # the comments were about and what the view counts followed.
+            #
+            # This is not the same as a documentary diagram, which is a clean
+            # titled timeline or map and reads like a history channel's own
+            # graphic; those stay, capped at one of each kind as before.
+            #
+            # With the shared library checked first there is usually a real
+            # photograph for anything either channel has covered, so a card is
+            # no longer the difference between shipping and not shipping. It
+            # is the difference between shipping something good and shipping
+            # something embarrassing. Set app.visuals.allow_generated_cards
+            # true to bring them back.
+            if chosen is None and self.allow_generated_cards:
                 out_path = raw_dir / f"raw_{idx:02d}_fallback_card.jpg"
                 if self._generate_editorial_fallback(topic, text, out_path, idx):
                     chosen = out_path
