@@ -2770,6 +2770,62 @@ class VisualPipelineTests(unittest.TestCase):
                 skipped = fetcher._local_visual_relevance(image_path, "new subject", "new scene", time.monotonic() + 5)
             self.assertIsNone(skipped)
 
+    def test_brain_long_wrap_rotates_to_secondary_search_term(self) -> None:
+        fetcher = HybridMediaFetcher()
+        scenes = [
+            ScenePlanItem(
+                narration=f"Scene narration {index}",
+                visual_text=f"Scene caption {index}",
+                search_terms=[
+                    f"primary search {index}",
+                    f"secondary search {index}",
+                    f"tertiary search {index}",
+                ],
+            )
+            for index in range(6)
+        ]
+        topic = make_topic()
+        topic.content_kind = "video"
+        topic.scene_plan = scenes
+
+        first_pass = fetcher._brain_scene_search_terms_for_index(topic, scenes[0], 1)
+        wrap_pass = fetcher._brain_scene_search_terms_for_index(topic, scenes[0], 7)
+
+        self.assertEqual(first_pass[0], "primary search 0")
+        self.assertEqual(wrap_pass[0], "secondary search 0")
+        self.assertEqual(wrap_pass[1], "tertiary search 0")
+        self.assertEqual(wrap_pass[2], "primary search 0")
+
+    def test_brain_long_distinct_search_gate_scales_to_scene_plan(self) -> None:
+        factory = ShortsFactory.__new__(ShortsFactory)
+        channel = Mock()
+        channel.id = "brain_lens"
+        channel.videos = Mock()
+        # Old gate used only this max and demanded 8 even for a 6-scene short long.
+        channel.videos.max_duration_seconds = 360
+
+        short_long = make_topic()
+        short_long.content_kind = "video"
+        short_long.scene_plan = [
+            ScenePlanItem(narration=f"n{i}", visual_text=f"v{i}", search_terms=[f"q{i}"])
+            for i in range(6)
+        ]
+        self.assertEqual(
+            factory._brain_long_min_distinct_searches(channel, short_long, 150.0),
+            6,
+        )
+
+        full_long = make_topic()
+        full_long.content_kind = "video"
+        full_long.scene_plan = [
+            ScenePlanItem(narration=f"n{i}", visual_text=f"v{i}", search_terms=[f"q{i}"])
+            for i in range(14)
+        ]
+        self.assertEqual(
+            factory._brain_long_min_distinct_searches(channel, full_long, 360.0),
+            8,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -579,6 +579,7 @@ class ScriptWriter:
         channel: ChannelConfig,
         plan: list[ScenePlanItem],
         content_kind: str = "video",
+        subject: str = "",
     ) -> list[ScenePlanItem]:
         """Trim a long scene plan to the channel's word budget.
 
@@ -600,7 +601,58 @@ class ScriptWriter:
                 used += words
             if used >= budget and len(middle) >= self.LONG_PLAN_MIN_MIDDLE:
                 break
-        return [opener, *middle, closer]
+        fitted = [opener, *middle, closer]
+        # Brain long quality holds for repeated primary searches. Catch-all
+        # branches (Mixed Signals, generic relationship) used to stamp the
+        # same query on different scenes; make each primary distinct here.
+        if channel.id == "brain_lens":
+            fitted = self._ensure_unique_brain_scene_searches(
+                fitted,
+                subject=subject or (opener.search_terms[-1] if opener.search_terms else ""),
+            )
+        return fitted
+
+    @staticmethod
+    def _brain_search_key(term: str) -> str:
+        return re.sub(r"\s+", " ", str(term or "").strip().lower())
+
+    def _ensure_unique_brain_scene_searches(
+        self,
+        plan: list[ScenePlanItem],
+        subject: str = "",
+    ) -> list[ScenePlanItem]:
+        """Rotate each Brain scene so its recorded primary search is unique."""
+        used: set[str] = set()
+        out: list[ScenePlanItem] = []
+        for scene in plan:
+            terms = list(dict.fromkeys(str(term).strip() for term in (scene.search_terms or []) if str(term).strip()))
+            if not terms:
+                terms = self._brain_lens_visual_search_terms(
+                    subject or "relationship",
+                    scene.narration or scene.visual_text or "",
+                    content_kind="video",
+                )
+            primary_idx = next(
+                (
+                    index
+                    for index, term in enumerate(terms)
+                    if self._brain_search_key(term) and self._brain_search_key(term) not in used
+                ),
+                None,
+            )
+            if primary_idx is None:
+                cue = self._captionize(scene.narration or scene.visual_text or "") or "relationship moment"
+                distinct = f"adult couple {cue} realistic lifestyle b roll"
+                suffix = 1
+                while self._brain_search_key(distinct) in used:
+                    suffix += 1
+                    distinct = f"adult couple {cue} scene {suffix} realistic lifestyle b roll"
+                terms = [distinct, *terms]
+                primary_idx = 0
+            rotated = terms[primary_idx:] + terms[:primary_idx]
+            used.add(self._brain_search_key(rotated[0]))
+            out.append(replace(scene, search_terms=rotated))
+        return out
 
     def _target_words(self, channel: ChannelConfig, content_kind: str) -> int:
         if content_kind == "video":
@@ -3245,7 +3297,12 @@ class ScriptWriter:
         if content_kind == "video" and self._word_count(topic.narration) >= 700:
             section_plan = self._video_sections_from_narration(channel, topic, subject)
             if section_plan:
-                section_plan = self._fit_long_plan(channel, section_plan, content_kind)
+                section_plan = self._fit_long_plan(
+                    channel,
+                    section_plan,
+                    content_kind,
+                    subject=subject,
+                )
                 beats = [scene.narration for scene in section_plan if scene.narration]
                 visual_captions = [scene.visual_text for scene in section_plan if scene.visual_text]
                 return replace(
@@ -3259,7 +3316,10 @@ class ScriptWriter:
                 )
         if content_kind == "video":
             fallback_plan = self._fit_long_plan(
-                channel, self._long_video_fallback_plan(channel, topic, subject), content_kind
+                channel,
+                self._long_video_fallback_plan(channel, topic, subject),
+                content_kind,
+                subject=subject,
             )
             beats = [scene.narration for scene in fallback_plan if scene.narration]
             visual_captions = [scene.visual_text for scene in fallback_plan if scene.visual_text]
@@ -3397,7 +3457,7 @@ class ScriptWriter:
         if len(polished) > max_scenes:
             polished = polished[: max_scenes - 1] + [polished[-1]]
 
-        polished = self._fit_long_plan(channel, polished, content_kind)
+        polished = self._fit_long_plan(channel, polished, content_kind, subject=subject)
 
         if channel.id == "brain_lens" and content_kind == "short" and len(polished) >= 2:
             word_budget = self._target_words(channel, content_kind=content_kind)

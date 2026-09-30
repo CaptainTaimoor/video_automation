@@ -1885,6 +1885,34 @@ class HybridMediaFetcher:
             idx += 1
         return texts[:count]
 
+    def _brain_scene_search_terms_for_index(
+        self,
+        topic: TopicCandidate,
+        scene,
+        idx: int,
+    ) -> List[str]:
+        """Return scene search terms, rotating when the plan wraps for more assets.
+
+        Short longs often have six scenes but fetch sixteen visuals. Wrapping
+        used to keep replaying search_terms[0], so the diversity gate still
+        saw only five or six queries. Later laps rotate to secondary/tertiary.
+        """
+        terms = list(dict.fromkeys(
+            str(term).strip()
+            for term in (getattr(scene, "search_terms", None) or [])
+            if str(term).strip()
+        ))
+        if not terms:
+            return terms
+        if topic.niche_id != "brain_lens" or topic.content_kind != "video":
+            return terms
+        plan_len = max(1, len(topic.scene_plan or [scene]))
+        lap = (max(1, int(idx)) - 1) // plan_len
+        if lap <= 0:
+            return terms
+        offset = lap % len(terms)
+        return terms[offset:] + terms[:offset]
+
     def _keywords_from_text(self, text: str) -> List[str]:
         proper_phrases = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b", text or "")
         if proper_phrases:
@@ -4616,7 +4644,9 @@ class HybridMediaFetcher:
                 if start > 0:
                     query_candidates.append(direct_queries[0])
             if scene is not None and scene.search_terms:
-                query_candidates.extend(scene.search_terms)
+                query_candidates.extend(
+                    self._brain_scene_search_terms_for_index(topic, scene, idx)
+                )
             elif idx == 1:
                 query_candidates.extend(fallback_queries[:2] or [topic.title])
             else:
@@ -4666,7 +4696,15 @@ class HybridMediaFetcher:
                         # query (journal, phone, boundary, routine, therapist,
                         # and so on). Keep that intent ahead of the generic
                         # relationship guard so any-couple footage cannot win.
-                        contextual_query = scene.search_terms[0]
+                        # When the short scene plan wraps for extra assets,
+                        # rotate to the next search term instead of replaying
+                        # the same primary.
+                        rotated = self._brain_scene_search_terms_for_index(
+                            topic,
+                            scene,
+                            idx,
+                        )
+                        contextual_query = rotated[0] if rotated else scene.search_terms[0]
                     elif any(term in lowered_text for term in ("text", "message", "reply", "phone")):
                         if any(term in lowered_text for term in ("disappear", "silence", "uncertainty", "wait")):
                             contextual_query = "young adult couple emotional distance ignored phone message relationship"

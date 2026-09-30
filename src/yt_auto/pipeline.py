@@ -531,6 +531,34 @@ class ShortsFactory:
         ceiling = int(self.script_writer._target_words_for_duration(max_seconds, wpm=165))
         return max(200, int(target * 0.85)), max(ceiling, int(target * 1.15))
 
+    def _brain_long_min_distinct_searches(
+        self,
+        channel: ChannelConfig,
+        topic: TopicCandidate,
+        duration_seconds: float,
+    ) -> int:
+        """How many distinct Brain long search queries the gate should require.
+
+        Pace stays about one unique search every 22.5 seconds, capped at 8, but
+        never above what the scene plan can structurally supply. A six-scene
+        ~2.5-minute short long must not be held for needing eight searches
+        written against a six-minute channel maximum.
+        """
+        try:
+            configured_max = int(channel.videos.max_duration_seconds or 360)
+        except Exception:
+            configured_max = 360
+        try:
+            actual = float(duration_seconds or 0)
+        except (TypeError, ValueError):
+            actual = 0.0
+        pace_seconds = actual if actual > 0 else float(configured_max)
+        duration_based = max(5, min(8, round(pace_seconds / 22.5)))
+        scene_count = len(getattr(topic, "scene_plan", None) or [])
+        if scene_count > 0:
+            return max(1, min(duration_based, scene_count, 8))
+        return duration_based
+
     def _ancient_long_title(self, topic: TopicCandidate) -> str:
         subject = re.sub(r"\s+", " ", str(topic.subject or topic.title or "Ancient history")).strip()
         lowered = subject.lower()
@@ -3981,11 +4009,11 @@ class ShortsFactory:
                     for item in sources
                     if str(item.get("search_query") or "").strip()
                 }
-                try:
-                    max_seconds = int(channel.videos.max_duration_seconds or 360)
-                except Exception:
-                    max_seconds = 360
-                fewest_queries = max(5, min(8, round(max_seconds / 22.5)))
+                fewest_queries = self._brain_long_min_distinct_searches(
+                    channel,
+                    topic,
+                    duration_seconds,
+                )
                 if len(distinct_scene_queries) < fewest_queries:
                     query_issue = (
                         f"Brain Lens long visuals use only {len(distinct_scene_queries)} "

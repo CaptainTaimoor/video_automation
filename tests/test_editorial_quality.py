@@ -2101,6 +2101,65 @@ class ScriptEditorialTests(unittest.TestCase):
         self.assertTrue(any("cannot prove" in title or "may be" in title for title in titles))
         self.assertFalse(any("reveals voice change attraction" in title for title in titles))
 
+    def test_ensure_unique_brain_scene_searches_promotes_secondary(self) -> None:
+        shared = "young adult couple relationship tension serious conversation"
+        plan = [
+            ScenePlanItem(
+                narration="The mixed signal pattern shows up in the first hour.",
+                visual_text="Mixed signal opener",
+                search_terms=[
+                    shared,
+                    "young adult couple sitting apart uncertain relationship",
+                    "adult age 25 to 35 Mixed Signals realistic lifestyle b roll",
+                ],
+            ),
+            ScenePlanItem(
+                narration="The same catch-all used to stamp the identical primary again.",
+                visual_text="Mixed signal middle",
+                search_terms=[
+                    shared,
+                    "adult couple calmly discussing relationship uncertainty",
+                    "adult age 25 to 35 Mixed Signals realistic lifestyle b roll",
+                ],
+            ),
+        ]
+
+        fixed = self.writer._ensure_unique_brain_scene_searches(
+            plan,
+            subject="Mixed Signals",
+        )
+
+        self.assertEqual(fixed[0].search_terms[0], shared)
+        self.assertEqual(
+            fixed[1].search_terms[0],
+            "adult couple calmly discussing relationship uncertainty",
+        )
+        primaries = [scene.search_terms[0].lower() for scene in fixed]
+        self.assertEqual(len(primaries), len(set(primaries)))
+
+    def test_brain_long_fitted_plan_has_unique_primary_searches(self) -> None:
+        config = load_config(ROOT / "config" / "settings.yaml")
+        channel = next(item for item in config.channels if item.id == "brain_lens")
+        candidate = topic(
+            title="Why Mixed Signals Keep You Guessing",
+            subject="Mixed Signals",
+            content_kind="video",
+        )
+        plan = self.writer._brain_long_video_plan(channel, candidate, "Mixed Signals")
+        fitted = self.writer._fit_long_plan(
+            channel,
+            plan,
+            content_kind="video",
+            subject="Mixed Signals",
+        )
+        primaries = [
+            re.sub(r"\s+", " ", scene.search_terms[0].strip().lower())
+            for scene in fitted
+            if scene.search_terms
+        ]
+        self.assertGreaterEqual(len(primaries), 5)
+        self.assertEqual(len(primaries), len(set(primaries)))
+
 
 class MusicPathResolutionTests(unittest.TestCase):
     def test_channel_music_dir_uses_channel_folder_when_tracks_exist(self) -> None:
