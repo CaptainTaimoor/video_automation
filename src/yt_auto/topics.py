@@ -657,34 +657,49 @@ class TopicPlanner:
             title_clean = topic.title.lower().strip()
             subject_clean = self._headline_subject(topic.subject or topic.title).lower().strip() or topic.subject.lower().strip()
             topic_identity = self._headline_subject(topic.title).lower().strip() or subject_clean
+            forced_history = re.sub(
+                r"[^a-z0-9]+",
+                " ",
+                os.getenv("YT_FORCE_HISTORY_SUBJECT", "").lower(),
+            ).strip()
+            forced_pin = bool(
+                forced_history
+                and any(
+                    forced_history == item
+                    or forced_history in item
+                    or item in forced_history
+                    for item in {subject_clean, topic_identity, title_clean} - {""}
+                )
+            )
 
             is_duplicate = False
-            for avoid in avoid_titles:
-                a = avoid.lower().strip()
-                avoid_identity = self._headline_subject(a).lower().strip() or a
-                if (
-                    avoid_identity == topic_identity
-                    or avoid_identity == subject_clean
-                    or topic_identity == avoid_identity
-                    or subject_clean == avoid_identity
-                    or (len(avoid_identity) > 5 and avoid_identity in topic_identity)
-                    or (len(topic_identity) > 5 and topic_identity in avoid_identity)
-                ):
-                    is_duplicate = True
-                    break
+            if not forced_pin:
+                for avoid in avoid_titles:
+                    a = avoid.lower().strip()
+                    avoid_identity = self._headline_subject(a).lower().strip() or a
+                    if (
+                        avoid_identity == topic_identity
+                        or avoid_identity == subject_clean
+                        or topic_identity == avoid_identity
+                        or subject_clean == avoid_identity
+                        or (len(avoid_identity) > 5 and avoid_identity in topic_identity)
+                        or (len(topic_identity) > 5 and topic_identity in avoid_identity)
+                    ):
+                        is_duplicate = True
+                        break
 
-                ignore = {
-                    "bizarre", "story", "true", "real", "behind", "history", "ancient", "mystery", "shocking",
-                    "territory", "angle", "unseen", "facts", "psychology", "brain", "behavior", "human",
-                    "mind", "people", "pattern", "mental", "science", "effect", "styles", "your", "this",
-                    "untold", "forgotten", "secrets", "everything", "evidence", "discovery", "unbelievable",
-                }
-                words_in_avoid = {w for w in re.findall(r"\w{4,}", avoid_identity) if w not in ignore}
-                words_in_topic = {w for w in re.findall(r"\w{4,}", topic_identity + " " + subject_clean) if w not in ignore}
+                    ignore = {
+                        "bizarre", "story", "true", "real", "behind", "history", "ancient", "mystery", "shocking",
+                        "territory", "angle", "unseen", "facts", "psychology", "brain", "behavior", "human",
+                        "mind", "people", "pattern", "mental", "science", "effect", "styles", "your", "this",
+                        "untold", "forgotten", "secrets", "everything", "evidence", "discovery", "unbelievable",
+                    }
+                    words_in_avoid = {w for w in re.findall(r"\w{4,}", avoid_identity) if w not in ignore}
+                    words_in_topic = {w for w in re.findall(r"\w{4,}", topic_identity + " " + subject_clean) if w not in ignore}
 
-                if len(words_in_avoid & words_in_topic) >= 1:
-                    is_duplicate = True
-                    break
+                    if len(words_in_avoid & words_in_topic) >= 1:
+                        is_duplicate = True
+                        break
 
             if not is_duplicate:
                 return topic

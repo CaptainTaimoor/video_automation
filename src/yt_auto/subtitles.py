@@ -905,7 +905,10 @@ class SubtitleComposer:
                     | {"another"}
                 )
             ):
-                issues.append(f"caption {index} ends on an incomplete phrase")
+                issues.append(
+                    f"caption {index} ends on an incomplete phrase "
+                    f"(\"{' '.join(edge_words[-4:])}\")"
+                )
             if index > 1 and not allow_clause_continuations:
                 previous_text = segments[index - 2].text.strip()
                 first = edge_words[0].lower() if edge_words else ""

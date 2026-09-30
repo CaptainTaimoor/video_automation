@@ -190,9 +190,15 @@ class VisualLibrary:
                     continue
             except OSError:
                 continue
-            have = terms_of(row.get("subject", ""), row.get("tags", ""),
-                            row.get("asset_title", ""), row.get("search_query", ""))
-            overlap = len(wanted & have)
+            filed_under = terms_of(row.get("subject", ""), row.get("tags", ""),
+                                   row.get("asset_title", ""), row.get("search_query", ""))
+            # What a vision model saw in the frame. A match here is worth
+            # more than a match on the search words, because it is about the
+            # picture rather than about how the picture was found: a scene
+            # about carved stelae should get the stela, not the jungle skyline
+            # that was also filed under Tikal.
+            shows = terms_of(row.get("description", ""))
+            overlap = len(wanted & filed_under) + 2 * len(wanted & shows)
             if wanted and not overlap:
                 continue
             # A newer asset wins a tie: the collection grows towards what the
@@ -299,6 +305,63 @@ class VisualLibrary:
         if self._catalog is not None:
             self._catalog.append(row)
         return name
+
+    def update_descriptions(self, captions: dict[str, tuple[str, list[str]]]) -> int:
+        """Write vision-model descriptions and tags into the catalogue.
+
+        The whole file is rewritten through a temporary copy and swapped in,
+        so a drive that drops mid-write leaves the old catalogue intact rather
+        than a truncated one.
+        """
+        if not captions:
+            return 0
+        rows = self.catalog(refresh=True)
+        if not rows:
+            return 0
+        fields = list(rows[0].keys())
+        for name in CATALOG_FIELDS:
+            if name not in fields:
+                fields.append(name)
+        changed = 0
+        for row in rows:
+            key = str(row.get("file") or "").strip()
+            if key not in captions:
+                continue
+            description, tags = captions[key]
+            row["description"] = description
+            merged = set(str(row.get("tags") or "").split())
+            merged.update(terms_of(" ".join(tags)))
+            row["tags"] = " ".join(sorted(merged))
+            changed += 1
+        if not changed:
+            return 0
+        tmp = self.catalog_path.with_suffix(".csv.tmp")
+        try:
+            with tmp.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+                writer.writeheader()
+                for row in rows:
+                    writer.writerow({k: row.get(k, "") for k in fields})
+            os.replace(tmp, self.catalog_path)
+        except OSError:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            return 0
+        self._catalog = rows
+        return changed
+
+    def descriptions_for(self, channel_id: str, *texts: str, limit: int = 12) -> list[str]:
+        """What the library can show for a subject, for the script writer to read."""
+        out = []
+        for hit in self.lookup(channel_id, *texts, limit=limit * 3):
+            text = str(hit.get("description") or "").strip()
+            if text and text not in out:
+                out.append(text)
+            if len(out) >= limit:
+                break
+        return out
 
     def has_asset(self, url: str = "", perceptual_hash: str = "") -> bool:
         """Whether this exact asset is already held, to avoid fetching twice."""

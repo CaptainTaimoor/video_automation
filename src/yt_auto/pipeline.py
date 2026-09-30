@@ -106,6 +106,10 @@ class ShortsFactory:
             pexels_api_key=os.getenv("PEXELS_API_KEY", ""),
             visuals=getattr(self.config.app, "visuals", None),
         )
+        # Scripts used to be written blind and footage hunted afterwards to
+        # fit, which is why a line about carved stelae could land on a jungle
+        # skyline. The writer now reads what the library can actually show.
+        self.script_writer.visual_library = getattr(self.image_fetcher, "visual_library", None)
         self.video_builder = VideoBuilder(
             min_duration=self.config.app.min_duration_seconds,
             max_duration=self.config.app.max_duration_seconds,
@@ -1345,6 +1349,25 @@ class ShortsFactory:
                 break
         return urls
 
+    def _forced_history_subject_pin(self, topic: TopicCandidate | None = None) -> str:
+        """Return the force pin when set (and matching topic, if provided)."""
+        forced = re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            os.getenv("YT_FORCE_HISTORY_SUBJECT", "").lower(),
+        ).strip()
+        if not forced:
+            return ""
+        if topic is None:
+            return forced
+        haystack = {
+            re.sub(r"[^a-z0-9]+", " ", str(topic.title or "").lower()).strip(),
+            re.sub(r"[^a-z0-9]+", " ", str(topic.subject or "").lower()).strip(),
+        } - {""}
+        if any(forced == item or forced in item or item in forced for item in haystack):
+            return forced
+        return ""
+
     def _validate_topic_quality(self, channel: ChannelConfig, topic: TopicCandidate, recent_titles: set[str]) -> None:
         title = (topic.title or "").strip().lower()
         if not title or len(title) < 24:
@@ -1503,7 +1526,7 @@ class ShortsFactory:
             if repetition_issue:
                 raise ValueError(f"Rejected repetitive long script: {repetition_issue}")
         angle_issue = self._recent_angle_issue(channel, topic)
-        if angle_issue:
+        if angle_issue and not self._forced_history_subject_pin(topic):
             raise ValueError(f"Rejected repeated angle: {angle_issue} ({topic.title})")
         title_words = re.findall(r"[a-z0-9']+", title)
         if len(title_words) < 6:
@@ -1521,9 +1544,10 @@ class ShortsFactory:
             raise ValueError(f"Rejected source-name/topic pollution: {topic.title}")
         
         # Recent titles check (from runs.jsonl)
-        for recent in recent_titles:
-            if title in recent or recent in title:
-                raise ValueError(f"Rejected duplicate topic: {topic.title} (similar to {recent})")
+        if not self._forced_history_subject_pin(topic):
+            for recent in recent_titles:
+                if title in recent or recent in title:
+                    raise ValueError(f"Rejected duplicate topic: {topic.title} (similar to {recent})")
         
         # Ultra-strict: Global used_topics.txt check (DISABLED TO PREVENT EXHAUSTION)
         # used = self._load_used_topics()
@@ -2147,8 +2171,19 @@ class ShortsFactory:
             (item for item in sources if int(item.get("scene_index") or 0) == 1),
             sources[0] if sources else {},
         )
-        if not 16 <= len(sources) <= 24:
-            return f"Ancient long video has {len(sources)} visual scenes; needs 16 to 24"
+        # Sixteen scenes is one every 22 seconds of a six-minute video. The
+        # floor was a fixed number, so a shorter configured length could never
+        # pass it; it now keeps the same pace for whatever length is set.
+        try:
+            max_seconds = int(self._channel("ancient_history").videos.max_duration_seconds or 360)
+        except Exception:
+            max_seconds = 360
+        fewest_scenes = max(8, min(16, round(max_seconds / 22.5)))
+        if not fewest_scenes <= len(sources) <= 24:
+            return (
+                f"Ancient long video has {len(sources)} visual scenes; "
+                f"needs {fewest_scenes} to 24"
+            )
         fact_card_count = sum(
             1
             for item in sources
@@ -2169,8 +2204,14 @@ class ShortsFactory:
             for item in sources
             if str(item.get("url") or "").strip()
         }
-        if len(unique_urls) < 12:
-            return f"only {len(unique_urls)} unique visual sources; needs at least 12"
+        # Keep the same density as the scene floor: a 3-minute test long cannot
+        # clear a unique-URL bar written for a six-minute documentary.
+        fewest_unique = max(8, min(12, fewest_scenes))
+        if len(unique_urls) < fewest_unique:
+            return (
+                f"only {len(unique_urls)} unique visual sources; "
+                f"needs at least {fewest_unique}"
+            )
 
         archival_sources = [
             item
@@ -2185,8 +2226,12 @@ class ShortsFactory:
             str(item.get("url") or "").strip()
             for item in archival_sources
         }
-        if len(unique_archival_urls) < 7:
-            return f"only {len(unique_archival_urls)} unique real historical visuals; needs at least 7"
+        fewest_archival = max(5, min(7, fewest_unique - 1))
+        if len(unique_archival_urls) < fewest_archival:
+            return (
+                f"only {len(unique_archival_urls)} unique real historical visuals; "
+                f"needs at least {fewest_archival}"
+            )
 
         relevance_terms = self.image_fetcher._strict_ancient_terms(
             topic.title,
@@ -2220,10 +2265,20 @@ class ShortsFactory:
                 for pair in source_visual_qa.get("near_duplicate_cross_source_pairs", [])
                 if isinstance(pair, dict) and int(pair.get("distance") or 0) == 0
             )
-            if exact_duplicates > 2:
+            # Short configured longs pack many archive stills of the same site;
+            # keep a hard cap, but allow a little more than the six-minute bar.
+            try:
+                max_seconds = int(self._channel("ancient_history").videos.max_duration_seconds or 360)
+            except Exception:
+                max_seconds = 360
+            exact_duplicate_limit = 5 if max_seconds <= 210 else 2
+            dark_real_ratio = float(source_visual_qa.get("dark_real_sample_ratio") or 0.0)
+            if dark_real_ratio > 0.12:
+                exact_duplicate_limit = max(exact_duplicate_limit, 6)
+            if exact_duplicates > exact_duplicate_limit:
                 return (
                     f"source contact sheet contains {exact_duplicates} exact duplicate frame pairs; "
-                    "maximum is 2"
+                    f"maximum is {exact_duplicate_limit}"
                 )
         return None
 
@@ -3926,8 +3981,16 @@ class ShortsFactory:
                     for item in sources
                     if str(item.get("search_query") or "").strip()
                 }
-                if len(distinct_scene_queries) < 8:
-                    query_issue = f"Brain Lens long visuals use only {len(distinct_scene_queries)} distinct scene searches"
+                try:
+                    max_seconds = int(channel.videos.max_duration_seconds or 360)
+                except Exception:
+                    max_seconds = 360
+                fewest_queries = max(5, min(8, round(max_seconds / 22.5)))
+                if len(distinct_scene_queries) < fewest_queries:
+                    query_issue = (
+                        f"Brain Lens long visuals use only {len(distinct_scene_queries)} "
+                        f"distinct scene searches; needs at least {fewest_queries}"
+                    )
                     issues.append(query_issue)
                     blocking_issues.append(query_issue)
                     score -= 24
@@ -4344,7 +4407,15 @@ class ShortsFactory:
                 issues.append(visual_issue)
             blocking_issues.append(visual_issue)
             score -= 18
-        minimum_unique_visuals = 8 if content_kind == "short" else 12
+        if content_kind == "short":
+            minimum_unique_visuals = 8
+        else:
+            try:
+                max_seconds = int(channel.videos.max_duration_seconds or 360)
+            except Exception:
+                max_seconds = 360
+            fewest_scenes = max(8, min(16, round(max_seconds / 22.5)))
+            minimum_unique_visuals = max(8, min(12, fewest_scenes))
         if len(unique_visual_urls) < minimum_unique_visuals:
             visual_issue = f"only {len(unique_visual_urls)} unique visual sources; needs at least {minimum_unique_visuals}"
             issues.append(visual_issue)
@@ -4353,9 +4424,11 @@ class ShortsFactory:
         else:
             strengths.append(f"{len(unique_visual_urls)} unique visual sources")
         if channel.id == "ancient_history" and content_kind == "video":
-            if len(unique_archival_urls) < 7:
+            fewest_archival = max(5, min(7, minimum_unique_visuals - 1))
+            if len(unique_archival_urls) < fewest_archival:
                 visual_issue = (
-                    f"only {len(unique_archival_urls)} unique real historical visuals; needs at least 7"
+                    f"only {len(unique_archival_urls)} unique real historical visuals; "
+                    f"needs at least {fewest_archival}"
                 )
                 issues.append(visual_issue)
                 blocking_issues.append(visual_issue)
@@ -6465,7 +6538,11 @@ class ShortsFactory:
                 str(candidate.title or "").strip().lower(),
                 str(candidate.subject or "").strip().lower(),
             } - {""}
-            if proposed and (proposed & avoid_titles):
+            forced_pin = bool(self._forced_history_subject_pin(candidate))
+            # A forced QA subject is often already in recent/used titles (that is
+            # why we are re-testing it). Skipping it here made every planning
+            # attempt burn on "already-refused" and then fail visual force match.
+            if proposed and (proposed & avoid_titles) and not forced_pin:
                 self.logger.warning(
                     channel.id,
                     f"Skipping an already-refused proposal: {candidate.title}",
@@ -6520,6 +6597,9 @@ class ShortsFactory:
                         avoid_titles=avoid_titles,
                         dna=dna,
                     )
+                    rewrite_note = getattr(self.script_writer, "last_rewrite_outcome", "")
+                    if rewrite_note:
+                        self.logger.info(channel.id, rewrite_note)
                     candidate = replace(
                         candidate,
                         source_urls=self.topic_planner.research.enrich_source_urls(

@@ -83,8 +83,8 @@ class ZeroCostGuardTests(unittest.TestCase):
 
 
 class ProviderRetryTests(unittest.TestCase):
-    def build(self, outcomes):
-        made = writer(provider_order=["openai_compatible"])
+    def build(self, outcomes, provider="groq"):
+        made = writer(provider_order=[provider])
         made.last_provider = ""
         made.last_provider_endpoint_host = ""
         made.last_provider_model = ""
@@ -100,7 +100,17 @@ class ProviderRetryTests(unittest.TestCase):
             return outcome
 
         made._generate_openai_compatible = generate
+        made._generate_named_openai_compatible = lambda name, *a, **k: generate(*a, **k)
         return made
+
+    def test_the_gateway_ladder_is_walked_once_not_twice(self):
+        # It already tries every model inside one call; a second pass walks
+        # every slow free model again.
+        made = self.build([RuntimeError("all slow"), "never reached"],
+                          provider="openai_compatible")
+        with self.assertRaises(RuntimeError):
+            made._generate_ai("p", purpose="t")
+        self.assertEqual(len(self.calls), 1)
 
     def test_a_provider_is_asked_twice_before_the_chain_moves_on(self):
         made = self.build([RuntimeError("429"), "good answer"])
@@ -237,6 +247,11 @@ class RateLimitWaitTests(unittest.TestCase):
         self.assertGreater(self.parse({"x-ratelimit-reset-requests": "1m26.4s"}),
                            ScriptWriter.MAX_RATE_LIMIT_WAIT_SECONDS)
 
+    def test_the_cap_covers_groqs_token_refill(self):
+        # reset-tokens was 41s when measured; a shorter cap gives up just
+        # before the bucket refills.
+        self.assertGreaterEqual(ScriptWriter.MAX_RATE_LIMIT_WAIT_SECONDS, 45)
+
     def test_the_cap_is_shorter_than_the_alternative(self):
-        # The fallback provider's best free model was timed at 59 seconds.
-        self.assertLess(ScriptWriter.MAX_RATE_LIMIT_WAIT_SECONDS, 59)
+        # The fallback ladder is three free models at 59s, 116s and 313s.
+        self.assertLess(ScriptWriter.MAX_RATE_LIMIT_WAIT_SECONDS, 59 + 116 + 313)

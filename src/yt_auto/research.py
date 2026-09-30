@@ -1650,14 +1650,18 @@ class ContentResearcher:
                 (
                     subject
                     for subject in self.history_subjects
-                    if self._normalize_subject(subject) == forced_subject
+                    if (
+                        self._normalize_subject(subject) == forced_subject
+                        or forced_subject in self._normalize_subject(subject)
+                        or self._normalize_subject(subject) in forced_subject
+                    )
                 ),
                 "",
             )
-            if forced_match and not self._is_duplicate_subject(
-                forced_match,
-                avoid_subjects,
-            ):
+            # An explicit request means this subject, even one covered before:
+            # the hook exists for testing, and a test of a subject the library
+            # already holds is exactly the case the duplicate check would skip.
+            if forced_match:
                 # Local QA can request one deterministic subject without changing
                 # normal scheduled randomness. Later planning attempts receive
                 # the first subject in ``avoid_subjects`` and continue normally.
@@ -1666,7 +1670,8 @@ class ContentResearcher:
                     *[
                         subject
                         for subject in pool
-                        if self._normalize_subject(subject) != forced_subject
+                        if self._normalize_subject(subject)
+                        != self._normalize_subject(forced_match)
                     ],
                 ]
         if content_kind == "short":
@@ -1697,7 +1702,23 @@ class ContentResearcher:
             if not item:
                 continue
             title = item.get("title", subject)
-            if self._is_duplicate_subject(title, used) or self._is_duplicate_subject(title, avoid_subjects):
+            forced_this_subject = bool(
+                forced_subject
+                and (
+                    self._normalize_subject(subject) == forced_subject
+                    or forced_subject in self._normalize_subject(subject)
+                    or self._normalize_subject(subject) in forced_subject
+                )
+            )
+            # YT_FORCE_HISTORY_SUBJECT is a local QA pin. Wikipedia may rename
+            # "lascaux cave paintings" to "Lascaux", and that title is often
+            # already in used-topics — without this bypass the force silently
+            # falls through to the next subject and later visual filtering
+            # raises "Forced Ancient QA subject was not produced".
+            if not forced_this_subject and (
+                self._is_duplicate_subject(title, used)
+                or self._is_duplicate_subject(title, avoid_subjects)
+            ):
                 continue
             bullets = []
             first_fact = self._override_fact_for_title(subject) or self._override_fact_for_title(title) or self._first_clean_fact(item)

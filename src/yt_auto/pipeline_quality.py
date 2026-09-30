@@ -22,10 +22,45 @@ MIDPOINT_CUES: tuple[str, ...] = (
 )
 
 # Ancient History wants a surviving, physical clue rather than a vibe.
+#
+# The list was nine words long and matched literally, so it refused hooks
+# that are exactly what it asks for. "French soldiers found the slab near
+# Rashid in 1799, and scholars used repeated royal names in cartouches as
+# reading keys" failed a Rosetta Stone Short: it names a dated discovery, a
+# physical object and the method that read it, and contains neither "stone"
+# nor "date". The words below are the same idea, spelled the ways writers
+# actually spell it.
 EVIDENCE_CUES: tuple[str, ...] = (
-    "archaeolog", "artifact", "date", "door", "inscription",
+    "archaeolog", "artifact", "artefact", "date", "door", "inscription",
     "ruin", "stone", "tomb", "wall",
+    # objects that survive
+    "slab", "stela", "stelae", "tablet", "papyrus", "scroll", "manuscript",
+    "coin", "pottery", "potsherd", "shard", "skeleton", "bones", "skull",
+    "statue", "relief", "carving", "carved", "mural", "fresco", "mosaic",
+    "painting", "pillar", "column", "altar", "sarcophag", "mummy", "cartouche",
+    "hieroglyph", "cuneiform", "glyph", "seal", "amulet", "weapon", "sword",
+    "helmet", "shield", "armor", "armour", "jewel", "gold", "bronze", "iron",
+    "clay", "brick", "mortar", "pyramid", "temple", "palace", "fortress",
+    "cave", "grave", "burial", "cemetery", "canal", "aqueduct", "road",
+    "ship", "wreck", "map",
+    # how we know
+    "excavat", "unearth", "discover", "found ", "dig ", "survey",
+    "radiocarbon", "carbon dating", "dated", "record", "chronicle",
+    "letter", "decree", "treaty", "census", "ledger",
 )
+
+# A year is a concrete clue however it is written: "in 1799", "around 2500
+# BCE", "the 4th century BC".
+_YEAR = re.compile(
+    r"\b(?:\d{3,4}\s*(?:bce|bc|ce|ad)?|\d{1,2}(?:st|nd|rd|th)\s+century)\b",
+    re.IGNORECASE,
+)
+
+
+def has_concrete_clue(text: str) -> bool:
+    """Whether a line points at something that physically survives or is dated."""
+    lowered = f" {str(text or '').lower()} "
+    return any(cue in lowered for cue in EVIDENCE_CUES) or bool(_YEAR.search(lowered))
 
 # Spoken words per second, used to sanity-check a Short's length.
 WORDS_PER_SECOND = 2.6
@@ -84,9 +119,7 @@ def ancient_history_issues(lines: list[str], subject_tokens: set[str]) -> list[s
     issues: list[str] = []
     opener = lines[0]
     opener_tokens = set(re.findall(r"[a-z]{4,}", opener.lower()))
-    if not (subject_tokens & opener_tokens) and not any(
-        cue in opener.lower() for cue in EVIDENCE_CUES
-    ):
+    if not (subject_tokens & opener_tokens) and not has_concrete_clue(opener):
         issues.append("Ancient History hook lacks its subject or a concrete surviving clue")
     payoff_tokens = set(re.findall(r"[a-z]{4,}", " ".join(lines[-2:]).lower()))
     if not (subject_tokens & payoff_tokens):

@@ -1298,8 +1298,7 @@ class ScriptWriter:
                     if token not in self._EDITORIAL_STOP_WORDS
                 }
                 opener_tokens = set(re.findall(r"[a-z]{4,}", opener.lower()))
-                evidence_cues = pipeline_quality.EVIDENCE_CUES
-                if not (subject_tokens & opener_tokens) and not any(cue in opener.lower() for cue in evidence_cues):
+                if not (subject_tokens & opener_tokens) and not pipeline_quality.has_concrete_clue(opener):
                     issues.append("Ancient History hook lacks its subject or a concrete surviving clue")
                 payoff_tokens = set(
                     re.findall(r"[a-z]{4,}", " ".join(lines[-2:]).lower())
@@ -3730,9 +3729,12 @@ class ScriptWriter:
             )
         raise RuntimeError(f"unsupported named openai-compatible provider: {provider}")
 
-    # A rate limit worth waiting out rather than routing around. Longer than
-    # this and the next provider, slow as it is, is the better bet.
-    MAX_RATE_LIMIT_WAIT_SECONDS = 12.0
+    # A rate limit worth waiting out rather than routing around. Groq's token
+    # bucket refills within the minute (reset-tokens was 41s when measured),
+    # and the alternative is OpenRouter's free ladder: three models at up to
+    # two minutes each, tried twice -- a test build sat on one call for
+    # twenty-two minutes. A minute's wait is the fast path, not the slow one.
+    MAX_RATE_LIMIT_WAIT_SECONDS = 65.0
 
     @staticmethod
     def _retry_after_seconds(response) -> float | None:
@@ -3840,6 +3842,8 @@ class ScriptWriter:
                 256, min(self.NAMED_PROVIDER_TOKEN_CEILING, int(max_output_tokens))
             ),
         }
+        if model.startswith("openai/gpt-oss"):
+            payload["reasoning_effort"] = self.GPT_OSS_REASONING_EFFORT
         if response_mime_type == "application/json":
             payload["response_format"] = {"type": "json_object"}
         response = requests.post(
@@ -3911,22 +3915,33 @@ class ScriptWriter:
     })
 
     # Groq's free tier allows eight thousand tokens a minute, and max_tokens
-    # is reserved against that budget whether or not the model uses it. The
-    # rewrite budget was raised to 5,400 so OpenRouter's free models would
-    # have room to think before answering -- their thinking is billed even
-    # when reasoning.exclude hides it -- and that same number reserves two
-    # thirds of Groq's minute on a single call. Two rewrites in a row then
-    # answer 429 with 999 of 1000 daily requests still unused.
+    # is reserved against that budget whether or not the model uses it, so
+    # the 5,400 the rewrite asks for reserves two thirds of the minute.
     #
-    # Groq's gpt-oss models return the answer and nothing else, so they need
-    # roughly the size of the answer. Keeping the two budgets apart lets each
-    # provider have what it actually needs.
-    NAMED_PROVIDER_TOKEN_CEILING = 1400
+    # The first fix capped it at 1,400 on the belief that gpt-oss returns the
+    # answer and nothing else. It does not: it reasons first, and on the real
+    # rewrite prompt it spent 4,462 tokens before writing. At 1,400 and 3,000
+    # it ran out mid-thought and Groq refused the reply outright ("Failed to
+    # validate JSON"), so every rewrite silently fell through to OpenRouter's
+    # free models at one to five minutes each -- a build sat on its first
+    # candidate for eleven minutes.
+    #
+    # The real lever is reasoning_effort. Measured on the same prompt:
+    #
+    #   gpt-oss-120b  low     4.0s  1,478 tokens  8/8 beats
+    #   gpt-oss-120b  medium  5.7s  2,334 tokens  8/8 beats, best opener
+    #   gpt-oss-20b   low     2.1s  1,249 tokens  8/8 beats
+    #
+    # Medium gives the hook rule its evidence word and still fits two calls
+    # in Groq's minute.
+    NAMED_PROVIDER_TOKEN_CEILING = 3500
+    GPT_OSS_REASONING_EFFORT = "medium"
 
     # How many times one provider is asked before the chain moves on.
     PROVIDER_ATTEMPTS = 2
 
     last_repair_outcome: str = ""
+    last_rewrite_outcome: str = ""
 
     MIN_GATEWAY_OUTPUT_TOKENS = 512
 
@@ -4460,7 +4475,11 @@ class ScriptWriter:
                 # every other provider still untried.
                 generated = ""
                 last_attempt_error: Exception | None = None
-                for _ in range(max(1, self.PROVIDER_ATTEMPTS)):
+                # The gateway already walks a ladder of models inside one
+                # call, so asking it twice means walking every slow model
+                # twice. One pass is the retry.
+                attempts = 1 if candidate == "openai_compatible" else self.PROVIDER_ATTEMPTS
+                for _ in range(max(1, attempts)):
                     try:
                         generated = str(generate() or "").strip()
                     except Exception as attempt_exc:
@@ -4641,6 +4660,35 @@ class ScriptWriter:
             and isinstance(data.get("risks"), list)
         )
 
+    visual_library = None
+
+    def _available_visuals_block(self, channel: ChannelConfig, topic: TopicCandidate) -> str:
+        """The pictures this subject can actually be illustrated with.
+
+        Written first and illustrated afterwards, a script asks for things the
+        footage cannot show and the edit fills the gap with whatever is
+        nearest. Given the list up front, the model can lean each beat toward
+        a picture that exists -- without inventing a fact to do it.
+        """
+        library = getattr(self, "visual_library", None)
+        if library is None:
+            return ""
+        try:
+            shown = library.descriptions_for(
+                channel.id, topic.subject or "", topic.title or "", limit=12
+            )
+        except Exception:
+            return ""
+        if not shown:
+            return ""
+        lines = "\n".join(f"- {text}" for text in shown)
+        return (
+            "Pictures available to illustrate this video (describe things the "
+            "viewer can see in these where the facts allow; do not invent facts "
+            "to match a picture, and do not mention that these are pictures):\n"
+            f"{lines}\n"
+        )
+
     def _scene_rewrite_prompt(
         self,
         channel: ChannelConfig,
@@ -4668,10 +4716,16 @@ class ScriptWriter:
             # the gate rejects anything under 658.
             long_target = int(self._target_words(channel, "video"))
             target_words = f"{int(long_target * 0.9)}-{int(long_target * 1.1)}"
+        # "24 words for every other beat" allowed eight beats to reach 188
+        # words against a 148 ceiling, and the model took the room. The beat
+        # budget is now the total divided by the beats.
+        beat_count = max(1, len(topic.scene_plan or []))
+        _, most_words = self._rewrite_word_band(channel, content_kind)
+        per_beat = max(8, most_words // beat_count)
         beat_limit = (
-            "20 words for beat 1, 24 words for every other beat"
+            f"{min(20, per_beat + 4)} words for beat 1, about {per_beat} words for every other beat"
             if content_kind == "short"
-            else "24 words per beat"
+            else f"about {per_beat} words per beat"
         )
         channel_rule = (
             "Brain Lens: make the viewer feel seen with mature, flirty, emotionally intelligent relationship psychology. Use attraction, chemistry, texting, body language, mixed signals, crushes, kissing tension, attachment, confidence, and boundaries when relevant. Keep it spicy but non-explicit, non-manipulative, respectful, and not medical. Start with what the viewer does or feels, not the concept name."
@@ -4757,6 +4811,7 @@ class ScriptWriter:
             "End with a memorable payoff that echoes the opening. A CTA is optional and may use no more than four words. Never end with generic 'follow for more' language. "
             f"Recent topics/angles to avoid: {avoid_str}. "
             f"Viral style guide: {dna_context or 'clear, visual, fast-paced, original'}.\n"
+            f"{self._available_visuals_block(channel, topic)}"
             f"Existing beats:\n{scene_lines}\n"
             "Return ONLY valid JSON in this exact shape: "
             "{\"title\":\"optional improved title under 90 chars\",\"beats\":[\"beat 1\", \"beat 2\"]}. "
@@ -4785,6 +4840,22 @@ class ScriptWriter:
         beats = max(1, int(beat_count or 1))
         return min(9000, max(5000, beats * 200 + 4000))
 
+    def _rewrite_word_band(self, channel: ChannelConfig, content_kind: str) -> tuple[int, int]:
+        """The spoken length a rewrite must land in, as the prompt states it.
+
+        Long videos used to be held to 100-320 words while the prompt asked
+        for the channel's real target of roughly 700-850, so every long
+        rewrite was refused for doing what it was told.
+        """
+        if content_kind == "short":
+            if channel.id == "brain_lens":
+                return self._BRAIN_SHORT_MIN_WORDS, self._BRAIN_SHORT_MAX_WORDS
+            if channel.id == "ancient_history":
+                return self._ANCIENT_SHORT_MIN_WORDS, self._ANCIENT_SHORT_MAX_WORDS
+            return 120, 148
+        target = int(self._target_words(channel, "video"))
+        return int(target * 0.8), int(target * 1.2)
+
     def _rewrite_scene_plan_with_ai(
         self,
         channel: ChannelConfig,
@@ -4795,6 +4866,16 @@ class ScriptWriter:
     ) -> TopicCandidate:
         if not topic.scene_plan:
             return topic
+
+        # Every check below used to answer with the untouched topic and no
+        # word, so a rewrite that Groq wrote in six seconds could be thrown
+        # away and the build would carry on as if the AI had agreed with the
+        # template. The reason is kept so the log can say which check it was.
+        def declined(reason: str) -> TopicCandidate:
+            self.last_rewrite_outcome = f"rewrite kept the template: {reason}"
+            return topic
+
+        self.last_rewrite_outcome = ""
         prompt = self._scene_rewrite_prompt(
             channel=channel,
             topic=topic,
@@ -4813,43 +4894,56 @@ class ScriptWriter:
                 and all(isinstance(beat, str) and beat.strip() for beat in raw_beats)
             )
 
-        raw = self._generate_ai(
-            prompt,
-            max_output_tokens=self._rewrite_token_budget(expected_beat_count),
-            response_mime_type="application/json",
-            purpose="scene_rewrite",
-            validator=valid_scene_payload,
-        )
-        data = self._json_from_ai(raw)
-        beats_raw = data.get("beats") or []
-        if not isinstance(beats_raw, list):
-            return topic
-        beats = [self._sentence(str(beat)) for beat in beats_raw if self._sentence(str(beat))]
-        if len(beats) != len(topic.scene_plan):
-            return topic
-        total_words = self._word_count(" ".join(beats))
-        if content_kind == "short":
-            opener_limit = 20
-            if channel.id == "brain_lens":
-                word_ok = self._BRAIN_SHORT_MIN_WORDS <= total_words <= self._BRAIN_SHORT_MAX_WORDS
-            elif channel.id == "ancient_history":
-                word_ok = self._ANCIENT_SHORT_MIN_WORDS <= total_words <= self._ANCIENT_SHORT_MAX_WORDS
-            else:
-                word_ok = 120 <= total_words <= 148
-            if self._word_count(beats[0]) > opener_limit or not word_ok:
-                return topic
-        elif not (100 <= total_words <= 320):
-            return topic
+        low, high = self._rewrite_word_band(channel, content_kind)
+
+        # Models count words badly. Asked for 120-148, gpt-oss wrote 169 and
+        # the whole rewrite was thrown away for it. One more call that tells
+        # the model its own count costs about six seconds on Groq and keeps
+        # the rewrite; a second miss still falls back to the template.
+        data: dict = {}
+        beats: list[str] = []
+        total_words = 0
+        feedback = ""
+        for _ in range(2):
+            raw = self._generate_ai(
+                prompt + feedback,
+                max_output_tokens=self._rewrite_token_budget(expected_beat_count),
+                response_mime_type="application/json",
+                purpose="scene_rewrite",
+                validator=valid_scene_payload,
+            )
+            data = self._json_from_ai(raw)
+            beats_raw = data.get("beats") or []
+            if not isinstance(beats_raw, list):
+                return declined("reply had no beats list")
+            beats = [self._sentence(str(beat)) for beat in beats_raw if self._sentence(str(beat))]
+            if len(beats) != len(topic.scene_plan):
+                return declined(f"{len(beats)} beats back for {len(topic.scene_plan)}")
+            total_words = self._word_count(" ".join(beats))
+            if low <= total_words <= high:
+                break
+            aim = (low + high) // 2
+            feedback = (
+                f"\n\nYour last draft had {total_words} words in total. It must be "
+                f"{low}-{high}. Rewrite it to about {aim} words, keeping "
+                f"{expected_beat_count} beats of roughly {max(8, aim // expected_beat_count)} "
+                "words each."
+            )
+        if content_kind == "short" and self._word_count(beats[0]) > 20:
+            return declined(f"opener runs {self._word_count(beats[0])} words")
+        if not low <= total_words <= high:
+            return declined(f"{total_words} words is outside {low}-{high}")
         if self._is_generic_opener(beats[0]):
-            return topic
-        if self.editorial_quality_issues(topic, beats=beats, content_kind=content_kind):
-            return topic
+            return declined("generic opener")
+        issues = self.editorial_quality_issues(topic, beats=beats, content_kind=content_kind)
+        if issues:
+            return declined(f"editorial: {issues[0]}")
         if channel.id == "ancient_history":
             original_text = " ".join(scene.narration for scene in topic.scene_plan)
             original_numbers = set(re.findall(r"\b\d[\d,.]*(?:st|nd|rd|th)?\b", original_text.lower()))
             rewritten_numbers = set(re.findall(r"\b\d[\d,.]*(?:st|nd|rd|th)?\b", " ".join(beats).lower()))
             if not rewritten_numbers.issubset(original_numbers):
-                return topic
+                return declined(f"new numbers {sorted(rewritten_numbers - original_numbers)[:3]}")
 
             common_capitals = {
                 "A", "An", "And", "At", "Before", "But", "For", "From", "How", "In", "Inside",
@@ -4860,13 +4954,21 @@ class ScriptWriter:
                 for token in re.findall(r"\b[A-Z][A-Za-z'-]{2,}\b", original_text)
                 if token not in common_capitals
             }
+            # A capital at the start of a sentence is grammar, not a name.
+            # "Because" and "Pottery" were refused as invented names because
+            # they began a beat; a word the original already used in any case
+            # is not new either.
+            original_words = set(re.findall(r"[a-z'-]+", original_text.lower()))
             rewritten_names = {
-                token
-                for token in re.findall(r"\b[A-Z][A-Za-z'-]{2,}\b", " ".join(beats))
-                if token not in common_capitals
+                match.group(0)
+                for beat in beats
+                for match in re.finditer(r"\b[A-Z][A-Za-z'-]{2,}\b", beat)
+                if match.group(0) not in common_capitals
+                and match.group(0).lower() not in original_words
+                and not re.fullmatch(r"[\s\"'(]*", beat[: match.start()].split(".")[-1])
             }
             if not rewritten_names.issubset(original_names):
-                return topic
+                return declined(f"new names {sorted(rewritten_names - original_names)[:3]}")
 
         scene_plan: list[ScenePlanItem] = []
         for beat, scene in zip(beats, topic.scene_plan):

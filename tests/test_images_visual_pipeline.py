@@ -837,7 +837,13 @@ class VisualPipelineTests(unittest.TestCase):
             )
         )
 
-    def test_great_zimbabwe_short_uses_each_evidence_diagram_once_without_cards(self) -> None:
+    def test_great_zimbabwe_short_generates_no_pictures_of_its_own(self) -> None:
+        """The evidence diagrams are gone; only real sources reach the edit.
+
+        They read like a history channel's own graphics and carried no
+        information: five labels that were the same for every subject, four
+        empty boxes, a chart line drawn from no data.
+        """
         fetcher = BoundedAncientSourceFetcher(successful_scenes=10)
         topic = make_topic()
         topic.niche_id = "ancient_history"
@@ -846,11 +852,6 @@ class VisualPipelineTests(unittest.TestCase):
         topic.content_kind = "short"
         topic.scene_plan = []
         scene_texts = [
-            "Great Zimbabwe was a stone-built city",
-            "Dry-stone walls were built without mortar",
-            "The Great Enclosure surrounded elite spaces",
-            "Imported glass beads and ceramics connect Indian Ocean trade",
-            "Soapstone birds became powerful symbols",
             "Great Zimbabwe was a stone-built city",
             "Dry-stone walls were built without mortar",
             "The Great Enclosure surrounded elite spaces",
@@ -868,14 +869,9 @@ class VisualPipelineTests(unittest.TestCase):
                 media_memory={},
             )
 
-        diagram_kinds = [
-            item.get("diagram_kind")
-            for item in manifest
-            if item.get("source") == "local_documentary_diagram"
-        ]
-        self.assertEqual(diagram_kinds.count("great_zimbabwe_trade_evidence"), 1)
-        self.assertEqual(diagram_kinds.count("great_zimbabwe_bird_evidence"), 1)
-        self.assertFalse(any(item.get("source") == "local_fact_card" for item in manifest))
+        generated = {"local_documentary_diagram", "local_fact_card"}
+        self.assertFalse(any(item.get("source") in generated for item in manifest))
+        self.assertFalse(any(item.get("diagram_kind") for item in manifest))
 
     def test_great_zimbabwe_bird_plate_is_cached_and_metadata_requires_actual_use(self) -> None:
         topic = make_topic()
@@ -2151,6 +2147,87 @@ class VisualPipelineTests(unittest.TestCase):
         almost_same.putpixel((5, 5), (1, 1, 1))
         self.assertTrue(fetcher._near_duplicate_hash(fetcher._dhash(almost_same), {fetcher._dhash(image)}))
 
+    def test_source_qa_ignores_dark_frame_fingerprint_collisions(self) -> None:
+        """Lascaux-style near-black crops used to share one dHash and trip the gate."""
+        fetcher = HybridMediaFetcher()
+        topic = make_topic()
+        topic.niche_id = "ancient_history"
+        topic.content_kind = "video"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            left = root / "library_lascaux.jpg"
+            right = root / "wikimedia_lascaux.jpg"
+            bright = root / "daylight.jpg"
+            # Distinct dark patterns that still sit under the dark luma floor.
+            Image.new("RGB", (640, 360), (6, 4, 3)).save(left)
+            dark_right = Image.new("RGB", (640, 360), (4, 5, 7))
+            for x in range(0, 640, 40):
+                for y in range(180, 360):
+                    dark_right.putpixel((x, y), (18, 12, 8))
+            dark_right.save(right)
+            Image.new("RGB", (640, 360), (140, 130, 110)).save(bright)
+            report = fetcher._source_visual_qa(
+                [left, right, bright],
+                root / "contact.jpg",
+                topic,
+                source_manifest=[
+                    {"scene_index": 1, "source": "visual_library"},
+                    {"scene_index": 2, "source": "wikimedia"},
+                    {"scene_index": 3, "source": "wikimedia"},
+                ],
+            )
+
+        pairs = report["near_duplicate_cross_source_pairs"]
+        self.assertFalse(
+            any(
+                {pair.get("left"), pair.get("right")} == {left.name, right.name}
+                for pair in pairs
+                if isinstance(pair, dict)
+            )
+        )
+        self.assertFalse(fetcher._fingerprint_is_reliable(Image.new("RGB", (80, 80), (8, 8, 8))))
+        self.assertTrue(fetcher._fingerprint_is_reliable(Image.new("RGB", (80, 80), (120, 110, 100))))
+
+    def test_source_qa_counts_one_pair_per_source_file(self) -> None:
+        """Three video timestamps used to multiply one dupe into three gate hits."""
+        fetcher = HybridMediaFetcher()
+        topic = make_topic()
+        topic.niche_id = "ancient_history"
+        topic.content_kind = "video"
+
+        class MultiSampleFetcher(HybridMediaFetcher):
+            def _preview_image(self, path, timestamp=0.0, timeout=8.0):  # type: ignore[override]
+                # Same bright pattern for every sample so hashes collide.
+                return Image.new("RGB", (320, 180), (90, 70, 40))
+
+            def _probe_video(self, path, timeout=8.0):  # type: ignore[override]
+                return 1280, 720, 3.0
+
+        multi = MultiSampleFetcher()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            left = root / "a.mp4"
+            right = root / "b.mp4"
+            left.write_bytes(b"fake")
+            right.write_bytes(b"fake")
+            report = multi._source_visual_qa(
+                [left, right],
+                root / "contact.jpg",
+                topic,
+                source_manifest=[
+                    {"scene_index": 1, "source": "visual_library"},
+                    {"scene_index": 2, "source": "wikimedia"},
+                ],
+            )
+
+        exact = [
+            pair
+            for pair in report["near_duplicate_cross_source_pairs"]
+            if isinstance(pair, dict) and int(pair.get("distance") or 0) == 0
+        ]
+        self.assertEqual(len(exact), 1)
+        self.assertEqual(report["sampled_frames"], 6)
+
     def test_scene_intent_rejects_known_axum_priest_mismatch(self) -> None:
         fetcher = HybridMediaFetcher()
         priest = {"asset_title": "Ethiopian Orthodox priest in Axum", "source_page": "https://pixabay.com/photos/123/"}
@@ -2328,9 +2405,11 @@ class VisualPipelineTests(unittest.TestCase):
             backgrounds = fetcher._fetch_scene_backgrounds(
                 topic, Path(tmp), [topic.scene_plan[0].visual_text], [], media_memory={}
             )
+            # The budget is spent, so nothing is searched -- and nothing is
+            # drawn either. The scene comes back empty and the quality gates
+            # decide whether the build still has enough to publish.
             self.assertEqual(fetcher.queries, [])
-            self.assertIsNotNone(backgrounds[0])
-            self.assertTrue(backgrounds[0].is_file())
+            self.assertIsNone(backgrounds[0])
 
     def test_ancient_short_does_not_reuse_one_source_across_scenes(self) -> None:
         fetcher = RecordingFetcher()
@@ -2348,8 +2427,11 @@ class VisualPipelineTests(unittest.TestCase):
                 manifest,
                 media_memory={},
             )
-            self.assertEqual(len({path.name for path in backgrounds if path is not None}), 2)
-            self.assertEqual(sum(1 for item in manifest if item.get("source") == "local_fact_card"), 2)
+            # Generated cards are gone, so a scene with no real source now has
+            # nothing rather than a brown gradient with clipart on it.
+            self.assertFalse(any(item.get("source") == "local_fact_card" for item in manifest))
+            self.assertFalse(any(item.get("source") == "local_documentary_diagram"
+                                 for item in manifest))
 
     def test_ancient_short_reuses_verified_assets_once_after_eight_unique_sources(self) -> None:
         fetcher = BoundedAncientSourceFetcher(successful_scenes=8)
@@ -2398,9 +2480,10 @@ class VisualPipelineTests(unittest.TestCase):
                 media_memory={},
             )
 
-        self.assertEqual(len(backgrounds), 9)
-        self.assertEqual(sum(1 for item in manifest if item.get("source") == "local_fact_card"), 2)
-        self.assertFalse(any(item.get("reused_for_scene") for item in manifest))
+        # Nothing is invented to pad the edit any more, so what comes back is
+        # the real sources that were found and no filler behind them.
+        self.assertFalse(any(item.get("source") == "local_fact_card" for item in manifest))
+        self.assertTrue(all(str(item.get("source") or "") != "" for item in manifest))
 
     def test_source_contact_sheet_samples_moving_video(self) -> None:
         fetcher = PreviewFetcher()

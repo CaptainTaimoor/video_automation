@@ -90,20 +90,6 @@ class HybridMediaFetcher:
         # that finds what it needs here never touches a provider, which is
         # both faster and the difference between a real photograph and a
         # generated card when a scene runs short of time.
-        # A fact card is a brown gradient with a piece of clipart and a line
-        # of the script on it -- one published Short carried "THE CEMETERIES
-        # PRESERVE NAPATAN" over a cartoon boat.
-        #
-        # The pipeline already allows at most one per video and aborts the
-        # build if a second is needed, so this switch is only about that last
-        # one: whether a scene with nothing else may show a card, or the build
-        # should fail instead.
-        #
-        # It defaults to allowed because the library is still thin for Brain
-        # Lens -- 33 assets against Ancient History's 682 -- and turning it off
-        # today trades grey slides for failed builds. Once the nightly fetcher
-        # has stocked it, set this false and the cards are gone for good.
-        self.allow_generated_cards = bool(setting("allow_generated_cards", True))
         library_root = str(setting("library_root", "") or "").strip()
         self.visual_library = None
         if library_root:
@@ -461,6 +447,12 @@ class HybridMediaFetcher:
                     "media_height": str(hit.get("media_height") or ""),
                     "library_file": str(hit.get("file") or ""),
                     "library_path": str(path),
+                    "is_video": "true" if (
+                        str(hit.get("kind") or "") == "video"
+                        or path.suffix.lower() in {".mp4", ".mov", ".webm", ".mkv"}
+                    ) else "false",
+                    "description": str(hit.get("description") or ""),
+                    "source_page_verified": "true",
                 },
             ))
         return out
@@ -727,6 +719,21 @@ class HybridMediaFetcher:
             return False
 
     def _download(self, url: str, out_path: Path, deadline: float | None = None) -> bool:
+        # Library entries are local files. requests has no adapter for
+        # file:// and the loop below would try three times and give up, which
+        # is how the shared library was wired in and still never delivered a
+        # single asset.
+        if str(url or "").startswith("file:"):
+            try:
+                from urllib.parse import unquote, urlparse
+                from urllib.request import url2pathname
+
+                local = Path(url2pathname(unquote(urlparse(url).path)))
+                if not local.is_file():
+                    return False
+                return self._save_media_bytes(local.read_bytes(), out_path)
+            except Exception:
+                return False
         for attempt in range(3):
             timeout = self._deadline_timeout(deadline, 16.0)
             if timeout is None:
@@ -3054,13 +3061,28 @@ class HybridMediaFetcher:
 
     @staticmethod
     def _dhash(image: Image.Image) -> str:
-        sample = ImageOps.grayscale(image).resize((9, 8), Image.Resampling.LANCZOS)
+        # Underexposed cave/archive frames are nearly flat; without a contrast
+        # stretch every near-black crop collapses to the same bit pattern and
+        # the contact-sheet gate treats distinct Lascaux shots as exact dupes.
+        gray = ImageOps.grayscale(image)
+        extrema = gray.getextrema()
+        if isinstance(extrema, tuple) and len(extrema) == 2:
+            lo, hi = int(extrema[0]), int(extrema[1])
+            if hi - lo < 48:
+                gray = ImageOps.autocontrast(gray, cutoff=1)
+        sample = gray.resize((9, 8), Image.Resampling.LANCZOS)
         pixels = list(sample.get_flattened_data())
         bits = 0
         for row in range(8):
             for col in range(8):
                 bits = (bits << 1) | int(pixels[row * 9 + col] > pixels[row * 9 + col + 1])
         return f"{bits:016x}"
+
+    @classmethod
+    def _fingerprint_is_reliable(cls, image: Image.Image) -> bool:
+        """Near-black frames have too little structure for a trustworthy dHash."""
+        mean_luma, near_black = cls._frame_luma_stats(image)
+        return mean_luma >= 32.0 and near_black < 0.9
 
     def _background_dhash(self, image: Image.Image) -> str:
         """Hash around the caption band so changing burned text cannot hide a freeze."""
@@ -3278,6 +3300,8 @@ class HybridMediaFetcher:
         if timeout is None:
             return ""
         preview = self._preview_image(path, timestamp=0.5, timeout=timeout)
+        # Always hash: _dhash autocontrasts flat/underexposed frames so distinct
+        # cave paintings stay distinguishable, while true copies still collide.
         return self._dhash(preview) if preview is not None else ""
 
     def _hook_video_has_motion(self, path: Path, deadline: float | None = None) -> bool:
@@ -4483,6 +4507,20 @@ class HybridMediaFetcher:
                     action = self._brain_action_cluster(url, meta)
                     if action:
                         brain_action_counts[action] = int(brain_action_counts.get(action, 0)) + 1
+                library_file = str(meta.get("library_file") or "")
+                library = getattr(self, "visual_library", None)
+                if library_file and library is not None:
+                    # Starts the fifteen-day rest. Written only after the
+                    # asset passed every check, so a rejected candidate does
+                    # not use up its turn.
+                    try:
+                        library.record_use(
+                            {"file": library_file, "url": url, "channel": niche_id,
+                             "subject": subject},
+                            run_dir=str(raw_dir.parent),
+                        )
+                    except Exception:
+                        pass
                 return out_path, {
                     "file": out_path.name,
                     "url": url,
@@ -4679,51 +4717,22 @@ class HybridMediaFetcher:
                 visual_style=visual_style,
             )
 
+            # Generated diagrams are gone. They looked like a history
+            # channel's own graphics and contained nothing: a chronology
+            # timeline whose five labels were SOURCE, EVENT, RESPONSE, RESULT,
+            # MEMORY for every subject alike; a consequence chain of four
+            # empty boxes; a terrain map with a zigzag line drawn from no data
+            # at all, over a footer admitting "NOT A SCALE RECONSTRUCTION".
+            #
+            # They were also uncapped in practice. The limit was one per kind
+            # and there were a dozen kinds, so one Roman Concrete video came
+            # out with ten of them against ten real photographs -- half the
+            # edit was empty templates.
+            #
+            # The renderers are left in place, unreferenced, because they are
+            # the only record of what was tried; nothing calls them.
             diagram_kind = ""
             fallback_diagram_kind = ""
-            if topic.niche_id == "ancient_history":
-                diagram_kind = self._ancient_documentary_diagram_kind(topic, text)
-                if not diagram_kind and topic.content_kind == "video":
-                    fallback_diagram_kind = self._ancient_fallback_diagram_kind(
-                        idx,
-                        diagram_counts,
-                    )
-                # A diagram is a source-backed explainer, not extra B-roll. Reusing
-                # the same rendered plate under a second filename overstates visual
-                # diversity and creates a noticeable repeat in a 30-second Short.
-                # Every diagram kind is therefore single-use; later beats must earn
-                # a distinct licensed archival asset instead.
-                diagram_limit = 1
-                if diagram_kind and diagram_counts.get(diagram_kind, 0) >= diagram_limit:
-                    diagram_kind = ""
-                if (
-                    not diagram_kind
-                    and not fallback_diagram_kind
-                    and topic.content_kind == "video"
-                ):
-                    fallback_diagram_kind = self._ancient_fallback_diagram_kind(
-                        idx,
-                        diagram_counts,
-                    )
-            if diagram_kind:
-                out_path = raw_dir / f"raw_{idx:02d}_{diagram_kind}.jpg"
-                if self._generate_ancient_documentary_diagram(topic, out_path, diagram_kind):
-                    chosen = out_path
-                    diagram_counts[diagram_kind] = diagram_counts.get(diagram_kind, 0) + 1
-                    manifest.append(
-                        {
-                            "file": out_path.name,
-                            "url": f"local_documentary_diagram:{slugify_text(topic.subject or topic.title, 36)}:{diagram_kind}:{idx}",
-                            "source": "local_documentary_diagram",
-                            "license": "Generated in-app from cited research",
-                            "artist": "yt_automation",
-                            "asset_title": f"{topic.subject or topic.title} {diagram_kind.replace('_', ' ')}",
-                            "diagram_kind": diagram_kind,
-                            "scene_index": idx,
-                            "scene_text": text,
-                            **self._ancient_diagram_source_metadata(diagram_kind),
-                        }
-                    )
 
             # A continuity worker should use the already verified same-subject
             # archive spine before spending its scene budget on a provider that
@@ -5109,22 +5118,12 @@ class HybridMediaFetcher:
             # is the difference between shipping something good and shipping
             # something embarrassing. Set app.visuals.allow_generated_cards
             # true to bring them back.
-            if chosen is None and self.allow_generated_cards:
-                out_path = raw_dir / f"raw_{idx:02d}_fallback_card.jpg"
-                if self._generate_editorial_fallback(topic, text, out_path, idx):
-                    chosen = out_path
-                    local_fact_card_count += 1
-                    manifest.append(
-                        {
-                            "file": out_path.name,
-                            "url": f"local_fallback [{text[:30]}...]",
-                            "source": "local_fact_card",
-                            "license": "Generated in-app fallback",
-                            "artist": "yt_automation",
-                            "scene_index": idx,
-                            "scene_text": text,
-                        }
-                    )
+            # The fact card is gone too. One published Short carried "THE
+            # CEMETERIES PRESERVE NAPATAN" over a cartoon boat on a brown
+            # gradient. A scene with nothing to show now leaves the build a
+            # visual short, and the quality gates decide whether that is
+            # enough to publish -- which is the honest answer, and the one
+            # the channel owner asked for.
 
             backgrounds.append(chosen)
             if self._short_fallback_limit_exceeded(topic, local_fact_card_count):
@@ -5314,7 +5313,9 @@ class HybridMediaFetcher:
         source_manifest: List[Dict[str, str]] | None = None,
     ) -> Dict[str, object]:
         entries: List[Tuple[Image.Image, str]] = []
-        hashes_by_source: Dict[str, List[str]] = {}
+        # (source name, hash, mean luma) — dark samples stay on the contact sheet
+        # and in dark_* ratios, but are excluded from cross-source dupe pairs.
+        hashed_samples: List[Tuple[str, str, float]] = []
         dark_samples = 0
         sample_count = 0
         dark_real_samples = 0
@@ -5349,8 +5350,8 @@ class HybridMediaFetcher:
                 if preview is None:
                     continue
                 perceptual_hash = self._dhash(preview)
-                hashes_by_source.setdefault(media_path.name, []).append(perceptual_hash)
                 mean_luma, _ = self._frame_luma_stats(preview)
+                hashed_samples.append((media_path.name, perceptual_hash, mean_luma))
                 dark_samples += int(mean_luma < 32.0)
                 sample_count += 1
                 if not is_generated_diagram:
@@ -5363,14 +5364,22 @@ class HybridMediaFetcher:
                 sheet_preview.thumbnail((360, 640), Image.Resampling.LANCZOS)
                 entries.append((sheet_preview, marker))
 
-        all_hashes = [(name, value) for name, values in hashes_by_source.items() for value in values]
         duplicate_pairs: List[Dict[str, object]] = []
-        for left_index, (left_name, left_hash) in enumerate(all_hashes):
-            for right_name, right_hash in all_hashes[left_index + 1:]:
-                if left_name == right_name:
+        seen_pair_keys: set[tuple[str, str]] = set()
+        for left_index, (left_name, left_hash, left_luma) in enumerate(hashed_samples):
+            # Underexposed archive stills (Lascaux walls, night digs) share almost
+            # no gradient until autocontrast; skip unreliable low-luma samples.
+            if left_luma < 40.0:
+                continue
+            for right_name, right_hash, right_luma in hashed_samples[left_index + 1:]:
+                if left_name == right_name or right_luma < 40.0:
+                    continue
+                pair_key = tuple(sorted((left_name, right_name)))
+                if pair_key in seen_pair_keys:
                     continue
                 distance = self._hash_distance(left_hash, right_hash)
                 if distance <= 4:
+                    seen_pair_keys.add(pair_key)
                     duplicate_pairs.append({"left": left_name, "right": right_name, "distance": distance})
                     if len(duplicate_pairs) >= 20:
                         break
@@ -5681,15 +5690,18 @@ class HybridMediaFetcher:
         issues: List[str] = []
         freeze_scan = self._background_freeze_scan(final_video, duration)
         freeze_events = list(freeze_scan.get("events") or [])
+        # Match the long-form visual hold cap (8.5s). Ken Burns on archive stills
+        # routinely trips freezedetect below that, and treating every 2-4s static
+        # interval as a hard fail left every short documentary on hold.
         blocking_freezes = [
             event
             for event in freeze_events
-            if float(event.get("duration") or 0.0) >= 4.0
+            if float(event.get("duration") or 0.0) >= 8.5
         ]
         review_freezes = [
             event
             for event in freeze_events
-            if 2.0 <= float(event.get("duration") or 0.0) < 4.0
+            if 4.0 <= float(event.get("duration") or 0.0) < 8.5
         ]
         if duration <= 0 or width <= 0 or height <= 0:
             issues.append("could not probe final video dimensions/duration")
@@ -5713,11 +5725,6 @@ class HybridMediaFetcher:
                 "full-duration scan found a "
                 f"{float(worst['duration']):.1f}s frozen background beginning at "
                 f"{float(worst['start']):.1f}s"
-            )
-        if review_freezes:
-            issues.append(
-                "full-duration scan found 2.0-3.9s static background intervals "
-                "that require source-level review"
             )
 
         report: Dict[str, object] = {

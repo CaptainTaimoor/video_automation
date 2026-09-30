@@ -282,7 +282,12 @@ class VideoBuilder:
             beat_start = max(0.0, float(beat_segment.start))
             beat_end = min(duration, max(beat_start + 0.8, float(beat_segment.end)))
             image_slots = min(requested_slots, len(beat_images))
-            if duration >= 180:
+            # Intercut on every long-form render, not only 6+ minute ones.
+            # Short configured longs (~90-180s) previously skipped this branch,
+            # then merged identical stills without the 8.5s cap and produced
+            # 13-23s frozen holds that final QA correctly blocked.
+            long_form = duration >= 90
+            if long_form:
                 image_slots = max(image_slots, int(np.ceil((beat_end - beat_start) / 7.5)))
                 # A long beat usually owns one primary asset. Repeating that one
                 # file in every slot was later merged into a 25-30 second hold:
@@ -328,12 +333,14 @@ class VideoBuilder:
                             selected_images[-1] = replacement
                 if selected_images:
                     beat_images = selected_images
+                    image_slots = min(image_slots, len(beat_images))
             if (
                 ordered_images
                 and len(beat_images) > 1
                 and Path(ordered_images[-1]).resolve() == Path(beat_images[0]).resolve()
             ):
                 beat_images = beat_images[1:] + beat_images[:1]
+            image_slots = max(1, min(image_slots, len(beat_images)))
             slot_duration = (beat_end - beat_start) / image_slots
             for image_index in range(image_slots):
                 image_path = beat_images[image_index % len(beat_images)]
@@ -357,6 +364,7 @@ class VideoBuilder:
         merged_segments: list[SubtitleSegment] = []
         merged_images: List[Path] = []
         merged_indices: list[int | list[dict]] = []
+        long_form = duration >= 90
         for segment, image_path, beat_index in zip(
             visual_segments,
             ordered_images,
@@ -367,7 +375,7 @@ class VideoBuilder:
                 and Path(merged_images[-1]).resolve() == Path(image_path).resolve()
                 and abs(float(merged_segments[-1].end) - float(segment.start)) <= 0.05
                 and (
-                    duration < 180
+                    not long_form
                     or float(segment.end) - float(merged_segments[-1].start) <= 8.5
                 )
             )
@@ -405,7 +413,7 @@ class VideoBuilder:
             merged_segments.append(segment)
             merged_images.append(image_path)
             merged_indices.append(beat_index)
-        if duration >= 180:
+        if long_form:
             longest_shot = max(
                 (float(segment.end) - float(segment.start) for segment in merged_segments),
                 default=0.0,

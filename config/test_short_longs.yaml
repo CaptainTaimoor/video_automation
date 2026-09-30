@@ -226,8 +226,8 @@ channels:
         # 4-6 minutes. The script budget follows these numbers, so changing
         # them changes the script length too; a fixed word floor used to
         # override this and force nine minutes regardless.
-        min_duration_seconds: 240
-        max_duration_seconds: 360
+        min_duration_seconds: 90
+        max_duration_seconds: 180
         target_width: 1920
         target_height: 1080
         # Slower than the Shorts read below, because speaking rate and the
@@ -356,8 +356,8 @@ channels:
         # 4-6 minutes. The script budget follows these numbers, so changing
         # them changes the script length too; a fixed word floor used to
         # override this and force nine minutes regardless.
-        min_duration_seconds: 240
-        max_duration_seconds: 360
+        min_duration_seconds: 90
+        max_duration_seconds: 180
         target_width: 1920
         target_height: 1080
     voice_mode: single
