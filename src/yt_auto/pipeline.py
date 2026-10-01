@@ -6725,6 +6725,14 @@ class ShortsFactory:
             )
         except Exception:
             pass
+        # Forced Ancient Shorts can re-select the same too-dense pack after a
+        # timing reject. Rotate the pin so the next attempt is not stuck.
+        if channel.id == "ancient_history" and content_kind == "short":
+            avoid = {
+                str(getattr(topic, "title", "") or "").lower(),
+                str(getattr(topic, "subject", "") or "").lower(),
+            } - {""}
+            self._rotate_stuck_ancient_force_subject(topic, avoid)
         if run_dir is not None:
             shutil.rmtree(run_dir, ignore_errors=True)
         return self.build_one(
