@@ -2233,6 +2233,106 @@ class MusicPathResolutionTests(unittest.TestCase):
             )
             factory._add_used_topic.assert_not_called()
 
+    def test_deterministic_ancient_short_fallback_passes_gates_and_rotates(self) -> None:
+        config = load_config(ROOT / "config" / "settings.yaml")
+        channel = next(item for item in config.channels if item.id == "ancient_history")
+        factory = ShortsFactory.__new__(ShortsFactory)
+        factory.config = config
+        factory.image_fetcher = HybridMediaFetcher()
+        factory.topic_planner = TopicPlanner(timezone="UTC")
+        factory.script_writer = ScriptWriter(config.app.script_writer)
+        factory.title_lab = TitleLab()
+        factory._recent_story_fingerprints = Mock(return_value={})
+        factory._read_run_log = Mock(return_value=[])
+
+        first = factory._ancient_short_deterministic_fallback(channel, set())
+        self.assertIsNotNone(first)
+        assert first is not None
+        self.assertEqual(first.selected_title_pattern, "deterministic_ancient_fallback")
+        self.assertEqual(first.subject, "Rosetta Stone")
+        word_count = len(re.findall(r"[A-Za-z0-9']+", first.narration))
+        self.assertGreaterEqual(word_count, 120)
+        self.assertLessEqual(word_count, 148)
+        self.assertEqual(
+            [],
+            factory.script_writer.editorial_quality_issues(
+                first,
+                beats=first.narration_beats,
+                content_kind="short",
+            ),
+        )
+        factory._validate_topic_quality(channel, first, set())
+
+        second = factory._ancient_short_deterministic_fallback(
+            channel,
+            {first.subject.lower(), first.title.lower()},
+        )
+        self.assertIsNotNone(second)
+        assert second is not None
+        self.assertEqual(second.subject, "Pompeii Plaster Casts")
+        factory._validate_topic_quality(channel, second, set())
+
+    def test_ensure_ancient_short_editorial_floor_pads_thin_script(self) -> None:
+        config = load_config(ROOT / "config" / "settings.yaml")
+        writer = ScriptWriter(config.app.script_writer)
+        thin = topic(
+            niche_id="ancient_history",
+            title="Rosetta Stone: Three Scripts That Unlocked Egyptian Writing",
+            subject="Rosetta Stone",
+            hook="French soldiers found the Rosetta Stone slab near Rashid in 1799.",
+            narration=(
+                "French soldiers found the Rosetta Stone slab near Rashid in 1799. "
+                "Hieroglyphs sit above Demotic text. Greek closes the decree. "
+                "Scholars compared royal names. Temple walls became readable."
+            ),
+            narration_beats=[
+                "French soldiers found the Rosetta Stone slab near Rashid in 1799.",
+                "Hieroglyphs sit above Demotic text.",
+                "Greek closes the decree.",
+                "Scholars compared royal names.",
+                "Temple walls became readable about the Rosetta Stone.",
+            ],
+            content_kind="short",
+            source_urls=["https://en.wikipedia.org/wiki/Rosetta_Stone"],
+        )
+        padded = writer._ensure_ancient_short_editorial_floor(
+            thin,
+            list(thin.narration_beats),
+            "Rosetta Stone",
+        )
+        words = len(re.findall(r"[A-Za-z0-9']+", " ".join(padded)))
+        self.assertGreaterEqual(words, 120)
+        self.assertLessEqual(words, 148)
+        self.assertEqual(
+            [],
+            writer.editorial_quality_issues(thin, beats=padded, content_kind="short"),
+        )
+
+    def test_stuck_ancient_force_subject_rotates_instead_of_looping(self) -> None:
+        config = load_config(ROOT / "config" / "settings.yaml")
+        factory = ShortsFactory.__new__(ShortsFactory)
+        factory.config = config
+        factory.topic_planner = TopicPlanner(timezone="UTC")
+        factory.logger = SimpleNamespace(warning=Mock())
+        stuck = topic(
+            niche_id="ancient_history",
+            title="Rosetta Stone: Three Scripts That Unlocked Egyptian Writing",
+            subject="Rosetta Stone",
+            content_kind="short",
+        )
+        with patch.dict("os.environ", {"YT_FORCE_HISTORY_SUBJECT": "rosetta stone"}):
+            factory._rotate_stuck_ancient_force_subject(
+                stuck,
+                {"rosetta stone", stuck.title.lower()},
+            )
+            rotated = os.environ.get("YT_FORCE_HISTORY_SUBJECT", "").lower()
+            self.assertTrue(rotated)
+            self.assertNotEqual(rotated, "rosetta stone")
+            self.assertIn(
+                factory.topic_planner.research._normalize_subject(rotated),
+                factory.topic_planner.research._HISTORY_SHORT_VISUAL_READY_SUBJECTS,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
